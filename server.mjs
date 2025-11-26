@@ -60,38 +60,14 @@ app.use('/api/stats', statsRouter);
 const distPath = path.join(__dirname, 'dist');
 const uploadsPath = path.join(__dirname, 'uploads');
 
-// Проверяем, существует ли папка dist (production build)
-if (process.env.NODE_ENV === 'production' && fs.existsSync(distPath)) {
-  // Production: раздаем статические файлы из dist
-  app.use(express.static(distPath));
-  app.use('/uploads', express.static(uploadsPath));
-  
-  // SPA роутинг: все маршруты возвращают index.html
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
-} else {
-  // Development: раздаем старые файлы для обратной совместимости
-  app.use(express.static(path.join(__dirname)));
-  app.use('/uploads', express.static(uploadsPath));
-  
-  // Старые маршруты для обратной совместимости
-  app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-  });
-  
-  app.get('/register', (req, res) => {
-    res.sendFile(path.join(__dirname, 'register.html'));
-  });
-  
-  app.get('/login', (req, res) => {
-    res.sendFile(path.join(__dirname, 'login.html'));
-  });
-  
-  app.get('/profile', (req, res) => {
-    res.sendFile(path.join(__dirname, 'profile.html'));
-  });
-}
+// Раздаем статические файлы из dist
+app.use(express.static(distPath));
+app.use('/uploads', express.static(uploadsPath));
+
+// SPA роутинг: все маршруты возвращают index.html
+app.get('*', (req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
+});
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -102,8 +78,6 @@ initDatabase()
     server.listen(PORT, HOST, () => {
       console.log(`✅ Aiternitas сервер запущен на порту ${PORT}`);
       console.log(`📱 Главная страница: http://localhost:${PORT}`);
-      console.log(`🔐 Регистрация: http://localhost:${PORT}/register`);
-      console.log(`👤 Личный кабинет: http://localhost:${PORT}/profile`);
     });
   })
   .catch((error) => {
