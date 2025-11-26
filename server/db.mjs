@@ -1,11 +1,15 @@
 import pg from 'pg';
+import dotenv from 'dotenv';
+
+// Загружаем .env в самом начале, до создания пула подключений
+dotenv.config();
 
 const { Pool } = pg;
 
 const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
+  host: process.env.DB_HOST || '127.127.126.56', // Дефолт для Open Server
   port: parseInt(process.env.DB_PORT || '5432', 10),
-  user: process.env.DB_USER || 'postgres',
+  user: process.env.DB_USER || 'severomorets',
   database: process.env.DB_NAME || 'aiternitas',
   max: 20,
   idleTimeoutMillis: 30000,
@@ -25,9 +29,9 @@ export async function initDatabase() {
   try {
     // Создаем базу данных если не существует
     const adminDbConfig = {
-      host: process.env.DB_HOST || 'localhost',
+      host: process.env.DB_HOST || '127.127.126.56', // Дефолт для Open Server
       port: parseInt(process.env.DB_PORT || '5432', 10),
-      user: process.env.DB_USER || 'postgres',
+      user: process.env.DB_USER || 'severomorets',
       database: 'postgres',
     };
     

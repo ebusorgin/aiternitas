@@ -9,11 +9,9 @@ import authRouter from './server/routes/auth.mjs';
 import uploadRouter from './server/routes/upload.mjs';
 import statsRouter from './server/routes/stats.mjs';
 
-// Загружаем .env только если переменные не установлены извне (например, из systemd)
-// В продакшене переменные должны быть установлены через systemd
-if (process.env.NODE_ENV !== 'production') {
-  dotenv.config();
-}
+// Загружаем .env всегда для локальной разработки
+// В продакшене переменные должны быть установлены через systemd и будут иметь приоритет
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
