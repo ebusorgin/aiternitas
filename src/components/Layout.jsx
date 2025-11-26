@@ -6,7 +6,7 @@ import './Layout.css';
 
 function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, logout } = useAuth();
+  const { user, loading, logout } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -33,6 +33,7 @@ function Layout() {
 
       <Sidebar
         user={user}
+        loading={loading}
         onLogout={handleLogout}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}

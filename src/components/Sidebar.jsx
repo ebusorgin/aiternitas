@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Sidebar.css';
 
-function Sidebar({ user, onLogout, isOpen, onClose }) {
+function Sidebar({ user, loading, onLogout, isOpen, onClose }) {
   const { logout } = useAuth();
 
   const handleLinkClick = () => {
@@ -13,9 +13,11 @@ function Sidebar({ user, onLogout, isOpen, onClose }) {
 
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
-      <div className="sidebar-logo">Aiternitas</div>
+      <Link to="/" className="sidebar-logo" onClick={handleLinkClick}>
+        Aiternitas
+      </Link>
 
-      {user ? (
+      {loading ? null : user ? (
         <div className="user-section">
           <div className="user-info">
             <img
