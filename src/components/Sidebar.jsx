@@ -43,32 +43,6 @@ function Sidebar({ user, loading, onLogout, isOpen, onClose }) {
           </Link>
         </div>
       )}
-
-      <div className="projects-title">Проекты</div>
-      <a
-        href="https://conference.aiternitas.ru"
-        className="project-item"
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={handleLinkClick}
-      >
-        <div className="project-name">🎙️ Конференции</div>
-        <div className="project-description">Платформа видеоконференций с WebRTC</div>
-      </a>
-      <a
-        href="https://balance.aiternitas.ru"
-        className="project-item"
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={handleLinkClick}
-      >
-        <div className="project-name">💰 Balance Tracker</div>
-        <div className="project-description">Отслеживание балансов на криптобиржах</div>
-      </a>
-      <div className="project-item" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
-        <div className="project-name">🚀 Проект 3</div>
-        <div className="project-description">Скоро будет доступен</div>
-      </div>
     </aside>
   );
 }

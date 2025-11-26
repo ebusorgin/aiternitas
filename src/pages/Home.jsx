@@ -2,36 +2,6 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import './Home.css';
 
-function ProjectsCollapsed() {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <section className="section projects-collapsed">
-      <div className={`projects-toggle ${isOpen ? 'active' : ''}`} onClick={() => setIsOpen(!isOpen)}>
-        <div className="projects-toggle-title">
-          <span>📁</span>
-          <span>Все проекты</span>
-        </div>
-        <div className="projects-toggle-icon">▼</div>
-      </div>
-      <div className={`projects-list ${isOpen ? 'active' : ''}`}>
-        <a href="https://conference.aiternitas.ru" target="_blank" rel="noopener noreferrer" className="projects-list-item">
-          <div className="projects-list-item-name">🎙️ Конференции</div>
-          <div className="projects-list-item-description">Платформа видеоконференций с WebRTC</div>
-        </a>
-        <a href="https://balance.aiternitas.ru" target="_blank" rel="noopener noreferrer" className="projects-list-item">
-          <div className="projects-list-item-name">💰 Balance Tracker</div>
-          <div className="projects-list-item-description">Отслеживание балансов на криптобиржах</div>
-        </a>
-        <div className="projects-list-item disabled">
-          <div className="projects-list-item-name">🚀 Проект 3</div>
-          <div className="projects-list-item-description">Скоро будет доступен</div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function Home() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
@@ -150,7 +120,6 @@ function Home() {
         )}
       </section>
 
-      <ProjectsCollapsed />
     </>
   );
 }

@@ -2,6 +2,7 @@ import { Outlet, Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from './Sidebar';
+import Footer from './Footer';
 import './Layout.css';
 
 function Layout() {
@@ -42,6 +43,8 @@ function Layout() {
       <main className="main-content">
         <Outlet />
       </main>
+      
+      <Footer />
     </div>
   );
 }

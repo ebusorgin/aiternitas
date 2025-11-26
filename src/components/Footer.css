@@ -1,0 +1,135 @@
+.footer {
+  background: linear-gradient(180deg, #0f1429 0%, #1a1f3a 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 40px 20px;
+  margin-top: 60px;
+}
+
+.footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.footer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.footer-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0 0 15px 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.footer-projects {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.footer-project-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 15px;
+  padding: 15px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  text-decoration: none;
+  color: #e0e0e0;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.footer-project-link:hover:not(.disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.footer-project-link.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.footer-project-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.footer-project-info {
+  flex: 1;
+}
+
+.footer-project-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 5px;
+}
+
+.footer-project-description {
+  font-size: 14px;
+  color: #aaa;
+  line-height: 1.4;
+}
+
+.footer-copyright {
+  text-align: center;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.footer-copyright p {
+  margin: 0;
+  color: #888;
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  .footer-content {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
+  .footer-projects {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+
+  .footer-project-link {
+    flex: 1;
+    min-width: 250px;
+    max-width: 300px;
+  }
+
+  .footer-section:last-child {
+    align-items: flex-end;
+  }
+
+  .footer-copyright {
+    text-align: right;
+    border-top: none;
+    padding-top: 0;
+  }
+}
+
+@media (min-width: 1024px) {
+  .footer {
+    padding: 60px 40px;
+  }
+
+  .footer-projects {
+    gap: 25px;
+  }
+}
+
