@@ -1,6 +1,7 @@
 // Личный кабинет
 
 let currentUser = null;
+let isEditingName = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
   await loadUserProfile();
@@ -25,13 +26,17 @@ async function loadUserProfile() {
     const data = await response.json();
     currentUser = data.user;
 
-    // Заполняем форму
-    document.getElementById('name').value = currentUser.name || '';
-    document.getElementById('email').value = currentUser.email || '';
+    // Отображаем данные
+    document.getElementById('nameDisplay').textContent = currentUser.name || 'Не указано';
+    document.getElementById('emailDisplay').textContent = currentUser.email || '';
     
     if (currentUser.created_at) {
       const date = new Date(currentUser.created_at);
-      document.getElementById('createdAt').value = date.toLocaleDateString('ru-RU');
+      document.getElementById('createdAtDisplay').textContent = date.toLocaleDateString('ru-RU', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
     }
 
     // Устанавливаем аватар
@@ -45,8 +50,19 @@ async function loadUserProfile() {
 }
 
 function setupEventListeners() {
-  // Сохранение имени
-  document.getElementById('profileForm').addEventListener('submit', handleNameUpdate);
+  // Редактирование имени
+  document.getElementById('editNameBtn').addEventListener('click', startEditingName);
+  
+  const nameInput = document.getElementById('nameInput');
+  nameInput.addEventListener('blur', saveName);
+  nameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      nameInput.blur();
+    } else if (e.key === 'Escape') {
+      cancelEditingName();
+    }
+  });
 
   // Загрузка аватара
   document.getElementById('avatarInput').addEventListener('change', handleAvatarUpload);
@@ -55,25 +71,62 @@ function setupEventListeners() {
   document.getElementById('logoutBtn').addEventListener('click', handleLogout);
 }
 
-async function handleNameUpdate(e) {
-  e.preventDefault();
+function startEditingName() {
+  if (isEditingName) return;
   
-  const nameInput = document.getElementById('name');
-  const newName = nameInput.value.trim();
-  const saveBtn = e.target.querySelector('.btn-save');
+  isEditingName = true;
+  const nameContainer = document.getElementById('nameContainer');
+  const nameDisplay = document.getElementById('nameDisplay');
+  const nameInput = document.getElementById('nameInput');
+  const editBtn = document.getElementById('editNameBtn');
+  
+  nameInput.value = currentUser.name || '';
+  nameDisplay.style.display = 'none';
+  nameInput.style.display = 'block';
+  editBtn.style.display = 'none';
+  nameContainer.classList.add('editing');
+  
+  nameInput.focus();
+  nameInput.select();
+}
 
+function cancelEditingName() {
+  if (!isEditingName) return;
+  
+  isEditingName = false;
+  const nameContainer = document.getElementById('nameContainer');
+  const nameDisplay = document.getElementById('nameDisplay');
+  const nameInput = document.getElementById('nameInput');
+  const editBtn = document.getElementById('editNameBtn');
+  
+  nameDisplay.style.display = 'inline';
+  nameInput.style.display = 'none';
+  editBtn.style.display = 'flex';
+  nameContainer.classList.remove('editing');
+  nameInput.disabled = false;
+  nameInput.style.opacity = '1';
+}
+
+async function saveName() {
+  if (!isEditingName) return;
+  
+  const nameInput = document.getElementById('nameInput');
+  const newName = nameInput.value.trim();
+  
   if (!newName) {
     showMessage('Имя не может быть пустым', 'error');
+    cancelEditingName();
     return;
   }
 
   if (newName === currentUser.name) {
-    showMessage('Имя не изменилось', 'error');
+    cancelEditingName();
     return;
   }
 
-  saveBtn.disabled = true;
-  saveBtn.textContent = 'Сохранение...';
+  // Показываем состояние загрузки
+  nameInput.disabled = true;
+  nameInput.style.opacity = '0.6';
 
   try {
     const response = await fetch('/api/auth/profile/name', {
@@ -89,18 +142,29 @@ async function handleNameUpdate(e) {
 
     if (response.ok && data.success) {
       currentUser.name = data.user.name;
+      document.getElementById('nameDisplay').textContent = currentUser.name;
       showMessage('Имя успешно обновлено', 'success');
-      saveBtn.disabled = false;
-      saveBtn.textContent = 'Сохранить';
+      isEditingName = false;
+      const nameContainer = document.getElementById('nameContainer');
+      const nameDisplay = document.getElementById('nameDisplay');
+      const nameInput = document.getElementById('nameInput');
+      const editBtn = document.getElementById('editNameBtn');
+      
+      nameDisplay.style.display = 'inline';
+      nameInput.style.display = 'none';
+      editBtn.style.display = 'flex';
+      nameContainer.classList.remove('editing');
+      nameInput.disabled = false;
+      nameInput.style.opacity = '1';
     } else {
       showMessage(data.error || 'Ошибка обновления имени', 'error');
-      saveBtn.disabled = false;
-      saveBtn.textContent = 'Сохранить';
+      nameInput.disabled = false;
+      nameInput.style.opacity = '1';
     }
   } catch (error) {
     showMessage('Ошибка подключения к серверу', 'error');
-    saveBtn.disabled = false;
-    saveBtn.textContent = 'Сохранить';
+    nameInput.disabled = false;
+    nameInput.style.opacity = '1';
   }
 }
 
@@ -177,4 +241,3 @@ function showMessage(text, type) {
     messageDiv.style.display = 'none';
   }, 5000);
 }
-
