@@ -36,7 +36,7 @@ export async function initDatabase() {
     };
     
     // Добавляем password только если он определен и не пустой
-    if (process.env.DB_PASSWORD !== undefined && process.env.DB_PASSWORD !== '') {
+    if (process.env.DB_PASSWORD && process.env.DB_PASSWORD.trim() !== '') {
       adminDbConfig.password = String(process.env.DB_PASSWORD);
     }
     
