@@ -15,8 +15,8 @@ const dbConfig = {
   connectionTimeoutMillis: 2000,
 };
 
-// Добавляем password только если он определен
-if (process.env.DB_PASSWORD !== undefined) {
+// Добавляем password только если он определен и не пустой
+if (process.env.DB_PASSWORD !== undefined && process.env.DB_PASSWORD !== '') {
   dbConfig.password = String(process.env.DB_PASSWORD);
 }
 
@@ -33,8 +33,8 @@ export async function initDatabase() {
       database: 'postgres',
     };
     
-    // Добавляем password только если он определен
-    if (process.env.DB_PASSWORD !== undefined) {
+    // Добавляем password только если он определен и не пустой
+    if (process.env.DB_PASSWORD !== undefined && process.env.DB_PASSWORD !== '') {
       adminDbConfig.password = String(process.env.DB_PASSWORD);
     }
     
