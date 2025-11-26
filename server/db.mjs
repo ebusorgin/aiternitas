@@ -5,28 +5,40 @@ dotenv.config();
 
 const { Pool } = pg;
 
-const pool = new Pool({
+const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432', 10),
   user: process.env.DB_USER || 'postgres',
-  password: String(process.env.DB_PASSWORD || ''),
   database: process.env.DB_NAME || 'aiternitas',
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
-});
+};
+
+// Добавляем password только если он определен
+if (process.env.DB_PASSWORD !== undefined) {
+  dbConfig.password = String(process.env.DB_PASSWORD);
+}
+
+const pool = new Pool(dbConfig);
 
 // Инициализация базы данных
 export async function initDatabase() {
   try {
     // Создаем базу данных если не существует
-    const adminPool = new Pool({
+    const adminDbConfig = {
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '5432', 10),
       user: process.env.DB_USER || 'postgres',
-      password: String(process.env.DB_PASSWORD || ''),
       database: 'postgres',
-    });
+    };
+    
+    // Добавляем password только если он определен
+    if (process.env.DB_PASSWORD !== undefined) {
+      adminDbConfig.password = String(process.env.DB_PASSWORD);
+    }
+    
+    const adminPool = new Pool(adminDbConfig);
 
     const dbCheck = await adminPool.query(
       "SELECT 1 FROM pg_database WHERE datname = 'aiternitas'"
