@@ -50,14 +50,14 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
             set -e
             
-            REPO_DIR="/opt/aiternitas"
+            REPO_DIR="/opt/aiternitas-main"
             
             # Создаем директорию если не существует
             if [ ! -d "$REPO_DIR" ]; then
               mkdir -p "$REPO_DIR"
               cd "$REPO_DIR"
               git init
-              git remote add origin git@github.com:ebusorgin/aiternitas.git || true
+              git remote add origin https://github.com/ebusorgin/aiternitas.git || true
             fi
             
             cd "$REPO_DIR"
@@ -66,9 +66,15 @@ jobs:
             git checkout production || git checkout -b production
             git reset --hard origin/production
             
-            # Установка зависимостей
+            # Установка зависимостей (включая dev для сборки React)
             if [ -f "package.json" ]; then
-              npm install --production
+              npm install
+            fi
+            
+            # Сборка React приложения
+            if [ -f "vite.config.js" ]; then
+              echo "Building React application..."
+              npm run build
             fi
             
             # Перезапуск сервиса
@@ -93,7 +99,16 @@ jobs:
             
             echo ""
             echo "=== Last Commit ==="
-            cd /opt/aiternitas && git log --oneline -1 || echo "No commits yet"
+            cd /opt/aiternitas-main && git log --oneline -1 || echo "No commits yet"
+            
+            echo ""
+            echo "=== Build Status ==="
+            if [ -d "/opt/aiternitas-main/dist" ]; then
+              echo "✅ React build exists"
+              ls -la /opt/aiternitas-main/dist/ | head -5
+            else
+              echo "⚠️ React build directory not found"
+            fi
             
             echo ""
             echo "=== Service Health ==="
