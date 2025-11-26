@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
 import dotenv from 'dotenv';
@@ -50,34 +51,47 @@ app.use(session({
   }
 }));
 
-// Статические файлы
-app.use(express.static(path.join(__dirname)));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// API Routes
+// API Routes (должны быть до статических файлов)
 app.use('/api/auth', authRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/stats', statsRouter);
 
-// Главная страница
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+// Статические файлы из собранного React приложения
+const distPath = path.join(__dirname, 'dist');
+const uploadsPath = path.join(__dirname, 'uploads');
 
-// Страница регистрации
-app.get('/register', (req, res) => {
-  res.sendFile(path.join(__dirname, 'register.html'));
-});
-
-// Страница входа
-app.get('/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'login.html'));
-});
-
-// Личный кабинет
-app.get('/profile', (req, res) => {
-  res.sendFile(path.join(__dirname, 'profile.html'));
-});
+// Проверяем, существует ли папка dist (production build)
+if (process.env.NODE_ENV === 'production' && fs.existsSync(distPath)) {
+  // Production: раздаем статические файлы из dist
+  app.use(express.static(distPath));
+  app.use('/uploads', express.static(uploadsPath));
+  
+  // SPA роутинг: все маршруты возвращают index.html
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+} else {
+  // Development: раздаем старые файлы для обратной совместимости
+  app.use(express.static(path.join(__dirname)));
+  app.use('/uploads', express.static(uploadsPath));
+  
+  // Старые маршруты для обратной совместимости
+  app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+  });
+  
+  app.get('/register', (req, res) => {
+    res.sendFile(path.join(__dirname, 'register.html'));
+  });
+  
+  app.get('/login', (req, res) => {
+    res.sendFile(path.join(__dirname, 'login.html'));
+  });
+  
+  app.get('/profile', (req, res) => {
+    res.sendFile(path.join(__dirname, 'profile.html'));
+  });
+}
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';

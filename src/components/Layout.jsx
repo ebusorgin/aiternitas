@@ -1,0 +1,49 @@
+import { Outlet, Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import Sidebar from './Sidebar';
+import './Layout.css';
+
+function Layout() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
+
+  return (
+    <div className="layout">
+      <button
+        className={`mobile-menu-toggle ${sidebarOpen ? 'active' : ''}`}
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        aria-label="Открыть меню"
+      >
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+
+      <div
+        className={`sidebar-overlay ${sidebarOpen ? 'active' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+      ></div>
+
+      <Sidebar
+        user={user}
+        onLogout={handleLogout}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+
+      <main className="main-content">
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+
+export default Layout;
+

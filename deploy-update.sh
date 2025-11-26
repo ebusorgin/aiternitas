@@ -18,7 +18,11 @@ ssh -i "$SSH_KEY" $SERVER "cd $REPO_PATH && git status"
 
 echo ""
 echo "Установка зависимостей..."
-ssh -i "$SSH_KEY" $SERVER "cd $REPO_PATH && npm install --production"
+ssh -i "$SSH_KEY" $SERVER "cd $REPO_PATH && npm install"
+
+echo ""
+echo "Сборка React приложения..."
+ssh -i "$SSH_KEY" $SERVER "cd $REPO_PATH && npm run build"
 
 echo ""
 echo "Перезапуск сервиса..."
