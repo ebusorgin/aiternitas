@@ -90,6 +90,135 @@
             line-height: 1.4;
         }
 
+        /* Секция пользователя */
+        .user-section {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .user-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid rgba(102, 126, 234, 0.5);
+        }
+
+        .user-details {
+            flex: 1;
+        }
+
+        .user-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        .profile-link {
+            font-size: 12px;
+            color: #667eea;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .profile-link:hover {
+            color: #764ba2;
+        }
+
+        /* Кнопки авторизации */
+        .auth-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .auth-btn {
+            padding: 12px 20px;
+            border-radius: 10px;
+            text-align: center;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .login-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #e0e0e0;
+        }
+
+        .login-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(102, 126, 234, 0.5);
+        }
+
+        .register-btn {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%);
+            border: 1px solid rgba(102, 126, 234, 0.5);
+            color: #fff;
+        }
+
+        .register-btn:hover {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.5) 0%, rgba(118, 75, 162, 0.5) 100%);
+            transform: translateX(5px);
+        }
+
+        /* Анимации для проектов */
+        .project-item {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .project-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.1), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .project-item:hover::before {
+            left: 100%;
+        }
+
+        /* Улучшенные карточки проектов */
+        .feature-card {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .feature-card:hover::after {
+            opacity: 1;
+        }
+
         /* Основной контент */
         .main-content {
             margin-left: 280px;
@@ -168,6 +297,36 @@
             50% { opacity: 0.7; }
         }
 
+        /* Статистика */
+        .stats-section {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+            margin-top: 50px;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
         /* Секции контента */
         .section {
             padding: 100px 60px;
@@ -226,6 +385,34 @@
             color: #aaa;
         }
 
+        .feature-card-link {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
+        .feature-link {
+            margin-top: 20px;
+            font-size: 0.9em;
+            color: #667eea;
+            font-weight: 600;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .feature-card:hover .feature-link {
+            opacity: 1;
+        }
+
+        .user-stats {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(102, 126, 234, 0.1);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 12px;
+            text-align: center;
+        }
+
         /* Адаптивность */
         @media (max-width: 768px) {
             .sidebar {
@@ -255,17 +442,34 @@
     <!-- Боковое меню проектов -->
     <aside class="sidebar">
         <div class="sidebar-logo">Aiternitas</div>
+        
+        <!-- Информация о пользователе или кнопки входа -->
+        <div id="userSection" class="user-section" style="display: none;">
+            <div class="user-info">
+                <img id="userAvatar" src="/images/default-avatar.png" alt="Аватар" class="user-avatar">
+                <div class="user-details">
+                    <div id="userName" class="user-name"></div>
+                    <a href="/profile" class="profile-link">Личный кабинет</a>
+                </div>
+            </div>
+        </div>
+        
+        <div id="authButtons" class="auth-buttons">
+            <a href="/login" class="auth-btn login-btn">Войти</a>
+            <a href="/register" class="auth-btn register-btn">Регистрация</a>
+        </div>
+        
         <div class="projects-title">Проекты</div>
-        <a href="https://apk.aiternitas.ru" class="project-item active" target="_blank">
+        <a href="https://conference.aiternitas.ru" class="project-item" target="_blank">
             <div class="project-name">🎙️ Конференции</div>
             <div class="project-description">Платформа видеоконференций с WebRTC</div>
         </a>
+        <a href="https://balance.aiternitas.ru" class="project-item" target="_blank">
+            <div class="project-name">💰 Balance Tracker</div>
+            <div class="project-description">Отслеживание балансов на криптобиржах</div>
+        </a>
         <div class="project-item" style="opacity: 0.5; cursor: not-allowed;">
-            <div class="project-name">🚀 Проект 2</div>
-            <div class="project-description">Скоро будет доступен</div>
-        </div>
-        <div class="project-item" style="opacity: 0.5; cursor: not-allowed;">
-            <div class="project-name">💡 Проект 3</div>
+            <div class="project-name">🚀 Проект 3</div>
             <div class="project-description">Скоро будет доступен</div>
         </div>
     </aside>
@@ -278,6 +482,16 @@
                 <div class="dev-badge">🚧 Сайт находится в разработке</div>
                 <h1>Aiternitas</h1>
                 <p>Платформа инновационных проектов и технологических решений</p>
+                <div id="statsSection" class="stats-section" style="display: none;">
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalUsers">-</div>
+                        <div class="stat-label">Пользователей</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalProjects">2</div>
+                        <div class="stat-label">Проектов</div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -299,29 +513,36 @@
         <section class="section">
             <h2>Наши проекты</h2>
             <div class="features-grid">
-                <div class="feature-card">
-                    <div class="feature-icon">🎙️</div>
-                    <h3>Видеоконференции</h3>
-                    <p>
-                        Современная платформа для проведения видеоконференций с поддержкой 
-                        WebRTC, комнат и множества участников. Высокое качество связи и 
-                        удобный интерфейс.
-                    </p>
-                </div>
+                <a href="https://conference.aiternitas.ru" target="_blank" class="feature-card-link">
+                    <div class="feature-card">
+                        <div class="feature-icon">🎙️</div>
+                        <h3>Видеоконференции</h3>
+                        <p>
+                            Современная платформа для проведения видеоконференций с поддержкой 
+                            WebRTC, комнат и множества участников. Высокое качество связи и 
+                            удобный интерфейс.
+                        </p>
+                        <div class="feature-link">Перейти →</div>
+                    </div>
+                </a>
+                <a href="https://balance.aiternitas.ru" target="_blank" class="feature-card-link">
+                    <div class="feature-card">
+                        <div class="feature-icon">💰</div>
+                        <h3>Balance Tracker</h3>
+                        <p>
+                            Отслеживание балансов на криптовалютных биржах. Поддержка Binance, 
+                            Coinbase Pro, Kraken, Bybit и других. Единый интерфейс для управления 
+                            активами.
+                        </p>
+                        <div class="feature-link">Перейти →</div>
+                    </div>
+                </a>
                 <div class="feature-card">
                     <div class="feature-icon">🚀</div>
                     <h3>Скоро</h3>
                     <p>
                         Новые проекты находятся в разработке. Мы постоянно работаем над 
                         созданием полезных инструментов и сервисов.
-                    </p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">💡</div>
-                    <h3>Инновации</h3>
-                    <p>
-                        Мы используем передовые технологии и лучшие практики разработки, 
-                        чтобы создавать продукты, которые действительно работают.
                     </p>
                 </div>
             </div>
@@ -343,7 +564,14 @@
             <p>
                 По вопросам сотрудничества и предложений обращайтесь через официальные каналы связи.
             </p>
+            <div id="userStats" class="user-stats" style="display: none;">
+                <p style="color: #667eea; font-weight: 600; margin-top: 20px; font-size: 1.1em;">
+                    Присоединяйтесь к нашему сообществу! Уже <span id="statsUsersCount" style="color: #fff;">0</span> пользователей на платформе.
+                </p>
+            </div>
         </section>
     </main>
+
+    <script src="js/main.js"></script>
 </body>
 </html>
