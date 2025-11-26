@@ -484,6 +484,94 @@
             text-align: center;
         }
 
+        /* Свернутая секция проектов */
+        .projects-collapsed {
+            background: rgba(255, 255, 255, 0.03);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            margin-top: 0;
+        }
+
+        .projects-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 25px 30px;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.3s ease;
+        }
+
+        .projects-toggle:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .projects-toggle-title {
+            font-size: clamp(1.2em, 3vw, 1.5em);
+            font-weight: 600;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .projects-toggle-icon {
+            font-size: 1.2em;
+            transition: transform 0.3s ease;
+        }
+
+        .projects-toggle.active .projects-toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .projects-list {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease, padding 0.4s ease;
+            padding: 0 30px;
+        }
+
+        .projects-list.active {
+            max-height: 1000px;
+            padding: 0 30px 30px 30px;
+        }
+
+        .projects-list-item {
+            padding: 20px;
+            margin-bottom: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
+        .projects-list-item:hover {
+            background: rgba(102, 126, 234, 0.15);
+            border-color: rgba(102, 126, 234, 0.4);
+            transform: translateX(5px);
+        }
+
+        .projects-list-item.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .projects-list-item-name {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+
+        .projects-list-item-description {
+            font-size: 0.9em;
+            color: #aaa;
+            line-height: 1.5;
+        }
+
         /* Адаптивность для планшетов */
         @media (max-width: 1024px) {
             .sidebar {
@@ -587,6 +675,18 @@
 
             .feature-card {
                 padding: 25px 20px;
+            }
+
+            .projects-toggle {
+                padding: 20px;
+            }
+
+            .projects-list {
+                padding: 0 20px;
+            }
+
+            .projects-list.active {
+                padding: 0 20px 20px 20px;
             }
         }
 
@@ -762,6 +862,31 @@
                 </p>
             </div>
         </section>
+
+        <!-- Свернутая секция проектов -->
+        <section class="section projects-collapsed">
+            <div class="projects-toggle" id="projectsToggle">
+                <div class="projects-toggle-title">
+                    <span>📁</span>
+                    <span>Все проекты</span>
+                </div>
+                <div class="projects-toggle-icon">▼</div>
+            </div>
+            <div class="projects-list" id="projectsList">
+                <a href="https://conference.aiternitas.ru" target="_blank" class="projects-list-item">
+                    <div class="projects-list-item-name">🎙️ Конференции</div>
+                    <div class="projects-list-item-description">Платформа видеоконференций с WebRTC</div>
+                </a>
+                <a href="https://balance.aiternitas.ru" target="_blank" class="projects-list-item">
+                    <div class="projects-list-item-name">💰 Balance Tracker</div>
+                    <div class="projects-list-item-description">Отслеживание балансов на криптобиржах</div>
+                </a>
+                <div class="projects-list-item disabled">
+                    <div class="projects-list-item-name">🚀 Проект 3</div>
+                    <div class="projects-list-item-description">Скоро будет доступен</div>
+                </div>
+            </div>
+        </section>
     </main>
 
     <script src="js/main.js"></script>
@@ -804,6 +929,16 @@
             if (window.innerWidth > 768) {
                 closeMobileMenu();
             }
+        });
+
+        // Свернутая секция проектов
+        const projectsToggle = document.getElementById('projectsToggle');
+        const projectsList = document.getElementById('projectsList');
+
+        projectsToggle.addEventListener('click', () => {
+            const isActive = projectsList.classList.contains('active');
+            projectsList.classList.toggle('active');
+            projectsToggle.classList.toggle('active');
         });
     </script>
 </body>
