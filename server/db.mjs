@@ -12,8 +12,9 @@ const dbConfig = {
   connectionTimeoutMillis: 2000,
 };
 
-// Добавляем password только если он определен и не пустой
-if (process.env.DB_PASSWORD !== undefined && process.env.DB_PASSWORD !== '') {
+// Не передаем password если он не определен или пустой
+// PostgreSQL будет использовать peer authentication для localhost
+if (process.env.DB_PASSWORD && process.env.DB_PASSWORD.trim() !== '') {
   dbConfig.password = String(process.env.DB_PASSWORD);
 }
 
