@@ -52,13 +52,14 @@ async function loadUserProfile() {
 function setupEventListeners() {
   // Редактирование имени
   document.getElementById('editNameBtn').addEventListener('click', startEditingName);
+  document.getElementById('saveNameBtn').addEventListener('click', saveName);
+  document.getElementById('cancelNameBtn').addEventListener('click', cancelEditingName);
   
   const nameInput = document.getElementById('nameInput');
-  nameInput.addEventListener('blur', saveName);
   nameInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      nameInput.blur();
+      saveName();
     } else if (e.key === 'Escape') {
       cancelEditingName();
     }
@@ -79,11 +80,12 @@ function startEditingName() {
   const nameDisplay = document.getElementById('nameDisplay');
   const nameInput = document.getElementById('nameInput');
   const editBtn = document.getElementById('editNameBtn');
+  const editControls = document.getElementById('editControls');
   
   nameInput.value = currentUser.name || '';
   nameDisplay.style.display = 'none';
-  nameInput.style.display = 'block';
   editBtn.style.display = 'none';
+  editControls.style.display = 'flex';
   nameContainer.classList.add('editing');
   
   nameInput.focus();
@@ -98,24 +100,27 @@ function cancelEditingName() {
   const nameDisplay = document.getElementById('nameDisplay');
   const nameInput = document.getElementById('nameInput');
   const editBtn = document.getElementById('editNameBtn');
+  const editControls = document.getElementById('editControls');
   
   nameDisplay.style.display = 'inline';
-  nameInput.style.display = 'none';
+  editControls.style.display = 'none';
   editBtn.style.display = 'flex';
   nameContainer.classList.remove('editing');
   nameInput.disabled = false;
   nameInput.style.opacity = '1';
+  nameInput.value = currentUser.name || '';
 }
 
 async function saveName() {
   if (!isEditingName) return;
   
   const nameInput = document.getElementById('nameInput');
+  const saveBtn = document.getElementById('saveNameBtn');
   const newName = nameInput.value.trim();
   
   if (!newName) {
     showMessage('Имя не может быть пустым', 'error');
-    cancelEditingName();
+    nameInput.focus();
     return;
   }
 
@@ -126,7 +131,8 @@ async function saveName() {
 
   // Показываем состояние загрузки
   nameInput.disabled = true;
-  nameInput.style.opacity = '0.6';
+  saveBtn.disabled = true;
+  saveBtn.style.opacity = '0.6';
 
   try {
     const response = await fetch('/api/auth/profile/name', {
@@ -144,27 +150,34 @@ async function saveName() {
       currentUser.name = data.user.name;
       document.getElementById('nameDisplay').textContent = currentUser.name;
       showMessage('Имя успешно обновлено', 'success');
+      
+      // Выходим из режима редактирования
       isEditingName = false;
       const nameContainer = document.getElementById('nameContainer');
       const nameDisplay = document.getElementById('nameDisplay');
-      const nameInput = document.getElementById('nameInput');
       const editBtn = document.getElementById('editNameBtn');
+      const editControls = document.getElementById('editControls');
       
       nameDisplay.style.display = 'inline';
-      nameInput.style.display = 'none';
+      editControls.style.display = 'none';
       editBtn.style.display = 'flex';
       nameContainer.classList.remove('editing');
       nameInput.disabled = false;
-      nameInput.style.opacity = '1';
+      saveBtn.disabled = false;
+      saveBtn.style.opacity = '1';
     } else {
       showMessage(data.error || 'Ошибка обновления имени', 'error');
       nameInput.disabled = false;
-      nameInput.style.opacity = '1';
+      saveBtn.disabled = false;
+      saveBtn.style.opacity = '1';
+      nameInput.focus();
     }
   } catch (error) {
     showMessage('Ошибка подключения к серверу', 'error');
     nameInput.disabled = false;
-    nameInput.style.opacity = '1';
+    saveBtn.disabled = false;
+    saveBtn.style.opacity = '1';
+    nameInput.focus();
   }
 }
 

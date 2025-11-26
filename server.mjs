@@ -3,8 +3,10 @@ import { createServer } from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import session from 'express-session';
+import connectPgSimple from 'connect-pg-simple';
 import dotenv from 'dotenv';
 import { initDatabase } from './server/db.mjs';
+import pool from './server/db.mjs';
 import authRouter from './server/routes/auth.mjs';
 import uploadRouter from './server/routes/upload.mjs';
 import statsRouter from './server/routes/stats.mjs';
@@ -26,8 +28,17 @@ app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Сессии
+// Настройка хранилища сессий в PostgreSQL
+const PgSession = connectPgSimple(session);
+
+// Сессии с постоянным хранилищем в PostgreSQL
 app.use(session({
+  store: new PgSession({
+    pool: pool, // Используем существующий пул подключений
+    tableName: 'session', // Имя таблицы для сессий
+    createTableIfMissing: false, // Таблица создается через initDatabase
+    pruneSessionInterval: 60, // Очистка устаревших сессий каждые 60 секунд
+  }),
   secret: process.env.SESSION_SECRET || 'aiternitas-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,

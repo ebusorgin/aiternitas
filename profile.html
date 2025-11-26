@@ -31,9 +31,24 @@
                 <div class="profile-data">
                     <div class="data-item">
                         <label>Имя</label>
-                        <div class="data-value editable" id="nameContainer">
+                        <div class="data-value" id="nameContainer">
                             <span id="nameDisplay" class="display-value"></span>
-                            <input type="text" id="nameInput" class="edit-input" style="display: none;">
+                            <div class="edit-controls" id="editControls" style="display: none;">
+                                <input type="text" id="nameInput" class="edit-input">
+                                <button class="save-btn" id="saveNameBtn" title="Сохранить">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                                        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                                        <polyline points="7 3 7 8 15 8"></polyline>
+                                    </svg>
+                                </button>
+                                <button class="cancel-btn" id="cancelNameBtn" title="Отмена">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            </div>
                             <button class="edit-btn" id="editNameBtn" title="Редактировать имя">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>

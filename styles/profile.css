@@ -164,13 +164,10 @@ body {
     border-color: rgba(255, 255, 255, 0.12);
 }
 
-.data-value.editable {
-    cursor: pointer;
-}
-
 .data-value.editing {
     background: rgba(102, 126, 234, 0.08);
     border-color: rgba(102, 126, 234, 0.3);
+    padding: 12px 16px;
 }
 
 .display-value {
@@ -193,6 +190,7 @@ body {
     cursor: pointer;
     transition: all 0.3s ease;
     flex-shrink: 0;
+    margin-left: auto;
 }
 
 .edit-btn:hover {
@@ -201,9 +199,21 @@ body {
     transform: scale(1.1);
 }
 
-.edit-input {
+.edit-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     flex: 1;
-    padding: 12px 16px;
+    width: 100%;
+}
+
+.edit-controls .edit-input {
+    flex: 1;
+    margin: 0;
+}
+
+.edit-input {
+    padding: 10px 14px;
     background: rgba(255, 255, 255, 0.08);
     border: 2px solid #667eea;
     border-radius: 8px;
@@ -212,6 +222,7 @@ body {
     font-weight: 500;
     transition: all 0.3s ease;
     font-family: inherit;
+    width: 100%;
 }
 
 .edit-input:focus {
@@ -224,6 +235,44 @@ body {
 .edit-input:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.save-btn,
+.cancel-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+    border: none;
+}
+
+.save-btn {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+}
+
+.save-btn:hover {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: rgba(16, 185, 129, 0.5);
+    transform: scale(1.1);
+}
+
+.cancel-btn {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+}
+
+.cancel-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+    transform: scale(1.1);
 }
 
 .message {

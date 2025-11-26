@@ -67,6 +67,23 @@ export async function initDatabase() {
     `);
 
     console.log('✅ Таблица users создана/проверена');
+
+    // Создаем таблицу для сессий (для connect-pg-simple)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS session (
+        sid VARCHAR NOT NULL COLLATE "default",
+        sess JSON NOT NULL,
+        expire TIMESTAMP(6) NOT NULL,
+        CONSTRAINT session_pkey PRIMARY KEY (sid)
+      )
+    `);
+
+    // Создаем индекс для быстрого поиска по expire
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS IDX_session_expire ON session (expire)
+    `);
+
+    console.log('✅ Таблица session создана/проверена');
     return true;
   } catch (error) {
     console.error('❌ Ошибка инициализации БД:', error);
