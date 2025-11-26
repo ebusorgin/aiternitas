@@ -24,7 +24,11 @@ jobs:
       - name: Check required secrets
         shell: bash
         run: |
-          if [ -z "$SSH_KEY" ] || [ "$SSH_KEY" = "" ]; then
+          echo "Debug: Checking SSH_KEY variable..."
+          echo "SSH_KEY is set: $([ -n "$SSH_KEY" ] && echo 'yes' || echo 'no')"
+          echo "SSH_KEY length: ${#SSH_KEY}"
+          
+          if [ -z "${SSH_KEY}" ]; then
             echo "⚠️  SSH_PRIVATE_KEY secret is not set. Deployment steps will be skipped."
             echo "skip_deploy=true" >> "$GITHUB_OUTPUT"
           else
