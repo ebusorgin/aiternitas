@@ -24,10 +24,11 @@ jobs:
       - name: Check required secrets
         shell: bash
         run: |
-          if [ -z "$SSH_KEY" ]; then
+          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
             echo "⚠️  SSH_PRIVATE_KEY secret is not set. Deployment steps will be skipped."
             echo "skip_deploy=true" >> "$GITHUB_OUTPUT"
           else
+            echo "✅ SSH_PRIVATE_KEY secret is configured"
             echo "skip_deploy=false" >> "$GITHUB_OUTPUT"
           fi
         id: secrets_check
@@ -36,9 +37,10 @@ jobs:
         if: steps.secrets_check.outputs.skip_deploy == 'false'
         run: |
           mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          echo "✅ SSH key configured"
 
       - name: Deploy Aiternitas
         if: steps.secrets_check.outputs.skip_deploy == 'false'
