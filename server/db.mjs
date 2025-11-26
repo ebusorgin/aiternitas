@@ -6,7 +6,7 @@ dotenv.config();
 const { Pool } = pg;
 
 const pool = new Pool({
-  host: process.env.DB_HOST || '127.127.126.56',
+  host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 5432,
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || '',
@@ -21,7 +21,7 @@ export async function initDatabase() {
   try {
     // Создаем базу данных если не существует
     const adminPool = new Pool({
-      host: process.env.DB_HOST || '127.127.126.56',
+      host: process.env.DB_HOST || 'localhost',
       port: process.env.DB_PORT || 5432,
       user: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || '',
