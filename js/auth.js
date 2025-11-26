@@ -48,6 +48,7 @@ async function handleRegister(e) {
       headers: {
         'Content-Type': 'application/json'
       },
+      credentials: 'include',
       body: JSON.stringify(formData)
     });
 
@@ -97,6 +98,7 @@ async function handleLogin(e) {
       headers: {
         'Content-Type': 'application/json'
       },
+      credentials: 'include',
       body: JSON.stringify(formData)
     });
 

@@ -9,7 +9,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadUserProfile() {
   try {
-    const response = await fetch('/api/auth/me');
+    const response = await fetch('/api/auth/me', {
+      credentials: 'include' // Важно для отправки cookies
+    });
     
     if (response.status === 401) {
       window.location.href = '/login';
@@ -79,6 +81,7 @@ async function handleNameUpdate(e) {
       headers: {
         'Content-Type': 'application/json'
       },
+      credentials: 'include',
       body: JSON.stringify({ name: newName })
     });
 
@@ -128,6 +131,7 @@ async function handleAvatarUpload(e) {
   try {
     const response = await fetch('/api/upload/avatar', {
       method: 'POST',
+      credentials: 'include',
       body: formData
     });
 
@@ -151,7 +155,8 @@ async function handleAvatarUpload(e) {
 async function handleLogout() {
   try {
     const response = await fetch('/api/auth/logout', {
-      method: 'POST'
+      method: 'POST',
+      credentials: 'include'
     });
 
     if (response.ok) {

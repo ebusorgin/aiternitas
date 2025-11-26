@@ -19,6 +19,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const server = createServer(app);
 
+// Trust proxy для правильной работы за nginx
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -29,8 +32,9 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production', // Требует HTTPS в production
     httpOnly: true,
+    sameSite: 'lax', // Защита от CSRF
     maxAge: 30 * 24 * 60 * 60 * 1000 // 30 дней
   }
 }));
