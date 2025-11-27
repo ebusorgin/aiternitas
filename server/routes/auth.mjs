@@ -56,16 +56,24 @@ router.post('/register', async (req, res) => {
     req.session.userId = user.id;
     req.session.userName = user.name;
     req.session.userEmail = user.email;
-
-    res.status(201).json({
-      success: true,
-      message: 'Регистрация успешна',
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar
+    
+    // Сохраняем сессию перед отправкой ответа
+    req.session.save((err) => {
+      if (err) {
+        console.error('Ошибка сохранения сессии:', err);
+        return res.status(500).json({ error: 'Ошибка создания сессии' });
       }
+      
+      res.status(201).json({
+        success: true,
+        message: 'Регистрация успешна',
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar
+        }
+      });
     });
   } catch (error) {
     console.error('Ошибка регистрации:', error);
@@ -110,16 +118,24 @@ router.post('/login', async (req, res) => {
     req.session.userId = user.id;
     req.session.userName = user.name;
     req.session.userEmail = user.email;
-
-    res.json({
-      success: true,
-      message: 'Вход выполнен успешно',
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar
+    
+    // Сохраняем сессию перед отправкой ответа
+    req.session.save((err) => {
+      if (err) {
+        console.error('Ошибка сохранения сессии:', err);
+        return res.status(500).json({ error: 'Ошибка создания сессии' });
       }
+      
+      res.json({
+        success: true,
+        message: 'Вход выполнен успешно',
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar
+        }
+      });
     });
   } catch (error) {
     console.error('Ошибка авторизации:', error);
@@ -139,6 +155,14 @@ router.post('/logout', (req, res) => {
 
 // Получение текущего пользователя
 router.get('/me', (req, res) => {
+  // Логируем информацию о сессии для отладки
+  console.log('Session check:', {
+    hasSession: !!req.session,
+    userId: req.session?.userId,
+    sessionId: req.sessionID,
+    cookies: req.headers.cookie
+  });
+  
   // Проверяем сессию без middleware для более детальной обработки
   if (!req.session || !req.session.userId) {
     return res.status(401).json({ 
@@ -262,9 +286,17 @@ router.get('/google/callback', async (req, res) => {
     req.session.userId = user.id;
     req.session.userName = user.name;
     req.session.userEmail = user.email;
-
-    // Перенаправляем на фронтенд
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/profile`);
+    
+    // Сохраняем сессию перед редиректом
+    req.session.save((err) => {
+      if (err) {
+        console.error('Ошибка сохранения сессии:', err);
+        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=session_failed`);
+      }
+      
+      // Перенаправляем на фронтенд
+      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/profile`);
+    });
   } catch (error) {
     console.error('Ошибка Google OAuth:', error);
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=google_auth_failed`);
@@ -339,15 +371,23 @@ router.post('/google/verify', async (req, res) => {
     req.session.userId = user.id;
     req.session.userName = user.name;
     req.session.userEmail = user.email;
-
-    res.json({
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar
+    
+    // Сохраняем сессию перед отправкой ответа
+    req.session.save((err) => {
+      if (err) {
+        console.error('Ошибка сохранения сессии:', err);
+        return res.status(500).json({ error: 'Ошибка создания сессии' });
       }
+      
+      res.json({
+        success: true,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar
+        }
+      });
     });
   } catch (error) {
     console.error('Ошибка верификации Google токена:', error);
