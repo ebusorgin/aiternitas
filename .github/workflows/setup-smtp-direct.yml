@@ -41,10 +41,24 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
+      - name: Copy setup script to server
+        run: |
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            setup-smtp.sh \
+            ${SSH_USER}@${SSH_HOST}:/tmp/setup-smtp.sh
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} \
+            "chmod +x /tmp/setup-smtp.sh"
+
       - name: Configure SMTP on server
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<EOSSH
-            set -e
+            export SMTP_HOST="${{ inputs.smtp_host }}"
+            export SMTP_PORT="${{ inputs.smtp_port }}"
+            export SMTP_USER="${{ inputs.smtp_user }}"
+            export SMTP_PASS="${{ inputs.smtp_pass }}"
+            export SMTP_FROM="${{ inputs.smtp_from || inputs.smtp_user }}"
+            
+            # Выполняем настройку напрямую
             cd /opt/aiternitas-main
             
             echo "=== Настройка SMTP ==="
@@ -62,11 +76,11 @@ jobs:
             cat >> .env << EOF
             
             # SMTP Configuration
-            SMTP_HOST=${{ inputs.smtp_host }}
-            SMTP_PORT=${{ inputs.smtp_port }}
-            SMTP_USER=${{ inputs.smtp_user }}
-            SMTP_PASS=${{ inputs.smtp_pass }}
-            SMTP_FROM=${{ inputs.smtp_from || inputs.smtp_user }}
+            SMTP_HOST=\$SMTP_HOST
+            SMTP_PORT=\$SMTP_PORT
+            SMTP_USER=\$SMTP_USER
+            SMTP_PASS=\$SMTP_PASS
+            SMTP_FROM=\$SMTP_FROM
             FRONTEND_URL=https://aiternitas.ru
             EOF
             
@@ -81,7 +95,7 @@ jobs:
               sed -i '/^Environment=FRONTEND_URL/d' "\$SERVICE_FILE"
               
               TEMP=\$(mktemp)
-              awk -v h="${{ inputs.smtp_host }}" -v p="${{ inputs.smtp_port }}" -v u="${{ inputs.smtp_user }}" -v pass="${{ inputs.smtp_pass }}" -v f="${{ inputs.smtp_from || inputs.smtp_user }}" -v url="https://aiternitas.ru" '
+              awk -v h="\$SMTP_HOST" -v p="\$SMTP_PORT" -v u="\$SMTP_USER" -v pass="\$SMTP_PASS" -v f="\$SMTP_FROM" -v url="https://aiternitas.ru" '
                 /^\[Service\]/ {
                   print
                   print "Environment=SMTP_HOST=" h
