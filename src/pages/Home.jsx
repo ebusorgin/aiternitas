@@ -25,6 +25,16 @@ function Home() {
     }
   }, [user]);
 
+  useEffect(() => {
+    // Проверяем параметры URL для сообщений о верификации
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('email_verified') === 'true') {
+      setSuccess('Email успешно подтвержден!');
+      // Очищаем URL
+      window.history.replaceState({}, document.title, '/');
+    }
+  }, []);
+
   const loadStats = async () => {
     try {
       const response = await fetch('/api/stats');
@@ -56,7 +66,16 @@ function Home() {
       // Остаемся на главной странице после входа
       window.location.reload();
     } else {
-      setError(result.error);
+      // Проверяем, требуется ли верификация email
+      if (result.emailVerificationRequired) {
+        setError(result.error || 'Email не подтвержден');
+        if (result.verificationUrl) {
+          console.log('Email verification URL:', result.verificationUrl);
+          setSuccess('Ссылка для подтверждения доступна в консоли браузера. Или запросите новое письмо.');
+        }
+      } else {
+        setError(result.error);
+      }
       setFormLoading(false);
     }
   };
@@ -82,11 +101,21 @@ function Home() {
     const result = await register(name, email, password);
 
     if (result.success) {
-      setSuccess('Регистрация успешна!');
-      // Остаемся на главной странице после регистрации
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      if (result.emailVerificationRequired) {
+        setSuccess('Регистрация успешна! Пожалуйста, проверьте вашу почту и подтвердите email. Ссылка также доступна в консоли браузера.');
+        if (result.verificationUrl) {
+          console.log('Email verification URL:', result.verificationUrl);
+        }
+        // Перезагружаем страницу чтобы показать предупреждение о верификации
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      } else {
+        setSuccess('Регистрация успешна!');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      }
     } else {
       setError(result.error);
       setFormLoading(false);
@@ -112,6 +141,33 @@ function Home() {
     }
   };
 
+  const handleResendVerification = async () => {
+    setError('');
+    setFormLoading(true);
+    
+    try {
+      const response = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setSuccess('Письмо для подтверждения email отправлено. Проверьте вашу почту.');
+        if (data.verificationUrl) {
+          console.log('Verification URL:', data.verificationUrl);
+        }
+      } else {
+        setError(data.error || 'Ошибка отправки письма');
+      }
+    } catch (error) {
+      setError('Ошибка подключения к серверу');
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
   // Если пользователь авторизован, показываем обычный контент
   if (user && !loading) {
     return (
@@ -121,6 +177,21 @@ function Home() {
             <div className="dev-badge">🚧 Сайт находится в разработке</div>
             <h1>Aiternitas</h1>
             <p>Платформа инновационных проектов и технологических решений</p>
+            
+            {/* Предупреждение о неподтвержденном email */}
+            {!user.email_verified && !user.google_id && (
+              <div className="email-verification-warning">
+                <p>⚠️ Ваш email не подтвержден. Пожалуйста, проверьте почту и подтвердите email.</p>
+                <button 
+                  onClick={handleResendVerification}
+                  className="btn-resend-verification"
+                  disabled={formLoading}
+                >
+                  Отправить письмо повторно
+                </button>
+              </div>
+            )}
+            
             {stats && (
               <div className="stats-section">
                 <div className="stat-item">

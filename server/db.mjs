@@ -94,6 +94,33 @@ export async function initDatabase() {
         END IF;
       END $$;
     `);
+    
+    // Добавляем колонки для верификации email
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name = 'email_verified'
+        ) THEN
+          ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT false;
+        END IF;
+        
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name = 'email_verification_token'
+        ) THEN
+          ALTER TABLE users ADD COLUMN email_verification_token VARCHAR(255);
+        END IF;
+        
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name = 'email_verification_expires'
+        ) THEN
+          ALTER TABLE users ADD COLUMN email_verification_expires TIMESTAMP;
+        END IF;
+      END $$;
+    `);
 
     console.log('✅ Таблица users создана/проверена');
 

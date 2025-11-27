@@ -1,10 +1,16 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import pool from '../db.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
 
 const router = express.Router();
+
+// Генерация токена для верификации email
+function generateVerificationToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
 
 // Инициализация Google OAuth клиента
 const googleClient = new OAuth2Client(
@@ -42,17 +48,26 @@ router.post('/register', async (req, res) => {
     // Хеширование пароля
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Создание пользователя
+    // Генерация токена для верификации email
+    const verificationToken = generateVerificationToken();
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 часа
+
+    // Создание пользователя (email не подтвержден)
     const result = await pool.query(
-      `INSERT INTO users (name, email, password) 
-       VALUES ($1, $2, $3) 
-       RETURNING id, name, email, avatar, created_at`,
-      [name, email.toLowerCase(), hashedPassword]
+      `INSERT INTO users (name, email, password, email_verified, email_verification_token, email_verification_expires) 
+       VALUES ($1, $2, $3, false, $4, $5) 
+       RETURNING id, name, email, avatar, email_verified, created_at`,
+      [name, email.toLowerCase(), hashedPassword, verificationToken, verificationExpires]
     );
 
     const user = result.rows[0];
 
-    // Автоматический вход после регистрации
+    // TODO: Отправка email с ссылкой для подтверждения
+    // Пока просто возвращаем токен в ответе (для тестирования)
+    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}`;
+    console.log(`Email verification link for ${email}: ${verificationUrl}`);
+
+    // Автоматический вход после регистрации (но email не подтвержден)
     req.session.userId = user.id;
     req.session.userName = user.name;
     req.session.userEmail = user.email;
@@ -66,12 +81,15 @@ router.post('/register', async (req, res) => {
       
       res.status(201).json({
         success: true,
-        message: 'Регистрация успешна',
+        message: 'Регистрация успешна. Пожалуйста, подтвердите ваш email.',
+        emailVerificationRequired: true,
+        verificationUrl: verificationUrl, // Для тестирования, в продакшене убрать
         user: {
           id: user.id,
           name: user.name,
           email: user.email,
-          avatar: user.avatar
+          avatar: user.avatar,
+          email_verified: user.email_verified
         }
       });
     });
@@ -92,7 +110,7 @@ router.post('/login', async (req, res) => {
 
     // Поиск пользователя
     const result = await pool.query(
-      'SELECT id, name, email, password, avatar, google_id FROM users WHERE email = $1',
+      'SELECT id, name, email, password, avatar, google_id, email_verified, email_verification_token, email_verification_expires FROM users WHERE email = $1',
       [email.toLowerCase()]
     );
 
@@ -114,6 +132,32 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Неверный email или пароль' });
     }
 
+    // Проверка верификации email (только для пользователей с паролем, не через Google)
+    if (!user.google_id && !user.email_verified) {
+      // Генерируем новый токен если старый истек
+      let verificationToken = user.email_verification_token;
+      let verificationExpires = user.email_verification_expires;
+      
+      if (!verificationToken || !verificationExpires || new Date(verificationExpires) < new Date()) {
+        verificationToken = generateVerificationToken();
+        verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        
+        await pool.query(
+          'UPDATE users SET email_verification_token = $1, email_verification_expires = $2 WHERE id = $3',
+          [verificationToken, verificationExpires, user.id]
+        );
+      }
+      
+      const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}`;
+      console.log(`Email verification link for ${user.email}: ${verificationUrl}`);
+      
+      return res.status(403).json({ 
+        error: 'Email не подтвержден. Пожалуйста, проверьте вашу почту и подтвердите email.',
+        emailVerificationRequired: true,
+        verificationUrl: verificationUrl // Для тестирования
+      });
+    }
+
     // Создание сессии
     req.session.userId = user.id;
     req.session.userName = user.name;
@@ -133,7 +177,8 @@ router.post('/login', async (req, res) => {
           id: user.id,
           name: user.name,
           email: user.email,
-          avatar: user.avatar
+          avatar: user.avatar,
+          email_verified: user.email_verified
         }
       });
     });
@@ -173,10 +218,10 @@ router.get('/me', (req, res) => {
 
   (async () => {
     try {
-      const result = await pool.query(
-        'SELECT id, name, email, avatar, created_at FROM users WHERE id = $1',
-        [req.session.userId]
-      );
+    const result = await pool.query(
+      'SELECT id, name, email, avatar, email_verified, created_at FROM users WHERE id = $1',
+      [req.session.userId]
+    );
 
       if (result.rows.length === 0) {
         // Если пользователь не найден, очищаем сессию
@@ -392,6 +437,99 @@ router.post('/google/verify', async (req, res) => {
   } catch (error) {
     console.error('Ошибка верификации Google токена:', error);
     res.status(500).json({ error: 'Ошибка верификации токена' });
+  }
+});
+
+// Верификация email
+router.get('/verify-email', async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=invalid_token`);
+    }
+
+    // Поиск пользователя по токену
+    const result = await pool.query(
+      'SELECT id, email, email_verification_expires FROM users WHERE email_verification_token = $1',
+      [token]
+    );
+
+    if (result.rows.length === 0) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=invalid_token`);
+    }
+
+    const user = result.rows[0];
+
+    // Проверка срока действия токена
+    if (new Date(user.email_verification_expires) < new Date()) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=token_expired`);
+    }
+
+    // Подтверждаем email
+    await pool.query(
+      'UPDATE users SET email_verified = true, email_verification_token = NULL, email_verification_expires = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+      [user.id]
+    );
+
+    // Автоматический вход после подтверждения
+    req.session.userId = user.id;
+    req.session.userName = (await pool.query('SELECT name FROM users WHERE id = $1', [user.id])).rows[0].name;
+    req.session.userEmail = user.email;
+    
+    req.session.save((err) => {
+      if (err) {
+        console.error('Ошибка сохранения сессии:', err);
+      }
+      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?email_verified=true`);
+    });
+  } catch (error) {
+    console.error('Ошибка верификации email:', error);
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=verification_failed`);
+  }
+});
+
+// Повторная отправка письма для верификации
+router.post('/resend-verification', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    
+    const userResult = await pool.query(
+      'SELECT id, email, email_verified, email_verification_token, email_verification_expires FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    const user = userResult.rows[0];
+
+    if (user.email_verified) {
+      return res.status(400).json({ error: 'Email уже подтвержден' });
+    }
+
+    // Генерируем новый токен
+    const verificationToken = generateVerificationToken();
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await pool.query(
+      'UPDATE users SET email_verification_token = $1, email_verification_expires = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+      [verificationToken, verificationExpires, userId]
+    );
+
+    // TODO: Отправка email
+    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}`;
+    console.log(`Email verification link for ${user.email}: ${verificationUrl}`);
+
+    res.json({
+      success: true,
+      message: 'Письмо для подтверждения email отправлено',
+      verificationUrl: verificationUrl // Для тестирования
+    });
+  } catch (error) {
+    console.error('Ошибка повторной отправки письма:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
 

@@ -99,6 +99,44 @@
   letter-spacing: 1px;
 }
 
+.email-verification-warning {
+  background: rgba(255, 193, 7, 0.1);
+  border: 2px solid rgba(255, 193, 7, 0.5);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 30px 0;
+  text-align: center;
+}
+
+.email-verification-warning p {
+  color: #ffc107;
+  margin-bottom: 15px;
+  font-size: 0.95em;
+}
+
+.btn-resend-verification {
+  padding: 10px 20px;
+  background: rgba(255, 193, 7, 0.2);
+  border: 1px solid rgba(255, 193, 7, 0.5);
+  border-radius: 8px;
+  color: #ffc107;
+  font-size: 0.9em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-resend-verification:hover:not(:disabled) {
+  background: rgba(255, 193, 7, 0.3);
+  border-color: rgba(255, 193, 7, 0.7);
+  transform: translateY(-2px);
+}
+
+.btn-resend-verification:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .section {
   padding: clamp(60px, 10vw, 100px) clamp(20px, 5vw, 60px);
   max-width: 1200px;
