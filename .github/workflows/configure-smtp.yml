@@ -1,0 +1,126 @@
+name: Configure SMTP on Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      smtp_host:
+        description: 'SMTP Host (e.g., smtp.gmail.com)'
+        required: false
+        type: string
+      smtp_port:
+        description: 'SMTP Port (587 for TLS, 465 for SSL)'
+        required: false
+        type: string
+        default: '587'
+      smtp_user:
+        description: 'SMTP Username/Email'
+        required: false
+        type: string
+      smtp_pass:
+        description: 'SMTP Password/App Password'
+        required: false
+        type: string
+      smtp_from:
+        description: 'From Email Address (optional)'
+        required: false
+        type: string
+      action:
+        description: 'Action'
+        required: true
+        type: choice
+        options:
+          - check
+          - configure
+        default: 'check'
+
+jobs:
+  configure:
+    name: Configure SMTP
+    runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
+      SSH_USER: ${{ secrets.SERVER_USER || 'root' }}
+      SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SMTP_HOST: ${{ inputs.smtp_host || secrets.SMTP_HOST || '' }}
+      SMTP_PORT: ${{ inputs.smtp_port || secrets.SMTP_PORT || '587' }}
+      SMTP_USER: ${{ inputs.smtp_user || secrets.SMTP_USER || '' }}
+      SMTP_PASS: ${{ inputs.smtp_pass || secrets.SMTP_PASS || '' }}
+      SMTP_FROM: ${{ inputs.smtp_from || secrets.SMTP_FROM || '' }}
+      FRONTEND_URL: ${{ secrets.FRONTEND_URL || 'https://aiternitas.ru' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Check required secrets
+        shell: bash
+        run: |
+          if [ -z "$SSH_KEY" ]; then
+            echo "⚠️  SSH_PRIVATE_KEY secret is not set."
+            exit 1
+          fi
+          echo "✅ SSH key is available"
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Copy setup script to server
+        if: inputs.action == 'configure'
+        run: |
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            scripts/setup-smtp-on-server.sh \
+            ${SSH_USER}@${SSH_HOST}:/tmp/setup-smtp-on-server.sh
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} \
+            "chmod +x /tmp/setup-smtp-on-server.sh"
+
+      - name: Run setup script on server
+        if: inputs.action == 'configure'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<EOSSH
+            export SMTP_HOST="${{ env.SMTP_HOST }}"
+            export SMTP_PORT="${{ env.SMTP_PORT }}"
+            export SMTP_USER="${{ env.SMTP_USER }}"
+            export SMTP_PASS="${{ env.SMTP_PASS }}"
+            export SMTP_FROM="${{ env.SMTP_FROM }}"
+            export FRONTEND_URL="${{ env.FRONTEND_URL }}"
+            /tmp/setup-smtp-on-server.sh
+          EOSSH
+
+      - name: Check current SMTP settings
+        if: inputs.action == 'check'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
+            echo "=== Current SMTP Configuration ==="
+            echo ""
+            cd /opt/aiternitas-main
+            
+            echo "1. .env file:"
+            if [ -f .env ]; then
+              echo "   SMTP settings:"
+              grep -E '^SMTP_|^FRONTEND_URL=' .env 2>/dev/null || echo "   No SMTP settings found"
+            else
+              echo "   .env file not found"
+            fi
+            
+            echo ""
+            echo "2. Systemd service:"
+            if systemctl show aiternitas-main.service > /dev/null 2>&1; then
+              echo "   Environment variables:"
+              systemctl show aiternitas-main.service | grep -E 'Environment=SMTP_|Environment=FRONTEND_URL' || echo "   No SMTP environment variables"
+            else
+              echo "   Service not found"
+            fi
+            
+            echo ""
+            echo "3. Recent email logs:"
+            journalctl -u aiternitas-main.service -n 100 --no-pager | grep -E 'SMTP|Email|email|📧|✅|❌' | tail -20 || echo "   No email logs found"
+            
+            echo ""
+            echo "4. Service status:"
+            systemctl status aiternitas-main.service --no-pager | head -10 || echo "   Service status unavailable"
+          EOSSH
+
