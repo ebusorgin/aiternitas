@@ -50,17 +50,6 @@ function Layout() {
         </>
       )}
 
-      {!showSidebar && (
-        <header className="top-header">
-          <div className="header-content">
-            <Link to="/" className="header-logo">Aiternitas</Link>
-            <nav className="header-nav">
-              <Link to="/login" className="header-link">Войти</Link>
-              <Link to="/register" className="header-link header-link-primary">Регистрация</Link>
-            </nav>
-          </div>
-        </header>
-      )}
 
       <main className="main-content">
         <Outlet />
