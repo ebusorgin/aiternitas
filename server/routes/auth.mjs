@@ -399,9 +399,10 @@ router.post('/google/verify', async (req, res) => {
       );
 
       if (emailResult.rows.length > 0) {
+        // Пользователь существует с таким email - связываем Google ID и подтверждаем email
         user = emailResult.rows[0];
         await pool.query(
-          'UPDATE users SET google_id = $1, avatar = COALESCE(avatar, $2), updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+          'UPDATE users SET google_id = $1, avatar = COALESCE(avatar, $2), email_verified = true, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
           [googleId, picture, user.id]
         );
         if (picture && !user.avatar) {
