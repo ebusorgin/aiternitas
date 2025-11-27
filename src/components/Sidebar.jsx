@@ -11,6 +11,15 @@ function Sidebar({ user, loading, onLogout, isOpen, onClose }) {
     }
   };
 
+  const handleLogout = async () => {
+    if (onLogout) {
+      await onLogout();
+    } else {
+      await logout();
+    }
+    handleLinkClick();
+  };
+
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       <Link to="/" className="sidebar-logo" onClick={handleLinkClick}>
@@ -32,6 +41,9 @@ function Sidebar({ user, loading, onLogout, isOpen, onClose }) {
               </Link>
             </div>
           </div>
+          <button className="logout-btn" onClick={handleLogout}>
+            Выйти
+          </button>
         </div>
       ) : (
         <div className="auth-buttons">
