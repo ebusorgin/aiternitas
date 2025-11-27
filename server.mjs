@@ -70,8 +70,7 @@ app.use(session({
     secure: process.env.NODE_ENV === 'production', // Требует HTTPS в production
     httpOnly: true,
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Для работы через HTTPS нужен 'none'
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 дней
-    domain: process.env.NODE_ENV === 'production' ? '.aiternitas.ru' : undefined
+    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 дней
   }
 }));
 
