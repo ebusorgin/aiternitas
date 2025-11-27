@@ -24,6 +24,30 @@ const server = createServer(app);
 // Trust proxy для правильной работы за nginx
 app.set('trust proxy', 1);
 
+// CORS настройки для работы с cookies
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'https://aiternitas.ru',
+    'http://localhost:3001',
+    'http://localhost:5173'
+  ];
+  
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  
+  next();
+});
+
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -45,8 +69,9 @@ app.use(session({
   cookie: {
     secure: process.env.NODE_ENV === 'production', // Требует HTTPS в production
     httpOnly: true,
-    sameSite: 'lax', // Защита от CSRF
-    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 дней
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Для работы через HTTPS нужен 'none'
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 дней
+    domain: process.env.NODE_ENV === 'production' ? '.aiternitas.ru' : undefined
   }
 }));
 

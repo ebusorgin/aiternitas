@@ -138,25 +138,40 @@ router.post('/logout', (req, res) => {
 });
 
 // Получение текущего пользователя
-router.get('/me', requireAuth, async (req, res) => {
-  try {
-    const result = await pool.query(
-      'SELECT id, name, email, avatar, created_at FROM users WHERE id = $1',
-      [req.session.userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Пользователь не найден' });
-    }
-
-    res.json({
-      success: true,
-      user: result.rows[0]
+router.get('/me', (req, res) => {
+  // Проверяем сессию без middleware для более детальной обработки
+  if (!req.session || !req.session.userId) {
+    return res.status(401).json({ 
+      error: 'Требуется авторизация',
+      success: false 
     });
-  } catch (error) {
-    console.error('Ошибка получения пользователя:', error);
-    res.status(500).json({ error: 'Ошибка сервера' });
   }
+
+  (async () => {
+    try {
+      const result = await pool.query(
+        'SELECT id, name, email, avatar, created_at FROM users WHERE id = $1',
+        [req.session.userId]
+      );
+
+      if (result.rows.length === 0) {
+        // Если пользователь не найден, очищаем сессию
+        req.session.destroy();
+        return res.status(401).json({ 
+          error: 'Пользователь не найден',
+          success: false 
+        });
+      }
+
+      res.json({
+        success: true,
+        user: result.rows[0]
+      });
+    } catch (error) {
+      console.error('Ошибка получения пользователя:', error);
+      res.status(500).json({ error: 'Ошибка сервера' });
+    }
+  })();
 });
 
 // Google OAuth - получение URL для авторизации
