@@ -2,7 +2,7 @@
   background: linear-gradient(180deg, #0f1429 0%, #1a1f3a 100%);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   padding: 40px 20px;
-  margin-top: 60px;
+  margin-top: auto;
 }
 
 .footer-content {

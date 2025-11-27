@@ -1,4 +1,4 @@
-import { Outlet, Link, useNavigate } from 'react-router-dom';
+import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from './Sidebar';
@@ -9,6 +9,10 @@ function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, loading, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Не показываем Footer на страницах входа и регистрации
+  const showFooter = !['/login', '/register'].includes(location.pathname);
 
   const handleLogout = async () => {
     await logout();
@@ -44,7 +48,7 @@ function Layout() {
         <Outlet />
       </main>
       
-      <Footer />
+      {showFooter && <Footer />}
     </div>
   );
 }
