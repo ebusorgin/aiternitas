@@ -76,6 +76,7 @@ jobs:
               --exclude='node_modules' \
               --exclude='.github' \
               --exclude='dist' \
+              --exclude='uploads' \
               --exclude='*.log' \
               --exclude='.env' \
               --exclude='.env.local' \
@@ -87,11 +88,15 @@ jobs:
                 --exclude='node_modules' \
                 --exclude='.github' \
                 --exclude='dist' \
+                --exclude='uploads' \
                 --exclude='*.log' \
                 --exclude='.env' \
                 --exclude='.env.local' \
                 -czf - . | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} "cd $REPO_DIR && tar -xzf -"
           fi
+          
+          # Убеждаемся, что папка uploads существует на сервере
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} "mkdir -p $REPO_DIR/uploads/avatars"
           
           # Выполняем команды на сервере
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<EOSSH
