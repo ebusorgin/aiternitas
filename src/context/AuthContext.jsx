@@ -46,7 +46,12 @@ export function AuthProvider({ children }) {
         setUser(data.user);
         return { success: true };
       } else {
-        return { success: false, error: data.error || 'Ошибка входа' };
+        return { 
+          success: false, 
+          error: data.error || 'Ошибка входа',
+          emailVerificationRequired: data.emailVerificationRequired || false,
+          verificationUrl: data.verificationUrl
+        };
       }
     } catch (error) {
       return { success: false, error: 'Ошибка подключения к серверу' };
@@ -68,7 +73,11 @@ export function AuthProvider({ children }) {
 
       if (response.ok && data.success) {
         setUser(data.user);
-        return { success: true };
+        return { 
+          success: true,
+          emailVerificationRequired: data.emailVerificationRequired || false,
+          verificationUrl: data.verificationUrl
+        };
       } else {
         return { success: false, error: data.error || 'Ошибка регистрации' };
       }
