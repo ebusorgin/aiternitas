@@ -1,0 +1,111 @@
+name: Setup SMTP on Server (Direct)
+
+on:
+  workflow_dispatch:
+    inputs:
+      smtp_host:
+        description: 'SMTP Host'
+        required: true
+        type: string
+      smtp_port:
+        description: 'SMTP Port'
+        required: false
+        type: string
+        default: '587'
+      smtp_user:
+        description: 'SMTP Username/Email'
+        required: true
+        type: string
+      smtp_pass:
+        description: 'SMTP Password'
+        required: true
+        type: string
+      smtp_from:
+        description: 'From Email (optional)'
+        required: false
+        type: string
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
+      SSH_USER: ${{ secrets.SERVER_USER || 'root' }}
+      SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Configure SMTP on server
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<EOSSH
+            set -e
+            cd /opt/aiternitas-main
+            
+            echo "=== Настройка SMTP ==="
+            
+            # Backup .env
+            if [ -f .env ]; then
+              cp .env .env.backup.\$(date +%Y%m%d_%H%M%S)
+            fi
+            
+            # Update .env
+            [ ! -f .env ] && touch .env
+            sed -i '/^SMTP_/d' .env
+            sed -i '/^FRONTEND_URL=/d' .env
+            
+            cat >> .env << EOF
+            
+            # SMTP Configuration
+            SMTP_HOST=${{ inputs.smtp_host }}
+            SMTP_PORT=${{ inputs.smtp_port }}
+            SMTP_USER=${{ inputs.smtp_user }}
+            SMTP_PASS=${{ inputs.smtp_pass }}
+            SMTP_FROM=${{ inputs.smtp_from || inputs.smtp_user }}
+            FRONTEND_URL=https://aiternitas.ru
+            EOF
+            
+            echo "✅ .env обновлен"
+            
+            # Update systemd
+            SERVICE_FILE="/etc/systemd/system/aiternitas-main.service"
+            if [ -f "\$SERVICE_FILE" ]; then
+              cp "\$SERVICE_FILE" "\${SERVICE_FILE}.backup.\$(date +%Y%m%d_%H%M%S)"
+              
+              sed -i '/^Environment=SMTP_/d' "\$SERVICE_FILE"
+              sed -i '/^Environment=FRONTEND_URL/d' "\$SERVICE_FILE"
+              
+              TEMP=\$(mktemp)
+              awk -v h="${{ inputs.smtp_host }}" -v p="${{ inputs.smtp_port }}" -v u="${{ inputs.smtp_user }}" -v pass="${{ inputs.smtp_pass }}" -v f="${{ inputs.smtp_from || inputs.smtp_user }}" -v url="https://aiternitas.ru" '
+                /^\[Service\]/ {
+                  print
+                  print "Environment=SMTP_HOST=" h
+                  print "Environment=SMTP_PORT=" p
+                  print "Environment=SMTP_USER=" u
+                  print "Environment=SMTP_PASS=" pass
+                  print "Environment=SMTP_FROM=" f
+                  print "Environment=FRONTEND_URL=" url
+                  next
+                }
+                { print }
+              ' "\$SERVICE_FILE" > "\$TEMP"
+              mv "\$TEMP" "\$SERVICE_FILE"
+              
+              systemctl daemon-reload
+              systemctl restart aiternitas-main.service
+              
+              echo "✅ Systemd обновлен и сервис перезапущен"
+              sleep 3
+              systemctl status aiternitas-main.service --no-pager | head -15
+            fi
+            
+            echo ""
+            echo "=== Проверка ==="
+            journalctl -u aiternitas-main.service -n 20 --no-pager | grep -E 'SMTP|📧' || echo "Логи пока пусты"
+          EOSSH
+

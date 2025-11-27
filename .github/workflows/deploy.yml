@@ -116,66 +116,6 @@ jobs:
             echo "✅ Build completed"
             
             echo ""
-            echo "=== Configuring SMTP (if credentials provided) ==="
-            if [ -n "${{ secrets.SMTP_HOST }}" ] && [ -n "${{ secrets.SMTP_USER }}" ] && [ -n "${{ secrets.SMTP_PASS }}" ]; then
-              echo "SMTP credentials found, configuring..."
-              
-              # Update .env
-              if [ ! -f .env ]; then
-                touch .env
-              fi
-              
-              # Remove old SMTP settings
-              sed -i '/^SMTP_/d' .env
-              sed -i '/^FRONTEND_URL=/d' .env
-              
-              # Add new SMTP settings
-              {
-                echo ""
-                echo "# SMTP Configuration"
-                echo "SMTP_HOST=${{ secrets.SMTP_HOST }}"
-                echo "SMTP_PORT=${{ secrets.SMTP_PORT || '587' }}"
-                echo "SMTP_USER=${{ secrets.SMTP_USER }}"
-                echo "SMTP_PASS=${{ secrets.SMTP_PASS }}"
-                echo "SMTP_FROM=${{ secrets.SMTP_FROM || secrets.SMTP_USER }}"
-                echo "FRONTEND_URL=${{ secrets.FRONTEND_URL || 'https://aiternitas.ru' }}"
-              } >> .env
-              
-              echo "✅ SMTP settings updated in .env"
-              
-              # Update systemd service
-              SERVICE_FILE="/etc/systemd/system/aiternitas-main.service"
-              if [ -f "\$SERVICE_FILE" ]; then
-                # Remove old Environment
-                sed -i '/^Environment=SMTP_/d' "\$SERVICE_FILE"
-                sed -i '/^Environment=FRONTEND_URL/d' "\$SERVICE_FILE"
-                
-                # Add new Environment after [Service]
-                TEMP_FILE=\$(mktemp)
-                awk -v host="${{ secrets.SMTP_HOST }}" -v port="${{ secrets.SMTP_PORT || '587' }}" -v user="${{ secrets.SMTP_USER }}" -v pass="${{ secrets.SMTP_PASS }}" -v from="${{ secrets.SMTP_FROM || secrets.SMTP_USER }}" -v url="${{ secrets.FRONTEND_URL || 'https://aiternitas.ru' }}" '
-                  /^\[Service\]/ {
-                      print
-                      print "Environment=SMTP_HOST=" host
-                      print "Environment=SMTP_PORT=" port
-                      print "Environment=SMTP_USER=" user
-                      print "Environment=SMTP_PASS=" pass
-                      print "Environment=SMTP_FROM=" from
-                      print "Environment=FRONTEND_URL=" url
-                      next
-                  }
-                  { print }
-                ' "\$SERVICE_FILE" > "\$TEMP_FILE"
-                mv "\$TEMP_FILE" "\$SERVICE_FILE"
-                
-                echo "✅ Systemd service updated"
-                systemctl daemon-reload
-              fi
-            else
-              echo "⚠️  SMTP credentials not found in secrets, skipping SMTP configuration"
-              echo "   Add SMTP_HOST, SMTP_USER, SMTP_PASS to GitHub Secrets to enable email verification"
-            fi
-            
-            echo ""
             echo "=== Restarting service ==="
             if systemctl restart aiternitas-main.service; then
               echo "✅ Service restarted"
