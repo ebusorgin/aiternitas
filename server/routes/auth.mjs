@@ -64,11 +64,12 @@ router.post('/register', async (req, res) => {
     const user = result.rows[0];
 
     // Отправка email с ссылкой для подтверждения
-    try {
-      await sendVerificationEmail(user.email, user.name, verificationToken);
-    } catch (error) {
-      console.error('Ошибка отправки email верификации:', error);
-      // Продолжаем даже если email не отправился
+    console.log(`📧 Отправка письма для верификации email пользователю ${user.email}...`);
+    const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken);
+    if (!emailResult.success) {
+      console.error(`❌ Не удалось отправить письмо: ${emailResult.error}`);
+      // Продолжаем регистрацию даже если email не отправился
+      // Пользователь может запросить новое письмо позже
     }
 
     // Автоматический вход после регистрации (но email не подтвержден)
@@ -152,10 +153,10 @@ router.post('/login', async (req, res) => {
       }
       
       // Отправляем новое письмо с токеном
-      try {
-        await sendVerificationEmail(user.email, user.name, verificationToken);
-      } catch (error) {
-        console.error('Ошибка отправки email верификации:', error);
+      console.log(`📧 Отправка письма для верификации email пользователю ${user.email}...`);
+      const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken);
+      if (!emailResult.success) {
+        console.error(`❌ Не удалось отправить письмо: ${emailResult.error}`);
       }
       
       return res.status(403).json({ 
@@ -527,14 +528,16 @@ router.post('/resend-verification', requireAuth, async (req, res) => {
     );
 
     // Отправка email
-    try {
-      await sendVerificationEmail(user.email, user.name, verificationToken);
+    console.log(`📧 Отправка письма для верификации email пользователю ${user.email}...`);
+    const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken);
+    
+    if (emailResult.success) {
       res.json({
         success: true,
         message: 'Письмо для подтверждения email отправлено на ваш адрес'
       });
-    } catch (error) {
-      console.error('Ошибка отправки email:', error);
+    } else {
+      console.error(`❌ Не удалось отправить письмо: ${emailResult.error}`);
       res.status(500).json({ 
         error: 'Не удалось отправить письмо. Попробуйте позже.',
         verificationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}` // Для отладки

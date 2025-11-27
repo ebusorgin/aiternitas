@@ -2,20 +2,41 @@ import nodemailer from 'nodemailer';
 
 // Создание транспорта для отправки email
 function createTransporter() {
+  // Проверяем наличие настроек SMTP
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  
+  console.log('📧 Проверка настроек SMTP:');
+  console.log(`   SMTP_HOST: ${smtpHost ? '✅ установлен' : '❌ не установлен'}`);
+  console.log(`   SMTP_USER: ${smtpUser ? '✅ установлен' : '❌ не установлен'}`);
+  console.log(`   SMTP_PASS: ${smtpPass ? '✅ установлен' : '❌ не установлен'}`);
+  
   // Если указаны настройки SMTP, используем их
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+  if (smtpHost && smtpUser && smtpPass) {
+    const port = parseInt(process.env.SMTP_PORT || '587', 10);
+    const secure = process.env.SMTP_PORT === '465';
+    
+    console.log(`   SMTP_PORT: ${port}`);
+    console.log(`   SMTP_SECURE: ${secure}`);
+    
     return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587', 10),
-      secure: process.env.SMTP_PORT === '465',
+      host: smtpHost,
+      port: port,
+      secure: secure,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
+        user: smtpUser,
+        pass: smtpPass
+      },
+      // Дополнительные опции для надежности
+      tls: {
+        rejectUnauthorized: false // Для самоподписанных сертификатов
       }
     });
   }
   
   // Если нет настроек SMTP, возвращаем null (будет использоваться console.log)
+  console.log('⚠️  SMTP не настроен. Письма не будут отправляться.');
   return null;
 }
 
@@ -112,19 +133,49 @@ export async function sendVerificationEmail(email, name, verificationToken) {
   
   if (transporter) {
     try {
+      console.log(`📧 Попытка отправки письма на ${email}...`);
+      
+      // Проверяем подключение к SMTP серверу
+      console.log('   Проверка подключения к SMTP серверу...');
       await transporter.verify();
+      console.log('   ✅ Подключение к SMTP серверу успешно');
+      
+      // Отправляем письмо
+      console.log('   Отправка письма...');
       const info = await transporter.sendMail(mailOptions);
-      console.log(`✅ Email отправлен: ${info.messageId}`);
+      console.log(`✅ Email успешно отправлен на ${email}`);
+      console.log(`   Message ID: ${info.messageId}`);
+      console.log(`   Response: ${info.response}`);
       return { success: true, messageId: info.messageId };
     } catch (error) {
-      console.error('❌ Ошибка отправки email:', error);
+      console.error('❌ Ошибка отправки email:');
+      console.error(`   Тип ошибки: ${error.name}`);
+      console.error(`   Сообщение: ${error.message}`);
+      if (error.code) {
+        console.error(`   Код ошибки: ${error.code}`);
+      }
+      if (error.response) {
+        console.error(`   Ответ сервера: ${error.response}`);
+      }
+      if (error.responseCode) {
+        console.error(`   Код ответа: ${error.responseCode}`);
+      }
+      if (error.command) {
+        console.error(`   Команда: ${error.command}`);
+      }
+      
       // В случае ошибки отправки, логируем ссылку для отладки
       console.log(`⚠️  Email не отправлен. Verification link for ${email}: ${verificationUrl}`);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, details: error };
     }
   } else {
     // Если SMTP не настроен, логируем ссылку
     console.log(`⚠️  SMTP не настроен. Verification link for ${email}: ${verificationUrl}`);
+    console.log(`   Для настройки SMTP добавьте в .env или переменные окружения:`);
+    console.log(`   SMTP_HOST=smtp.gmail.com`);
+    console.log(`   SMTP_PORT=587`);
+    console.log(`   SMTP_USER=your-email@gmail.com`);
+    console.log(`   SMTP_PASS=your-app-password`);
     return { success: false, error: 'SMTP not configured' };
   }
 }
