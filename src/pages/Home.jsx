@@ -23,17 +23,24 @@ function Home() {
     if (user) {
       loadStats();
     }
-  }, [user]);
-
-  useEffect(() => {
-    // Проверяем параметры URL для сообщений о верификации
+    
+    // Проверяем параметры URL для уведомлений
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('email_verified') === 'true') {
+    const emailVerified = urlParams.get('email_verified');
+    const error = urlParams.get('error');
+    
+    if (emailVerified === 'true') {
       setSuccess('Email успешно подтвержден!');
-      // Очищаем URL
-      window.history.replaceState({}, document.title, '/');
+      // Очищаем URL параметр
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (error === 'invalid_token') {
+      setError('Неверная ссылка подтверждения');
+    } else if (error === 'token_expired') {
+      setError('Ссылка подтверждения истекла. Пожалуйста, запросите новую.');
+    } else if (error === 'verification_failed') {
+      setError('Ошибка подтверждения email. Попробуйте позже.');
     }
-  }, []);
+  }, [user]);
 
   const loadStats = async () => {
     try {

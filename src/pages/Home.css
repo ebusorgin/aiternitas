@@ -373,6 +373,64 @@
   }
 }
 
+.email-verification-warning {
+  margin: 30px auto;
+  max-width: 600px;
+  background: rgba(255, 193, 7, 0.1);
+  border: 2px solid rgba(255, 193, 7, 0.5);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.warning-content {
+  display: flex;
+  gap: 15px;
+  align-items: flex-start;
+}
+
+.warning-content span {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.warning-content strong {
+  display: block;
+  color: #ffc107;
+  margin-bottom: 8px;
+  font-size: 1.1em;
+}
+
+.warning-content p {
+  color: #aaa;
+  margin: 8px 0;
+  font-size: 0.95em;
+  line-height: 1.5;
+}
+
+.resend-verification-btn {
+  margin-top: 12px;
+  padding: 10px 20px;
+  background: rgba(255, 193, 7, 0.2);
+  border: 1px solid rgba(255, 193, 7, 0.5);
+  border-radius: 8px;
+  color: #ffc107;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.9em;
+}
+
+.resend-verification-btn:hover:not(:disabled) {
+  background: rgba(255, 193, 7, 0.3);
+  border-color: rgba(255, 193, 7, 0.7);
+  transform: translateY(-2px);
+}
+
+.resend-verification-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 @media (max-width: 480px) {
   .projects-toggle {
     padding: 20px;
@@ -384,6 +442,16 @@
 
   .projects-list.active {
     padding: 0 20px 20px 20px;
+  }
+  
+  .email-verification-warning {
+    margin: 20px 10px;
+    padding: 15px;
+  }
+  
+  .warning-content {
+    flex-direction: column;
+    gap: 10px;
   }
 }
 

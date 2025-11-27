@@ -229,7 +229,14 @@ function Profile() {
             <div className="data-item">
               <label>Email</label>
               <div className="data-value">
-                <span className="display-value">{user.email || ''}</span>
+                <span className="display-value">
+                  {user.email || ''}
+                  {user.email_verified ? (
+                    <span style={{ color: '#10b981', marginLeft: '10px', fontSize: '0.9em' }}>✓ Подтвержден</span>
+                  ) : (
+                    <span style={{ color: '#f59e0b', marginLeft: '10px', fontSize: '0.9em' }}>⚠ Не подтвержден</span>
+                  )}
+                </span>
               </div>
             </div>
 

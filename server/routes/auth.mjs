@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import pool from '../db.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
+import { sendVerificationEmail } from '../utils/email.mjs';
 
 const router = express.Router();
 
@@ -62,10 +63,13 @@ router.post('/register', async (req, res) => {
 
     const user = result.rows[0];
 
-    // TODO: Отправка email с ссылкой для подтверждения
-    // Пока просто возвращаем токен в ответе (для тестирования)
-    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}`;
-    console.log(`Email verification link for ${email}: ${verificationUrl}`);
+    // Отправка email с ссылкой для подтверждения
+    try {
+      await sendVerificationEmail(user.email, user.name, verificationToken);
+    } catch (error) {
+      console.error('Ошибка отправки email верификации:', error);
+      // Продолжаем даже если email не отправился
+    }
 
     // Автоматический вход после регистрации (но email не подтвержден)
     req.session.userId = user.id;
@@ -81,9 +85,8 @@ router.post('/register', async (req, res) => {
       
       res.status(201).json({
         success: true,
-        message: 'Регистрация успешна. Пожалуйста, подтвердите ваш email.',
+        message: 'Регистрация успешна. Пожалуйста, проверьте вашу почту и подтвердите email.',
         emailVerificationRequired: true,
-        verificationUrl: verificationUrl, // Для тестирования, в продакшене убрать
         user: {
           id: user.id,
           name: user.name,
@@ -148,13 +151,16 @@ router.post('/login', async (req, res) => {
         );
       }
       
-      const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}`;
-      console.log(`Email verification link for ${user.email}: ${verificationUrl}`);
+      // Отправляем новое письмо с токеном
+      try {
+        await sendVerificationEmail(user.email, user.name, verificationToken);
+      } catch (error) {
+        console.error('Ошибка отправки email верификации:', error);
+      }
       
       return res.status(403).json({ 
-        error: 'Email не подтвержден. Пожалуйста, проверьте вашу почту и подтвердите email.',
-        emailVerificationRequired: true,
-        verificationUrl: verificationUrl // Для тестирования
+        error: 'Email не подтвержден. Пожалуйста, проверьте вашу почту и подтвердите email. Если письмо не пришло, используйте функцию повторной отправки.',
+        emailVerificationRequired: true
       });
     }
 
@@ -306,20 +312,20 @@ router.get('/google/callback', async (req, res) => {
       );
 
       if (emailResult.rows.length > 0) {
-        // Пользователь существует с таким email - связываем Google ID
+        // Пользователь существует с таким email - связываем Google ID и подтверждаем email
         user = emailResult.rows[0];
         await pool.query(
-          'UPDATE users SET google_id = $1, avatar = COALESCE(avatar, $2), updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+          'UPDATE users SET google_id = $1, avatar = COALESCE(avatar, $2), email_verified = true, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
           [googleId, picture, user.id]
         );
         if (picture && !user.avatar) {
           user.avatar = picture;
         }
       } else {
-        // Создаем нового пользователя
+        // Создаем нового пользователя (email автоматически подтвержден через Google)
         const newUserResult = await pool.query(
-          `INSERT INTO users (name, email, google_id, avatar) 
-           VALUES ($1, $2, $3, $4) 
+          `INSERT INTO users (name, email, google_id, avatar, email_verified) 
+           VALUES ($1, $2, $3, $4, true) 
            RETURNING id, name, email, avatar, created_at`,
           [name, email.toLowerCase(), googleId, picture]
         );
@@ -402,9 +408,10 @@ router.post('/google/verify', async (req, res) => {
           user.avatar = picture;
         }
       } else {
+        // Создаем нового пользователя (email автоматически подтвержден через Google)
         const newUserResult = await pool.query(
-          `INSERT INTO users (name, email, google_id, avatar) 
-           VALUES ($1, $2, $3, $4) 
+          `INSERT INTO users (name, email, google_id, avatar, email_verified) 
+           VALUES ($1, $2, $3, $4, true) 
            RETURNING id, name, email, avatar, created_at`,
           [name, email.toLowerCase(), googleId, picture]
         );
@@ -518,15 +525,20 @@ router.post('/resend-verification', requireAuth, async (req, res) => {
       [verificationToken, verificationExpires, userId]
     );
 
-    // TODO: Отправка email
-    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}`;
-    console.log(`Email verification link for ${user.email}: ${verificationUrl}`);
-
-    res.json({
-      success: true,
-      message: 'Письмо для подтверждения email отправлено',
-      verificationUrl: verificationUrl // Для тестирования
-    });
+    // Отправка email
+    try {
+      await sendVerificationEmail(user.email, user.name, verificationToken);
+      res.json({
+        success: true,
+        message: 'Письмо для подтверждения email отправлено на ваш адрес'
+      });
+    } catch (error) {
+      console.error('Ошибка отправки email:', error);
+      res.status(500).json({ 
+        error: 'Не удалось отправить письмо. Попробуйте позже.',
+        verificationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}` // Для отладки
+      });
+    }
   } catch (error) {
     console.error('Ошибка повторной отправки письма:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
