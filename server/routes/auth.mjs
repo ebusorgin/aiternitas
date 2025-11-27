@@ -587,5 +587,38 @@ router.put('/profile/name', requireAuth, async (req, res) => {
   }
 });
 
+// Тестовый endpoint для проверки отправки email (только для разработки)
+router.post('/test-email', requireAuth, async (req, res) => {
+  try {
+    const { email } = req.body;
+    const testEmail = email || req.session.userEmail;
+    
+    if (!testEmail) {
+      return res.status(400).json({ error: 'Email не указан' });
+    }
+    
+    const testToken = generateVerificationToken();
+    console.log('🧪 Тестовая отправка email...');
+    const result = await sendVerificationEmail(testEmail, 'Test User', testToken);
+    
+    if (result.success) {
+      res.json({
+        success: true,
+        message: `Тестовое письмо отправлено на ${testEmail}`,
+        messageId: result.messageId
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: result.error,
+        message: 'Не удалось отправить тестовое письмо. Проверьте настройки SMTP и логи сервера.'
+      });
+    }
+  } catch (error) {
+    console.error('Ошибка тестовой отправки email:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
 export default router;
 
