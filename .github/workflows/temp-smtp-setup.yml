@@ -1,0 +1,137 @@
+name: TEMP SMTP Setup - DELETE AFTER USE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
+      SSH_USER: ${{ secrets.SERVER_USER || 'root' }}
+      SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+
+    steps:
+      - name: Setup SSH and configure SMTP on server
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          
+          echo "=== Подключение к серверу и настройка SMTP ==="
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
+            set -e
+            cd /opt/aiternitas-main
+            
+            echo ""
+            echo "=== Текущее состояние ==="
+            echo "Директория: $(pwd)"
+            if [ -f .env ]; then
+              echo "✅ .env файл существует"
+              echo "Текущие SMTP настройки:"
+              grep -E '^SMTP_|^FRONTEND_URL=' .env || echo "SMTP настройки не найдены"
+            else
+              echo "⚠️  .env файл не найден, будет создан"
+            fi
+            
+            echo ""
+            echo "=== Настройка SMTP ==="
+            echo "Введите данные SMTP:"
+            echo ""
+            
+            # Запрашиваем данные (используем значения из переменных окружения если есть, иначе запрашиваем)
+            read -p "SMTP Host (например, smtp.gmail.com): " SMTP_HOST
+            read -p "SMTP Port [587]: " SMTP_PORT
+            SMTP_PORT=${SMTP_PORT:-587}
+            read -p "SMTP User (email): " SMTP_USER
+            read -sp "SMTP Password: " SMTP_PASS
+            echo ""
+            read -p "From Email [${SMTP_USER}]: " SMTP_FROM
+            SMTP_FROM=${SMTP_FROM:-$SMTP_USER}
+            
+            # Backup .env
+            if [ -f .env ]; then
+              cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+              echo "✅ Backup .env создан"
+            fi
+            
+            # Update .env
+            [ ! -f .env ] && touch .env
+            sed -i '/^SMTP_/d' .env
+            sed -i '/^FRONTEND_URL=/d' .env
+            
+            cat >> .env << EOF
+            
+            # SMTP Configuration
+            SMTP_HOST=$SMTP_HOST
+            SMTP_PORT=$SMTP_PORT
+            SMTP_USER=$SMTP_USER
+            SMTP_PASS=$SMTP_PASS
+            SMTP_FROM=$SMTP_FROM
+            FRONTEND_URL=https://aiternitas.ru
+            EOF
+            
+            echo "✅ .env обновлен"
+            echo ""
+            echo "Обновленные настройки:"
+            grep -E '^SMTP_|^FRONTEND_URL=' .env
+            
+            # Update systemd service
+            SERVICE_FILE="/etc/systemd/system/aiternitas-main.service"
+            if [ -f "$SERVICE_FILE" ]; then
+              echo ""
+              echo "=== Обновление systemd service ==="
+              
+              cp "$SERVICE_FILE" "${SERVICE_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+              echo "✅ Backup service file создан"
+              
+              # Remove old SMTP environment variables
+              sed -i '/^Environment=SMTP_/d' "$SERVICE_FILE"
+              sed -i '/^Environment=FRONTEND_URL/d' "$SERVICE_FILE"
+              
+              # Add new environment variables after [Service]
+              TEMP=$(mktemp)
+              awk -v h="$SMTP_HOST" -v p="$SMTP_PORT" -v u="$SMTP_USER" -v pass="$SMTP_PASS" -v f="$SMTP_FROM" -v url="https://aiternitas.ru" '
+                /^\[Service\]/ {
+                  print
+                  print "Environment=SMTP_HOST=" h
+                  print "Environment=SMTP_PORT=" p
+                  print "Environment=SMTP_USER=" u
+                  print "Environment=SMTP_PASS=" pass
+                  print "Environment=SMTP_FROM=" f
+                  print "Environment=FRONTEND_URL=" url
+                  next
+                }
+                { print }
+              ' "$SERVICE_FILE" > "$TEMP"
+              mv "$TEMP" "$SERVICE_FILE"
+              
+              echo "✅ Service file обновлен"
+              
+              # Reload and restart
+              echo ""
+              echo "=== Перезапуск сервиса ==="
+              systemctl daemon-reload
+              systemctl restart aiternitas-main.service
+              
+              echo "✅ Сервис перезапущен"
+              sleep 3
+              
+              echo ""
+              echo "=== Статус сервиса ==="
+              systemctl status aiternitas-main.service --no-pager | head -15
+              
+              echo ""
+              echo "=== Проверка SMTP в логах ==="
+              sleep 2
+              journalctl -u aiternitas-main.service -n 30 --no-pager | grep -E 'SMTP|📧|Email' | tail -10 || echo "Логи пока пусты"
+            else
+              echo "⚠️  Service file не найден: $SERVICE_FILE"
+            fi
+            
+            echo ""
+            echo "✅ Настройка SMTP завершена на сервере!"
+          EOSSH
+
