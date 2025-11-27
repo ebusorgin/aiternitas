@@ -89,12 +89,33 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const loginWithGoogle = async () => {
+    try {
+      // Получаем URL для авторизации Google
+      const response = await fetch('/api/auth/google', {
+        credentials: 'include',
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.authUrl) {
+        // Открываем окно авторизации Google
+        window.location.href = data.authUrl;
+        return { success: true };
+      } else {
+        return { success: false, error: 'Ошибка получения URL авторизации Google' };
+      }
+    } catch (error) {
+      return { success: false, error: 'Ошибка подключения к серверу' };
+    }
+  };
+
   const updateUser = (updatedUser) => {
     setUser(updatedUser);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, checkAuth }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, checkAuth, loginWithGoogle }}>
       {children}
     </AuthContext.Provider>
   );

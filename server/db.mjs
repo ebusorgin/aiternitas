@@ -59,11 +59,25 @@ export async function initDatabase() {
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
         email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
+        password VARCHAR(255),
+        google_id VARCHAR(255) UNIQUE,
         avatar VARCHAR(500),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+    
+    // Добавляем колонку google_id если её нет
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name = 'google_id'
+        ) THEN
+          ALTER TABLE users ADD COLUMN google_id VARCHAR(255) UNIQUE;
+        END IF;
+      END $$;
     `);
 
     console.log('✅ Таблица users создана/проверена');
