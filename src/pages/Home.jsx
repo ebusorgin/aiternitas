@@ -53,7 +53,8 @@ function Home() {
     const result = await login(email, password);
 
     if (result.success) {
-      navigate('/profile');
+      // Остаемся на главной странице после входа
+      window.location.reload();
     } else {
       setError(result.error);
       setFormLoading(false);
@@ -81,10 +82,11 @@ function Home() {
     const result = await register(name, email, password);
 
     if (result.success) {
-      setSuccess('Регистрация успешна! Перенаправление...');
+      setSuccess('Регистрация успешна!');
+      // Остаемся на главной странице после регистрации
       setTimeout(() => {
-        navigate('/profile');
-      }, 1500);
+        window.location.reload();
+      }, 1000);
     } else {
       setError(result.error);
       setFormLoading(false);
@@ -98,7 +100,8 @@ function Home() {
     try {
       const result = await loginWithGoogle();
       if (result.success) {
-        navigate('/profile');
+        // Редирект произойдет через Google OAuth callback
+        // Не нужно делать navigate здесь
       } else {
         setError(result.error || 'Ошибка входа через Google');
         setGoogleLoading(false);

@@ -294,8 +294,8 @@ router.get('/google/callback', async (req, res) => {
         return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=session_failed`);
       }
       
-      // Перенаправляем на фронтенд
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/profile`);
+      // Перенаправляем на главную страницу
+      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/`);
     });
   } catch (error) {
     console.error('Ошибка Google OAuth:', error);
