@@ -2,6 +2,28 @@ name: TEMP SMTP Setup - DELETE AFTER USE
 
 on:
   workflow_dispatch:
+    inputs:
+      smtp_host:
+        description: 'SMTP Host (e.g., smtp.gmail.com)'
+        required: false
+        type: string
+      smtp_port:
+        description: 'SMTP Port'
+        required: false
+        type: string
+        default: '587'
+      smtp_user:
+        description: 'SMTP Username/Email'
+        required: false
+        type: string
+      smtp_pass:
+        description: 'SMTP Password'
+        required: false
+        type: string
+      smtp_from:
+        description: 'From Email'
+        required: false
+        type: string
 
 jobs:
   setup:
@@ -10,10 +32,21 @@ jobs:
       SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
       SSH_USER: ${{ secrets.SERVER_USER || 'root' }}
       SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SMTP_HOST: ${{ inputs.smtp_host || secrets.SMTP_HOST || '' }}
+      SMTP_PORT: ${{ inputs.smtp_port || secrets.SMTP_PORT || '587' }}
+      SMTP_USER: ${{ inputs.smtp_user || secrets.SMTP_USER || '' }}
+      SMTP_PASS: ${{ inputs.smtp_pass || secrets.SMTP_PASS || '' }}
+      SMTP_FROM: ${{ inputs.smtp_from || secrets.SMTP_FROM || '' }}
 
     steps:
       - name: Setup SSH and configure SMTP on server
         run: |
+          if [ -z "$SMTP_HOST" ] || [ -z "$SMTP_USER" ] || [ -z "$SMTP_PASS" ]; then
+            echo "❌ SMTP_HOST, SMTP_USER, and SMTP_PASS must be provided"
+            echo "   Set them in GitHub Secrets or workflow inputs"
+            exit 1
+          fi
+          
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
@@ -21,13 +54,15 @@ jobs:
           
           echo "=== Подключение к серверу и настройка SMTP ==="
           
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
+          SMTP_FROM_VAL="${SMTP_FROM:-$SMTP_USER}"
+          
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<EOSSH
             set -e
             cd /opt/aiternitas-main
             
             echo ""
             echo "=== Текущее состояние ==="
-            echo "Директория: $(pwd)"
+            echo "Директория: \$(pwd)"
             if [ -f .env ]; then
               echo "✅ .env файл существует"
               echo "Текущие SMTP настройки:"
@@ -38,22 +73,15 @@ jobs:
             
             echo ""
             echo "=== Настройка SMTP ==="
-            echo "Введите данные SMTP:"
+            echo "SMTP_HOST: $SMTP_HOST"
+            echo "SMTP_PORT: $SMTP_PORT"
+            echo "SMTP_USER: $SMTP_USER"
+            echo "SMTP_FROM: $SMTP_FROM_VAL"
             echo ""
-            
-            # Запрашиваем данные (используем значения из переменных окружения если есть, иначе запрашиваем)
-            read -p "SMTP Host (например, smtp.gmail.com): " SMTP_HOST
-            read -p "SMTP Port [587]: " SMTP_PORT
-            SMTP_PORT=${SMTP_PORT:-587}
-            read -p "SMTP User (email): " SMTP_USER
-            read -sp "SMTP Password: " SMTP_PASS
-            echo ""
-            read -p "From Email [${SMTP_USER}]: " SMTP_FROM
-            SMTP_FROM=${SMTP_FROM:-$SMTP_USER}
             
             # Backup .env
             if [ -f .env ]; then
-              cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+              cp .env .env.backup.\$(date +%Y%m%d_%H%M%S)
               echo "✅ Backup .env создан"
             fi
             
@@ -69,7 +97,7 @@ jobs:
             SMTP_PORT=$SMTP_PORT
             SMTP_USER=$SMTP_USER
             SMTP_PASS=$SMTP_PASS
-            SMTP_FROM=$SMTP_FROM
+            SMTP_FROM=$SMTP_FROM_VAL
             FRONTEND_URL=https://aiternitas.ru
             EOF
             
@@ -92,8 +120,8 @@ jobs:
               sed -i '/^Environment=FRONTEND_URL/d' "$SERVICE_FILE"
               
               # Add new environment variables after [Service]
-              TEMP=$(mktemp)
-              awk -v h="$SMTP_HOST" -v p="$SMTP_PORT" -v u="$SMTP_USER" -v pass="$SMTP_PASS" -v f="$SMTP_FROM" -v url="https://aiternitas.ru" '
+              TEMP=\$(mktemp)
+              awk -v h="$SMTP_HOST" -v p="$SMTP_PORT" -v u="$SMTP_USER" -v pass="$SMTP_PASS" -v f="$SMTP_FROM_VAL" -v url="https://aiternitas.ru" '
                 /^\[Service\]/ {
                   print
                   print "Environment=SMTP_HOST=" h
