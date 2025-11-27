@@ -5,6 +5,7 @@ import { OAuth2Client } from 'google-auth-library';
 import pool from '../db.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
 import { sendVerificationEmail } from '../utils/email.mjs';
+import { getClientIp } from '../utils/ip.mjs';
 
 const router = express.Router();
 
@@ -64,8 +65,9 @@ router.post('/register', async (req, res) => {
     const user = result.rows[0];
 
     // Отправка email с ссылкой для подтверждения
+    const clientIp = getClientIp(req);
     console.log(`📧 Отправка письма для верификации email пользователю ${user.email}...`);
-    const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken);
+    const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken, clientIp);
     if (!emailResult.success) {
       console.error(`❌ Не удалось отправить письмо: ${emailResult.error}`);
       // Продолжаем регистрацию даже если email не отправился
@@ -153,8 +155,9 @@ router.post('/login', async (req, res) => {
       }
       
       // Отправляем новое письмо с токеном
+      const clientIp = getClientIp(req);
       console.log(`📧 Отправка письма для верификации email пользователю ${user.email}...`);
-      const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken);
+      const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken, clientIp);
       if (!emailResult.success) {
         console.error(`❌ Не удалось отправить письмо: ${emailResult.error}`);
       }
@@ -528,9 +531,10 @@ router.post('/resend-verification', requireAuth, async (req, res) => {
     );
 
     // Отправка email
+    const clientIp = getClientIp(req);
     console.log(`📧 Отправка письма для верификации email пользователю ${user.email}...`);
     try {
-      const emailResult = await sendVerificationEmail(user.email, user.name || 'Пользователь', verificationToken);
+      const emailResult = await sendVerificationEmail(user.email, user.name || 'Пользователь', verificationToken, clientIp);
       
       if (emailResult.success) {
         res.json({
@@ -606,8 +610,9 @@ router.post('/test-email', requireAuth, async (req, res) => {
     }
     
     const testToken = generateVerificationToken();
+    const clientIp = getClientIp(req);
     console.log('🧪 Тестовая отправка email...');
-    const result = await sendVerificationEmail(testEmail, 'Test User', testToken);
+    const result = await sendVerificationEmail(testEmail, 'Test User', testToken, clientIp);
     
     if (result.success) {
       res.json({

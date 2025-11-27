@@ -127,36 +127,51 @@
   margin-bottom: 4px;
 }
 
-.profile-link {
+.profile-link-btn {
+  display: inline-block;
+  padding: 6px 12px;
   font-size: 12px;
   color: #667eea;
+  background: rgba(102, 126, 234, 0.1);
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  border-radius: 6px;
   text-decoration: none;
-  transition: color 0.3s ease;
+  transition: all 0.3s ease;
+  font-weight: 500;
 }
 
-.profile-link:hover {
+.profile-link-btn:hover {
   color: #764ba2;
+  background: rgba(102, 126, 234, 0.2);
+  border-color: rgba(102, 126, 234, 0.5);
 }
 
-.logout-btn {
-  width: 100%;
+.logout-btn-icon {
+  width: 40px;
+  height: 40px;
   margin-top: 15px;
-  padding: 10px 20px;
+  padding: 0;
   background: rgba(220, 53, 69, 0.1);
   border: 1px solid rgba(220, 53, 69, 0.3);
   border-radius: 8px;
   color: #dc3545;
-  font-size: 14px;
-  font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.logout-btn:hover {
+.logout-btn-icon:hover {
   background: rgba(220, 53, 69, 0.2);
   border-color: rgba(220, 53, 69, 0.5);
-  transform: translateX(3px);
+  transform: scale(1.05);
+}
+
+.logout-btn-icon svg {
+  width: 18px;
+  height: 18px;
 }
 
 .auth-buttons {

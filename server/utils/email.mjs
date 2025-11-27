@@ -1,4 +1,33 @@
 import nodemailer from 'nodemailer';
+import pool from '../db.mjs';
+
+// Логирование письма в базу данных
+async function logEmailToDatabase(emailData) {
+  try {
+    const { sender, recipient, subject, body, headers, size, direction, status, errorMessage, clientIp } = emailData;
+    
+    await pool.query(
+      `INSERT INTO emails (sender, recipient, subject, body, headers, size, client_ip, direction, status, error_message, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+      [
+        sender || 'unknown',
+        recipient || 'unknown',
+        subject || '',
+        body || '',
+        headers || '',
+        size || 0,
+        clientIp || null,
+        direction || 'outgoing',
+        status || 'delivered',
+        errorMessage || null
+      ]
+    );
+    console.log(`✅ Письмо записано в БД: ${direction} от ${sender} к ${recipient}`);
+  } catch (error) {
+    console.error('❌ Ошибка записи письма в БД:', error.message);
+    // Не прерываем выполнение, если логирование не удалось
+  }
+}
 
 // Создание транспорта для отправки email
 function createTransporter() {
@@ -6,42 +35,57 @@ function createTransporter() {
   const smtpHost = process.env.SMTP_HOST;
   const smtpUser = process.env.SMTP_USER;
   const smtpPass = process.env.SMTP_PASS;
+  const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
   
   console.log('📧 Проверка настроек SMTP:');
   console.log(`   SMTP_HOST: ${smtpHost ? '✅ установлен' : '❌ не установлен'}`);
-  console.log(`   SMTP_USER: ${smtpUser ? '✅ установлен' : '❌ не установлен'}`);
-  console.log(`   SMTP_PASS: ${smtpPass ? '✅ установлен' : '❌ не установлен'}`);
+  console.log(`   SMTP_PORT: ${smtpPort}`);
   
-  // Если указаны настройки SMTP, используем их
-  if (smtpHost && smtpUser && smtpPass) {
-    const port = parseInt(process.env.SMTP_PORT || '587', 10);
-    const secure = process.env.SMTP_PORT === '465';
+  // Если указан хост, создаем транспорт
+  if (smtpHost) {
+    const secure = smtpPort === 465;
+    const isLocalhost = smtpHost === 'localhost' || smtpHost === '127.0.0.1';
     
-    console.log(`   SMTP_PORT: ${port}`);
     console.log(`   SMTP_SECURE: ${secure}`);
+    console.log(`   SMTP_LOCALHOST: ${isLocalhost ? '✅ да' : '❌ нет'}`);
     
-    return nodemailer.createTransport({
+    // Настройки транспорта
+    const transportConfig = {
       host: smtpHost,
-      port: port,
+      port: smtpPort,
       secure: secure,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass
-      },
-      // Дополнительные опции для надежности
       tls: {
         rejectUnauthorized: false // Для самоподписанных сертификатов
       }
-    });
+    };
+    
+    // Для localhost на порту 25 аутентификация не требуется
+    if (isLocalhost && smtpPort === 25) {
+      console.log(`   SMTP_USER: не требуется для localhost:25`);
+      console.log(`   SMTP_PASS: не требуется для localhost:25`);
+      // Не добавляем auth для localhost
+    } else if (smtpUser && smtpPass) {
+      console.log(`   SMTP_USER: ✅ установлен`);
+      console.log(`   SMTP_PASS: ✅ установлен`);
+      transportConfig.auth = {
+        user: smtpUser,
+        pass: smtpPass
+      };
+    } else {
+      console.log(`   SMTP_USER: ⚠️  не установлен (используется без аутентификации)`);
+      console.log(`   SMTP_PASS: ⚠️  не установлен (используется без аутентификации)`);
+    }
+    
+    return nodemailer.createTransport(transportConfig);
   }
   
-  // Если нет настроек SMTP, возвращаем null (будет использоваться console.log)
-  console.log('⚠️  SMTP не настроен. Письма не будут отправляться.');
+  // Если нет хоста, возвращаем null
+  console.log('⚠️  SMTP_HOST не установлен. Письма не будут отправляться.');
   return null;
 }
 
 // Отправка письма для верификации email
-export async function sendVerificationEmail(email, name, verificationToken) {
+export async function sendVerificationEmail(email, name, verificationToken, clientIp = null) {
   const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}`;
   
   const mailOptions = {
@@ -146,6 +190,22 @@ export async function sendVerificationEmail(email, name, verificationToken) {
       console.log(`✅ Email успешно отправлен на ${email}`);
       console.log(`   Message ID: ${info.messageId}`);
       console.log(`   Response: ${info.response}`);
+      
+      // Логируем исходящее письмо в БД
+      const emailBody = mailOptions.html || mailOptions.text || '';
+      const emailSize = Buffer.byteLength(emailBody, 'utf8');
+      await logEmailToDatabase({
+        sender: mailOptions.from,
+        recipient: email,
+        subject: mailOptions.subject,
+        body: emailBody.substring(0, 50000), // Ограничиваем размер
+        headers: JSON.stringify(info.envelope || {}),
+        size: emailSize,
+        clientIp: clientIp || null,
+        direction: 'outgoing',
+        status: 'delivered'
+      });
+      
       return { success: true, messageId: info.messageId };
     } catch (error) {
       console.error('❌ Ошибка отправки email:');
@@ -164,6 +224,22 @@ export async function sendVerificationEmail(email, name, verificationToken) {
         console.error(`   Команда: ${error.command}`);
       }
       
+      // Логируем ошибку в БД
+      const emailBody = mailOptions.html || mailOptions.text || '';
+      const emailSize = Buffer.byteLength(emailBody, 'utf8');
+      await logEmailToDatabase({
+        sender: mailOptions.from,
+        recipient: email,
+        subject: mailOptions.subject,
+        body: emailBody.substring(0, 50000),
+        headers: '',
+        size: emailSize,
+        clientIp: clientIp || null,
+        direction: 'outgoing',
+        status: 'failed',
+        errorMessage: error.message
+      });
+      
       // В случае ошибки отправки, логируем ссылку для отладки
       console.log(`⚠️  Email не отправлен. Verification link for ${email}: ${verificationUrl}`);
       return { success: false, error: error.message, details: error };
@@ -179,4 +255,5 @@ export async function sendVerificationEmail(email, name, verificationToken) {
     return { success: false, error: 'SMTP not configured' };
   }
 }
+
 

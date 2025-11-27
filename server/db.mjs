@@ -140,6 +140,64 @@ export async function initDatabase() {
     `);
 
     console.log('✅ Таблица session создана/проверена');
+
+    // Создаем таблицу для хранения всех писем
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS emails (
+        id SERIAL PRIMARY KEY,
+        sender VARCHAR(255) NOT NULL,
+        recipient VARCHAR(255) NOT NULL,
+        subject TEXT,
+        body TEXT,
+        headers TEXT,
+        size INTEGER,
+        client_ip VARCHAR(45),
+        direction VARCHAR(10) NOT NULL CHECK (direction IN ('incoming', 'outgoing')),
+        status VARCHAR(50) DEFAULT 'delivered',
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Индексы для быстрого поиска
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_emails_recipient ON emails(recipient)
+    `).catch(() => {}); // Игнорируем ошибку если индекс уже существует
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_emails_sender ON emails(sender)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_emails_direction ON emails(direction)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_emails_created_at ON emails(created_at)
+    `).catch(() => {});
+
+    // Функция для автоматического обновления updated_at
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION update_updated_at_column()
+      RETURNS TRIGGER AS $$
+      BEGIN
+          NEW.updated_at = CURRENT_TIMESTAMP;
+          RETURN NEW;
+      END;
+      $$ language 'plpgsql';
+    `).catch(() => {});
+
+    // Триггер для автоматического обновления updated_at
+    await pool.query(`
+      DROP TRIGGER IF EXISTS update_emails_updated_at ON emails;
+      CREATE TRIGGER update_emails_updated_at
+          BEFORE UPDATE ON emails
+          FOR EACH ROW
+          EXECUTE FUNCTION update_updated_at_column();
+    `).catch(() => {});
+
+    console.log('✅ Таблица emails создана/проверена');
     return true;
   } catch (error) {
     console.error('❌ Ошибка инициализации БД:', error);
