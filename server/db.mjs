@@ -79,6 +79,21 @@ export async function initDatabase() {
         END IF;
       END $$;
     `);
+    
+    // Убираем NOT NULL ограничение с password, если оно есть (для Google OAuth)
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' 
+          AND column_name = 'password' 
+          AND is_nullable = 'NO'
+        ) THEN
+          ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
+        END IF;
+      END $$;
+    `);
 
     console.log('✅ Таблица users создана/проверена');
 
