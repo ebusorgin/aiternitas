@@ -504,7 +504,7 @@ router.post('/resend-verification', requireAuth, async (req, res) => {
     const userId = req.session.userId;
     
     const userResult = await pool.query(
-      'SELECT id, email, email_verified, email_verification_token, email_verification_expires FROM users WHERE id = $1',
+      'SELECT id, name, email, email_verified, email_verification_token, email_verification_expires FROM users WHERE id = $1',
       [userId]
     );
 
@@ -529,17 +529,25 @@ router.post('/resend-verification', requireAuth, async (req, res) => {
 
     // Отправка email
     console.log(`📧 Отправка письма для верификации email пользователю ${user.email}...`);
-    const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken);
-    
-    if (emailResult.success) {
-      res.json({
-        success: true,
-        message: 'Письмо для подтверждения email отправлено на ваш адрес'
-      });
-    } else {
-      console.error(`❌ Не удалось отправить письмо: ${emailResult.error}`);
+    try {
+      const emailResult = await sendVerificationEmail(user.email, user.name || 'Пользователь', verificationToken);
+      
+      if (emailResult.success) {
+        res.json({
+          success: true,
+          message: 'Письмо для подтверждения email отправлено на ваш адрес'
+        });
+      } else {
+        console.error(`❌ Не удалось отправить письмо: ${emailResult.error}`);
+        res.status(500).json({ 
+          error: 'Не удалось отправить письмо. Попробуйте позже.',
+          verificationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}` // Для отладки
+        });
+      }
+    } catch (error) {
+      console.error('Ошибка при отправке email:', error);
       res.status(500).json({ 
-        error: 'Не удалось отправить письмо. Попробуйте позже.',
+        error: 'Ошибка сервера при отправке письма',
         verificationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}` // Для отладки
       });
     }
