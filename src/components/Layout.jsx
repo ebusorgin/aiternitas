@@ -13,6 +13,8 @@ function Layout() {
   
   // Не показываем Footer на страницах входа и регистрации
   const showFooter = !['/login', '/register'].includes(location.pathname);
+  // Показываем Sidebar только для авторизованных пользователей
+  const showSidebar = user && !loading;
 
   const handleLogout = async () => {
     await logout();
@@ -20,29 +22,45 @@ function Layout() {
   };
 
   return (
-    <div className="layout">
-      <button
-        className={`mobile-menu-toggle ${sidebarOpen ? 'active' : ''}`}
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        aria-label="Открыть меню"
-      >
-        <span></span>
-        <span></span>
-        <span></span>
-      </button>
+    <div className={`layout ${showSidebar ? 'with-sidebar' : 'no-sidebar'}`}>
+      {showSidebar && (
+        <>
+          <button
+            className={`mobile-menu-toggle ${sidebarOpen ? 'active' : ''}`}
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label="Открыть меню"
+          >
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
 
-      <div
-        className={`sidebar-overlay ${sidebarOpen ? 'active' : ''}`}
-        onClick={() => setSidebarOpen(false)}
-      ></div>
+          <div
+            className={`sidebar-overlay ${sidebarOpen ? 'active' : ''}`}
+            onClick={() => setSidebarOpen(false)}
+          ></div>
 
-      <Sidebar
-        user={user}
-        loading={loading}
-        onLogout={handleLogout}
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-      />
+          <Sidebar
+            user={user}
+            loading={loading}
+            onLogout={handleLogout}
+            isOpen={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+          />
+        </>
+      )}
+
+      {!showSidebar && (
+        <header className="top-header">
+          <div className="header-content">
+            <Link to="/" className="header-logo">Aiternitas</Link>
+            <nav className="header-nav">
+              <Link to="/login" className="header-link">Войти</Link>
+              <Link to="/register" className="header-link header-link-primary">Регистрация</Link>
+            </nav>
+          </div>
+        </header>
+      )}
 
       <main className="main-content">
         <Outlet />

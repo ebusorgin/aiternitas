@@ -68,12 +68,97 @@
 }
 
 .main-content {
-  margin-left: 280px;
   flex: 1;
-  width: calc(100% - 280px);
-  transition: margin-left 0.3s ease;
   display: flex;
   flex-direction: column;
+  transition: margin-left 0.3s ease;
+}
+
+.layout.with-sidebar .main-content {
+  margin-left: 280px;
+  width: calc(100% - 280px);
+}
+
+.layout.no-sidebar .main-content {
+  margin-left: 0;
+  width: 100%;
+}
+
+.top-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  background: linear-gradient(180deg, #1a1f3a 0%, #0f1429 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 1000;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.header-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 30px;
+}
+
+.header-logo {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  transition: opacity 0.2s ease;
+}
+
+.header-logo:hover {
+  opacity: 0.8;
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.header-link {
+  padding: 10px 20px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  color: #e0e0e0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.header-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(102, 126, 234, 0.5);
+}
+
+.header-link-primary {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%);
+  border: 1px solid rgba(102, 126, 234, 0.5);
+  color: #fff;
+}
+
+.header-link-primary:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.5) 0%, rgba(118, 75, 162, 0.5) 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.layout.no-sidebar .main-content {
+  padding-top: 70px;
 }
 
 @media (max-width: 768px) {
@@ -85,9 +170,22 @@
     display: block;
   }
 
-  .main-content {
+  .layout.with-sidebar .main-content {
     margin-left: 0;
     width: 100%;
+  }
+
+  .header-content {
+    padding: 0 20px;
+  }
+
+  .header-nav {
+    gap: 10px;
+  }
+
+  .header-link {
+    padding: 8px 16px;
+    font-size: 13px;
   }
 }
 

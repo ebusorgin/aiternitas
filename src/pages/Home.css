@@ -1,5 +1,5 @@
 .hero {
-  min-height: calc(100vh - 200px);
+  min-height: calc(100vh - 70px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -296,7 +296,7 @@
 
 @media (max-width: 768px) {
   .hero {
-    min-height: calc(100vh - 80px);
+    min-height: calc(100vh - 70px);
     padding: 40px 20px;
   }
 

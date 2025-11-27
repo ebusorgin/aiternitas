@@ -3,7 +3,7 @@
   max-width: 450px;
   margin: 0 auto;
   padding: 40px 20px;
-  min-height: calc(100vh - 160px);
+  min-height: calc(100vh - 70px);
   display: flex;
   align-items: center;
   justify-content: center;
