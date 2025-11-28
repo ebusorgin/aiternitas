@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from './Sidebar';
 import Footer from './Footer';
+import Preloader from './Preloader';
 import './Layout.css';
 
 function Layout() {
@@ -20,6 +21,11 @@ function Layout() {
     await logout();
     navigate('/');
   };
+
+  // Показываем прелоадер во время проверки авторизации
+  if (loading) {
+    return <Preloader />;
+  }
 
   return (
     <div className={`layout ${showSidebar ? 'with-sidebar' : 'no-sidebar'}`}>
