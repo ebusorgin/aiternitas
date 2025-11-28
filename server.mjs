@@ -4,12 +4,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
+import { Server } from 'socket.io';
 import dotenv from 'dotenv';
 import { initDatabase } from './server/db.mjs';
 import pool from './server/db.mjs';
 import authRouter from './server/routes/auth.mjs';
 import uploadRouter from './server/routes/upload.mjs';
 import statsRouter from './server/routes/stats.mjs';
+import { setupSceneHandlers } from './server/socket/scene.mjs';
 
 // Загружаем .env всегда для локальной разработки
 // В продакшене переменные должны быть установлены через systemd и будут иметь приоритет
@@ -20,6 +22,28 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = createServer(app);
+
+// Инициализация Socket.IO
+const io = new Server(server, {
+  cors: {
+    origin: [
+      'https://aiternitas.ru',
+      'http://localhost:3001',
+      'http://localhost:5173'
+    ],
+    credentials: true,
+    methods: ['GET', 'POST']
+  },
+  // Привязка к express-session
+  cookie: {
+    name: 'aiternitas.sid',
+    httpOnly: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: process.env.NODE_ENV === 'production'
+  }
+});
+
+// Socket.IO будет использовать сессию через middleware в scene.mjs
 
 // Trust proxy для правильной работы за nginx
 app.set('trust proxy', 1);
@@ -79,13 +103,15 @@ console.log('🔐 Настройки сессий:', {
   cookieConfig
 });
 
+const sessionStore = new PgSession({
+  pool: pool, // Используем существующий пул подключений
+  tableName: 'session', // Имя таблицы для сессий
+  createTableIfMissing: false, // Таблица создается через initDatabase
+  pruneSessionInterval: 60, // Очистка устаревших сессий каждые 60 секунд
+});
+
 app.use(session({
-  store: new PgSession({
-    pool: pool, // Используем существующий пул подключений
-    tableName: 'session', // Имя таблицы для сессий
-    createTableIfMissing: false, // Таблица создается через initDatabase
-    pruneSessionInterval: 60, // Очистка устаревших сессий каждые 60 секунд
-  }),
+  store: sessionStore,
   secret: process.env.SESSION_SECRET || 'aiternitas-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
@@ -117,9 +143,13 @@ const HOST = process.env.HOST || '0.0.0.0';
 // Инициализация БД и запуск сервера
 initDatabase()
   .then(() => {
+    // Настройка Socket.IO обработчиков с передачей sessionStore
+    setupSceneHandlers(io, sessionStore);
+    
     server.listen(PORT, HOST, () => {
       console.log(`✅ Aiternitas сервер запущен на порту ${PORT}`);
       console.log(`📱 Главная страница: http://localhost:${PORT}`);
+      console.log(`🔌 Socket.IO готов к подключениям`);
     });
   })
   .catch((error) => {

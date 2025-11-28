@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSceneStore } from '../store/sceneStore';
+import Canvas3D from '../components/workspace/Canvas3D';
+import Canvas2D from '../components/workspace/Canvas2D';
+import Toolbar from '../components/workspace/Toolbar';
+import PropertiesPanel from '../components/workspace/PropertiesPanel';
 import './Home.css';
 import './Auth.css';
 
@@ -19,9 +24,14 @@ function Home() {
   const [formLoading, setFormLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  const initSocket = useSceneStore((state) => state.initSocket);
+  const disconnectSocket = useSceneStore((state) => state.disconnectSocket);
+
   useEffect(() => {
     if (user) {
       loadStats();
+      // Инициализируем Socket.IO для авторизованных пользователей
+      initSocket();
     }
     
     // Проверяем параметры URL для уведомлений
@@ -40,7 +50,14 @@ function Home() {
     } else if (error === 'verification_failed') {
       setError('Ошибка подтверждения email. Попробуйте позже.');
     }
-  }, [user]);
+
+    // Очистка при размонтировании
+    return () => {
+      if (user) {
+        disconnectSocket();
+      }
+    };
+  }, [user, initSocket, disconnectSocket]);
 
   const loadStats = async () => {
     try {
@@ -175,45 +192,33 @@ function Home() {
     }
   };
 
-  // Если пользователь авторизован, показываем обычный контент
+  const viewMode = useSceneStore((state) => state.viewMode);
+
+  // Если пользователь авторизован, показываем workspace (3D или 2D)
   if (user && !loading) {
+    console.log('Rendering workspace for user:', user);
     return (
-      <>
-        <section className="hero">
-          <div className="hero-content">
-            <div className="dev-badge">🚧 Сайт находится в разработке</div>
-            <h1>Aiternitas</h1>
-            <p>Платформа инновационных проектов и технологических решений</p>
-            
-            {/* Предупреждение о неподтвержденном email */}
-            {!user.email_verified && !user.google_id && (
-              <div className="email-verification-warning">
-                <p>⚠️ Ваш email не подтвержден. Пожалуйста, проверьте почту и подтвердите email.</p>
-                <button 
-                  onClick={handleResendVerification}
-                  className="btn-resend-verification"
-                  disabled={formLoading}
-                >
-                  Отправить письмо повторно
-                </button>
-              </div>
-            )}
-            
-            {stats && (
-              <div className="stats-section">
-                <div className="stat-item">
-                  <div className="stat-value">{stats.totalUsers || 0}</div>
-                  <div className="stat-label">Пользователей</div>
-                </div>
-                <div className="stat-item">
-                  <div className="stat-value">2</div>
-                  <div className="stat-label">Проектов</div>
-                </div>
-              </div>
-            )}
+      <div className="workspace-container">
+        <Toolbar />
+        <PropertiesPanel />
+        <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+          {viewMode === '2d' ? <Canvas2D /> : <Canvas3D />}
+        </div>
+        
+        {/* Предупреждение о неподтвержденном email */}
+        {!user.email_verified && !user.google_id && (
+          <div className="email-verification-banner">
+            <p>⚠️ Ваш email не подтвержден. Пожалуйста, проверьте почту и подтвердите email.</p>
+            <button 
+              onClick={handleResendVerification}
+              className="btn-resend-verification"
+              disabled={formLoading}
+            >
+              Отправить письмо повторно
+            </button>
           </div>
-        </section>
-      </>
+        )}
+      </div>
     );
   }
 

@@ -198,6 +198,38 @@ export async function initDatabase() {
     `).catch(() => {});
 
     console.log('✅ Таблица emails создана/проверена');
+
+    // Создаем таблицу для хранения сцен
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS scenes (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        data JSONB NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Индексы для быстрого поиска
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_scenes_user_id ON scenes(user_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_scenes_created_at ON scenes(created_at)
+    `).catch(() => {});
+
+    // Триггер для автоматического обновления updated_at
+    await pool.query(`
+      DROP TRIGGER IF EXISTS update_scenes_updated_at ON scenes;
+      CREATE TRIGGER update_scenes_updated_at
+          BEFORE UPDATE ON scenes
+          FOR EACH ROW
+          EXECUTE FUNCTION update_updated_at_column();
+    `).catch(() => {});
+
+    console.log('✅ Таблица scenes создана/проверена');
     return true;
   } catch (error) {
     console.error('❌ Ошибка инициализации БД:', error);

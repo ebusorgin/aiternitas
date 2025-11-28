@@ -455,3 +455,69 @@
   }
 }
 
+/* 3D Workspace Styles */
+.workspace-container {
+  position: fixed;
+  top: 0;
+  left: 280px; /* Отступ для sidebar */
+  width: calc(100vw - 280px);
+  height: 100vh;
+  background: #000;
+  overflow: hidden;
+  z-index: 1; /* Ниже sidebar (z-index: 1000) */
+  margin: 0;
+  padding: 0;
+}
+
+/* На мобильных устройствах workspace занимает весь экран */
+@media (max-width: 768px) {
+  .workspace-container {
+    left: 0;
+    width: 100vw;
+  }
+}
+
+.email-verification-banner {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 193, 7, 0.1);
+  border: 2px solid rgba(255, 193, 7, 0.5);
+  border-radius: 12px;
+  padding: 15px 20px;
+  text-align: center;
+  z-index: 1001;
+  backdrop-filter: blur(10px);
+  max-width: 90%;
+}
+
+.email-verification-banner p {
+  color: #ffc107;
+  margin: 0 0 10px 0;
+  font-size: 0.9em;
+}
+
+.email-verification-banner .btn-resend-verification {
+  padding: 8px 16px;
+  background: rgba(255, 193, 7, 0.2);
+  border: 1px solid rgba(255, 193, 7, 0.5);
+  border-radius: 8px;
+  color: #ffc107;
+  font-size: 0.85em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.email-verification-banner .btn-resend-verification:hover:not(:disabled) {
+  background: rgba(255, 193, 7, 0.3);
+  border-color: rgba(255, 193, 7, 0.7);
+  transform: translateY(-2px);
+}
+
+.email-verification-banner .btn-resend-verification:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+

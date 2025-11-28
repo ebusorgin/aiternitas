@@ -14,7 +14,7 @@ function Layout() {
   
   // Не показываем Footer на страницах входа и регистрации
   const showFooter = !['/login', '/register'].includes(location.pathname);
-  // Показываем Sidebar только для авторизованных пользователей
+  // Показываем Sidebar для всех авторизованных пользователей
   const showSidebar = user && !loading;
 
   const handleLogout = async () => {

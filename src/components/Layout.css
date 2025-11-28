@@ -72,11 +72,18 @@
   display: flex;
   flex-direction: column;
   transition: margin-left 0.3s ease;
+  position: relative;
 }
 
 .layout.with-sidebar .main-content {
   margin-left: 280px;
   width: calc(100% - 280px);
+}
+
+/* На главной странице main-content не должен иметь отступ, так как workspace сам позиционируется */
+.layout.with-sidebar .main-content:has(.workspace-container) {
+  margin-left: 0;
+  width: 100%;
 }
 
 .layout.no-sidebar .main-content {
