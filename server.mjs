@@ -56,6 +56,29 @@ app.use(express.urlencoded({ extended: true }));
 const PgSession = connectPgSimple(session);
 
 // Сессии с постоянным хранилищем в PostgreSQL
+// Определяем, работаем ли мы в production (HTTPS)
+const isProduction = process.env.NODE_ENV === 'production' || 
+                     process.env.BASE_URL?.includes('https://') ||
+                     process.env.BASE_URL?.includes('aiternitas.ru');
+
+// Настройка cookies для сессий
+const cookieConfig = {
+  secure: isProduction, // Требует HTTPS в production
+  httpOnly: true,
+  sameSite: isProduction ? 'none' : 'lax', // Для работы через HTTPS нужен 'none'
+  maxAge: 30 * 24 * 60 * 60 * 1000 // 30 дней
+};
+
+// Если нужна работа на поддоменах, раскомментируйте следующую строку:
+// if (isProduction) cookieConfig.domain = '.aiternitas.ru';
+
+console.log('🔐 Настройки сессий:', {
+  isProduction,
+  NODE_ENV: process.env.NODE_ENV,
+  BASE_URL: process.env.BASE_URL,
+  cookieConfig
+});
+
 app.use(session({
   store: new PgSession({
     pool: pool, // Используем существующий пул подключений
@@ -66,12 +89,8 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'aiternitas-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production', // Требует HTTPS в production
-    httpOnly: true,
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Для работы через HTTPS нужен 'none'
-    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 дней
-  }
+  name: 'aiternitas.sid', // Имя cookie для сессии
+  cookie: cookieConfig
 }));
 
 // API Routes (должны быть до статических файлов)

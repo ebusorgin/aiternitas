@@ -215,11 +215,17 @@ router.get('/me', (req, res) => {
     hasSession: !!req.session,
     userId: req.session?.userId,
     sessionId: req.sessionID,
-    cookies: req.headers.cookie
+    cookies: req.headers.cookie,
+    origin: req.headers.origin,
+    referer: req.headers.referer,
+    host: req.headers.host,
+    protocol: req.protocol,
+    secure: req.secure
   });
   
   // Проверяем сессию без middleware для более детальной обработки
   if (!req.session || !req.session.userId) {
+    console.log('❌ Не авторизован: нет сессии или userId');
     return res.status(401).json({ 
       error: 'Требуется авторизация',
       success: false 
