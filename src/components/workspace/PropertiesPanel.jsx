@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 import { ENTITY_TYPES } from './EntityShape';
 import EntityTypeModal from './EntityTypeModal';
@@ -12,47 +12,30 @@ function PropertiesPanel() {
   const updateEntity = useSceneStore((state) => state.updateEntity);
   const updateConnection = useSceneStore((state) => state.updateConnection);
 
-  const selectedEntity = selectedEntityId
-    ? entities.find((e) => e.id === selectedEntityId)
-    : null;
+  // Используем useMemo чтобы избежать лишних пересчетов
+  const selectedEntity = useMemo(() => 
+    selectedEntityId ? entities.find((e) => e.id === selectedEntityId) : null,
+    [selectedEntityId, entities]
+  );
   
-  const selectedConnection = selectedConnectionId
-    ? connections.find((c) => c.id === selectedConnectionId)
-    : null;
-
-  // Отладка
-  useEffect(() => {
-    console.log('🔍 PropertiesPanel render:', {
-      selectedEntityId,
-      selectedConnectionId,
-      entitiesCount: entities.length,
-      selectedEntity: selectedEntity ? { id: selectedEntity.id, name: selectedEntity.name } : null,
-      selectedConnection: selectedConnection ? { id: selectedConnection.id } : null
-    });
-  }, [selectedEntityId, selectedConnectionId, entities.length, selectedEntity, selectedConnection]);
+  const selectedConnection = useMemo(() => 
+    selectedConnectionId ? connections.find((c) => c.id === selectedConnectionId) : null,
+    [selectedConnectionId, connections]
+  );
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState('#3b82f6');
   const [type, setType] = useState('box');
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
+  const isInitializingRef = useRef(false); // Флаг для предотвращения сохранения при инициализации
 
   // Обновляем форму при изменении выбранного объекта
+  // Используем useMemo для стабильности ссылок на объекты
   useEffect(() => {
-    console.log('📝 PropertiesPanel useEffect triggered:', {
-      selectedEntityId,
-      selectedEntity: selectedEntity ? { id: selectedEntity.id, name: selectedEntity.name } : null,
-      selectedConnectionId,
-      selectedConnection: selectedConnection ? { id: selectedConnection.id } : null
-    });
+    isInitializingRef.current = true; // Устанавливаем флаг инициализации
     
     if (selectedEntity) {
-      console.log('✅ Updating form from selectedEntity:', {
-        name: selectedEntity.name,
-        description: selectedEntity.description,
-        color: selectedEntity.color,
-        type: selectedEntity.type
-      });
       setName(selectedEntity.name || '');
       setDescription(selectedEntity.description || '');
       setColor(selectedEntity.color || '#3b82f6');
@@ -68,9 +51,19 @@ function PropertiesPanel() {
       setColor('#3b82f6');
       setType('box');
     }
-  }, [selectedEntity, selectedConnection, selectedEntityId, selectedConnectionId]);
+    
+    // Снимаем флаг инициализации после небольшой задержки
+    setTimeout(() => {
+      isInitializingRef.current = false;
+    }, 100);
+  }, [selectedEntity, selectedConnection]); // Используем мемоизированные объекты
 
   const handleSave = () => {
+    // Не сохраняем во время инициализации формы
+    if (isInitializingRef.current) {
+      return;
+    }
+    
     if (selectedEntity && selectedEntityId) {
       const newName = name.trim();
       const newDescription = description.trim();
@@ -157,7 +150,6 @@ function PropertiesPanel() {
                 isOpen={isTypeModalOpen}
                 onClose={() => setIsTypeModalOpen(false)}
                 onSelectType={(newType) => {
-                  console.log('🔄 Type changed from modal:', { oldType: type, newType });
                   setType(newType);
                   // Обновляем сущность сразу с новым типом
                   if (selectedEntity && selectedEntityId) {
@@ -195,8 +187,8 @@ function PropertiesPanel() {
               value={color}
               onChange={(e) => {
                 setColor(e.target.value);
-                handleSave();
               }}
+              onBlur={handleSave}
             />
             <input
               type="text"

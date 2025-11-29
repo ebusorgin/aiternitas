@@ -257,13 +257,10 @@ export const useSceneStore = create((set, get) => {
     });
 
     socket.on('entity:updated', (updatedEntity) => {
-      console.log('📥 Получено entity:updated:', updatedEntity);
       set((state) => {
         const updatedEntities = state.entities.map(e =>
           e.id === updatedEntity.id ? updatedEntity : e
         );
-        const changedEntity = updatedEntities.find(e => e.id === updatedEntity.id);
-        console.log('🔄 Store updated entity:', { id: changedEntity?.id, type: changedEntity?.type });
         return { entities: updatedEntities };
       });
     });
@@ -423,7 +420,6 @@ export const useSceneStore = create((set, get) => {
           const updatedEntities = state.entities.map(e =>
             e.id === id ? { ...e, ...updates } : e
           );
-          console.log('🔄 updateEntity local:', { id, updates, updatedEntity: updatedEntities.find(e => e.id === id) });
           return { entities: updatedEntities };
         });
 
@@ -443,7 +439,6 @@ export const useSceneStore = create((set, get) => {
           }, 100); // 100ms debounce для позиций
         } else {
           // Для других обновлений (type, color, name, description) отправляем сразу
-          console.log('📤 Отправка entity:update на сервер:', { id, ...updates });
           socket.emit('entity:update', { id, ...updates });
         }
       };
@@ -546,9 +541,7 @@ export const useSceneStore = create((set, get) => {
 
     // Выделение
     selectEntity: (id) => {
-      console.log('🎯 selectEntity called:', id);
       set({ selectedEntityId: id, selectedConnectionId: null });
-      console.log('✅ selectedEntityId set to:', id);
     },
 
     selectConnection: (id) => {

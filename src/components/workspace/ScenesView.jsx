@@ -937,8 +937,7 @@ function ScenesView({ onSceneSelect }) {
     
     if (clickedEntity) {
       setDraggingEntityId(clickedEntity.id);
-      // Используем selectEntity из store, чтобы PropertiesPanel обновился
-      selectEntity(clickedEntity.id);
+      // НЕ вызываем selectEntity здесь - он будет вызван в handleClick, если это не перетаскивание
       setIsDragging(true);
       
       // Сохраняем смещение для плавного перетаскивания
@@ -1509,7 +1508,6 @@ function ScenesView({ onSceneSelect }) {
       if (parentChanged) {
         // Изменился родитель - пересчитываем layout всех дочерних сцен
         const newParentId = targetParentId || null;
-        console.log('✅ Изменяем родителя:', { from: draggedScene?.parent_id, to: newParentId });
         
         // Связи больше не удаляются при вложении - они сохраняются и отображаются как пометки
         
@@ -1522,13 +1520,6 @@ function ScenesView({ onSceneSelect }) {
           // Стандартный размер для корневых сцен
           const standardSize = [200, 150];
           
-          console.log('📍 Извлечение дочерней сцены. Устанавливаем позицию и размер:', {
-            sceneId: draggingSceneId,
-            extractedPos,
-            worldPos,
-            standardSize,
-            oldParent: draggedScene.parent_id
-          });
           
           // Обновляем localPositions, чтобы сцена оставалась на месте визуально
           setLocalPositions(prev => ({
@@ -1662,10 +1653,11 @@ function ScenesView({ onSceneSelect }) {
     }
     
     if (clickedEntity) {
-      // Клик по сущности - выделяем её
-      console.log('🎯 ScenesView: Clicked on entity:', clickedEntity.id, clickedEntity.name);
-      selectEntity(clickedEntity.id);
-      setSelectedSceneId(null); // Снимаем выделение со сцены
+      // Клик по сущности - выделяем её (только если не было перетаскивания)
+      if (!wasDraggingRef.current) {
+        selectEntity(clickedEntity.id);
+        setSelectedSceneId(null); // Снимаем выделение со сцены
+      }
       clickStartRef.current = null;
       wasDraggingRef.current = false;
       return;
