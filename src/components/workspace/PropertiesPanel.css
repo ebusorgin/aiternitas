@@ -8,8 +8,10 @@
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  z-index: 1000;
+  z-index: 9999;
   max-height: calc(100vh - 40px);
+  display: block !important;
+  visibility: visible !important;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(59, 130, 246, 0.3) transparent;
@@ -36,6 +38,9 @@
   padding: 18px 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(59, 130, 246, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .properties-panel-header h3 {
@@ -44,6 +49,30 @@
   font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.3px;
+  flex: 1;
+}
+
+.edit-entity-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 6px 10px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+}
+
+.edit-entity-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
 .properties-panel-content {

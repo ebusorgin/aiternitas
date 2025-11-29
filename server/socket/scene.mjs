@@ -64,7 +64,7 @@ export function setupSceneHandlers(io, sessionStore) {
                updated_at = CURRENT_TIMESTAMP`,
             [
               entity.id,
-              sceneId || null, // Если sceneId нет, сохраняем с NULL
+              entity.scene_id || sceneId || null, // Используем scene_id из entity, если есть, иначе переданный sceneId
               userId,
               entity.name || 'Untitled Entity',
               entity.description || '',
@@ -78,20 +78,10 @@ export function setupSceneHandlers(io, sessionStore) {
         }
         console.log(`✅ Сохранено ${state.entities.length} сущностей${sceneId ? ` для сцены ${sceneId}` : ' без сцены'}`);
 
-        // Удаляем сущности, которых нет в текущем состоянии
-        const entityIds = state.entities.map(e => e.id);
-        if (entityIds.length > 0) {
-          await pool.query(
-            `DELETE FROM entities WHERE scene_id = $1 AND id != ALL($2::text[])`,
-            [sceneId, entityIds]
-          );
-        } else {
-          // Если нет сущностей, удаляем все для этой сцены
-          await pool.query(
-            `DELETE FROM entities WHERE scene_id = $1`,
-            [sceneId]
-          );
-        }
+        // ВАЖНО: Не удаляем сущности автоматически при сохранении
+        // Удаление должно происходить только явно через entity:delete
+        // Это предотвращает случайное удаление сущностей при сохранении одной сцены
+        // Сущности могут принадлежать разным сценам или не иметь сцены вообще
 
         // Сохраняем связи
         console.log(`📊 Сохранение ${state.connections.length} связей...`);
@@ -420,7 +410,7 @@ export function setupSceneHandlers(io, sessionStore) {
             
             // Загружаем сущности из БД
             const entitiesResult = await pool.query(
-              `SELECT id, name, description, type, color, position, size, created_at, updated_at, created_by
+              `SELECT id, name, description, type, color, position, size, scene_id, created_at, updated_at, created_by
                FROM entities WHERE scene_id = $1 ORDER BY created_at`,
               [sceneId]
             );
@@ -441,6 +431,7 @@ export function setupSceneHandlers(io, sessionStore) {
               color: row.color,
               position: typeof row.position === 'string' ? JSON.parse(row.position) : row.position,
               size: typeof row.size === 'string' ? JSON.parse(row.size) : row.size,
+              scene_id: row.scene_id || null,
               createdAt: row.created_at?.getTime() || Date.now(),
               updatedAt: row.updated_at?.getTime() || Date.now(),
               createdBy: row.created_by
@@ -467,7 +458,7 @@ export function setupSceneHandlers(io, sessionStore) {
             console.log(`📥 Нет сохраненной сцены для пользователя ${socket.userId}, загружаем entities без сцены`);
             
             const entitiesResult = await pool.query(
-              `SELECT id, name, description, type, color, position, size, created_at, updated_at, created_by
+              `SELECT id, name, description, type, color, position, size, scene_id, created_at, updated_at, created_by
                FROM entities WHERE user_id = $1 AND scene_id IS NULL ORDER BY created_at`,
               [socket.userId]
             );
@@ -490,6 +481,7 @@ export function setupSceneHandlers(io, sessionStore) {
               color: row.color,
               position: typeof row.position === 'string' ? JSON.parse(row.position) : row.position,
               size: typeof row.size === 'string' ? JSON.parse(row.size) : row.size,
+              scene_id: row.scene_id || null,
               createdAt: row.created_at?.getTime() || Date.now(),
               updatedAt: row.updated_at?.getTime() || Date.now(),
               createdBy: row.created_by
@@ -591,36 +583,103 @@ export function setupSceneHandlers(io, sessionStore) {
     });
 
     // Обновление сущности (позиция, свойства)
-    socket.on('entity:update', (updateData) => {
+    socket.on('entity:update', async (updateData) => {
       if (!socket.userId) {
         socket.emit('error', { message: 'Требуется авторизация' });
         return;
       }
 
       const { id, ...updates } = updateData;
-      const entityIndex = sceneState.entities.findIndex(e => e.id === id);
-
-      if (entityIndex === -1) {
-        socket.emit('error', { message: 'Сущность не найдена' });
-        return;
+      
+      // Проверяем, есть ли сущность в sceneState.entities
+      let entity = sceneState.entities.find(e => e.id === id);
+      
+      // Если сущности нет в sceneState, загружаем её из БД
+      if (!entity) {
+        try {
+          const entityResult = await pool.query(
+            `SELECT id, name, description, type, color, position, size, scene_id, created_by
+             FROM entities 
+             WHERE id = $1 AND user_id = $2`,
+            [id, socket.userId]
+          );
+          
+          if (entityResult.rows.length === 0) {
+            socket.emit('error', { message: 'Сущность не найдена' });
+            return;
+          }
+          
+          const row = entityResult.rows[0];
+          entity = {
+            id: row.id,
+            name: row.name,
+            description: row.description || '',
+            type: row.type,
+            color: row.color,
+            position: typeof row.position === 'string' ? JSON.parse(row.position) : row.position,
+            size: typeof row.size === 'string' ? JSON.parse(row.size) : row.size,
+            scene_id: row.scene_id || null,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            createdBy: row.created_by
+          };
+        } catch (error) {
+          console.error(`❌ Ошибка загрузки сущности ${id} из БД:`, error);
+          socket.emit('error', { message: 'Ошибка загрузки сущности' });
+          return;
+        }
       }
-
+      
       // Обновляем сущность
-      sceneState.entities[entityIndex] = {
-        ...sceneState.entities[entityIndex],
+      const updatedEntity = {
+        ...entity,
         ...updates,
         updatedAt: Date.now(),
         updatedBy: socket.userId
       };
-
-      sceneState.lastUpdate = Date.now();
+      
+      // Обновляем в sceneState, если она там была
+      const entityIndex = sceneState.entities.findIndex(e => e.id === id);
+      if (entityIndex !== -1) {
+        sceneState.entities[entityIndex] = updatedEntity;
+        sceneState.lastUpdate = Date.now();
+      }
 
       // Синхронизация
-      io.emit('entity:updated', sceneState.entities[entityIndex]);
+      io.emit('entity:updated', updatedEntity);
       
-      // Автоматическое сохранение entities в БД
-      // Используем currentSceneId из состояния (может быть null для entities без сцены)
-      saveSceneToDatabase(socket.userId, sceneState, sceneState.currentSceneId);
+      // ВАЖНО: Сохраняем сущность напрямую в БД, а не через saveSceneToDatabase
+      // Это предотвращает удаление других сущностей
+      try {
+        await pool.query(
+          `INSERT INTO entities (id, scene_id, user_id, name, description, type, color, position, size, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (id) DO UPDATE SET
+             name = EXCLUDED.name,
+             description = EXCLUDED.description,
+             type = EXCLUDED.type,
+             color = EXCLUDED.color,
+             position = EXCLUDED.position,
+             size = EXCLUDED.size,
+             scene_id = EXCLUDED.scene_id,
+             updated_at = CURRENT_TIMESTAMP`,
+          [
+            updatedEntity.id,
+            updatedEntity.scene_id || null,
+            socket.userId,
+            updatedEntity.name || 'Untitled Entity',
+            updatedEntity.description || '',
+            updatedEntity.type || 'box',
+            updatedEntity.color || '#3b82f6',
+            JSON.stringify(updatedEntity.position || [0, 0, 0]),
+            JSON.stringify(updatedEntity.size || [1, 1, 1]),
+            updatedEntity.createdBy || socket.userId
+          ]
+        );
+        console.log(`💾 Сущность ${id} сохранена в БД`);
+      } catch (error) {
+        console.error(`❌ Ошибка сохранения сущности ${id}:`, error);
+      }
     });
 
     // Удаление сущности
@@ -878,7 +937,7 @@ export function setupSceneHandlers(io, sessionStore) {
         
         // Загружаем сущности из БД
         const entitiesResult = await pool.query(
-          `SELECT id, name, description, type, color, position, size, created_at, updated_at, created_by
+          `SELECT id, name, description, type, color, position, size, scene_id, created_at, updated_at, created_by
            FROM entities WHERE scene_id = $1 ORDER BY created_at`,
           [sceneId]
         );
@@ -899,6 +958,7 @@ export function setupSceneHandlers(io, sessionStore) {
           color: row.color,
           position: typeof row.position === 'string' ? JSON.parse(row.position) : row.position,
           size: typeof row.size === 'string' ? JSON.parse(row.size) : row.size,
+          scene_id: row.scene_id || null,
           createdAt: row.created_at?.getTime() || Date.now(),
           updatedAt: row.updated_at?.getTime() || Date.now(),
           createdBy: row.created_by
@@ -1349,6 +1409,70 @@ export function setupSceneHandlers(io, sessionStore) {
       }
     });
 
+    // Установка родительской сцены для сущности (scene_id)
+    socket.on('entity:set-scene', async (data) => {
+      if (!socket.userId) {
+        socket.emit('error', { message: 'Требуется авторизация' });
+        return;
+      }
+
+      try {
+        const { entityId, sceneId } = data;
+        
+        if (!entityId) {
+          socket.emit('error', { message: 'ID сущности обязателен' });
+          return;
+        }
+
+        // Проверяем права доступа к сущности
+        const entityCheck = await pool.query(
+          'SELECT id, user_id FROM entities WHERE id = $1 AND user_id = $2',
+          [entityId, socket.userId]
+        );
+
+        if (entityCheck.rows.length === 0) {
+          socket.emit('error', { message: 'Сущность не найдена или нет доступа' });
+          return;
+        }
+
+        // Если sceneId указан, проверяем права доступа к сцене
+        if (sceneId) {
+          const sceneCheck = await pool.query(
+            'SELECT id FROM scenes WHERE id = $1 AND user_id = $2',
+            [sceneId, socket.userId]
+          );
+
+          if (sceneCheck.rows.length === 0) {
+            socket.emit('error', { message: 'Сцена не найдена или нет доступа' });
+            return;
+          }
+        }
+
+        // Обновляем scene_id у сущности
+        await pool.query(
+          `UPDATE entities SET scene_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+          [sceneId || null, entityId]
+        );
+
+        // Обновляем в локальном состоянии, если сущность есть
+        const entityIndex = sceneState.entities.findIndex(e => e.id === entityId);
+        if (entityIndex !== -1) {
+          sceneState.entities[entityIndex].scene_id = sceneId || null;
+        }
+
+        // Синхронизируем со всеми клиентами
+        io.emit('entity:scene-updated', {
+          entityId,
+          sceneId: sceneId || null
+        });
+
+        console.log(`🔗 Сущность ${entityId} теперь в сцене: ${sceneId || 'null'}`);
+      } catch (error) {
+        console.error('Ошибка установки сцены для сущности:', error);
+        socket.emit('error', { message: 'Ошибка установки сцены для сущности' });
+      }
+    });
+
     // Создание связи между сценами
     socket.on('scene-connection:create', async (data) => {
       if (!socket.userId) {
@@ -1508,9 +1632,56 @@ export function setupSceneHandlers(io, sessionStore) {
           createdAt: row.created_at?.getTime() || Date.now()
         }));
 
+        // Загружаем все сущности пользователя (для отображения в ScenesView)
+        const allEntitiesResult = await pool.query(
+          `SELECT id, name, description, type, color, position, size, scene_id, created_at, updated_at, created_by
+           FROM entities 
+           WHERE user_id = $1 
+           ORDER BY created_at`,
+          [socket.userId]
+        );
+
+        const allEntities = allEntitiesResult.rows.map(row => ({
+          id: row.id,
+          name: row.name,
+          description: row.description || '',
+          type: row.type,
+          color: row.color,
+          position: typeof row.position === 'string' ? JSON.parse(row.position) : row.position,
+          size: typeof row.size === 'string' ? JSON.parse(row.size) : row.size,
+          scene_id: row.scene_id || null,
+          createdAt: row.created_at?.getTime() || Date.now(),
+          updatedAt: row.updated_at?.getTime() || Date.now(),
+          createdBy: row.created_by
+        }));
+
+        // Загружаем все связи между сущностями
+        const allConnectionsResult = await pool.query(
+          `SELECT id, from_entity_id, to_entity_id, type, bidirectional, label, color, created_at, updated_at, created_by
+           FROM connections 
+           WHERE user_id = $1 
+           ORDER BY created_at`,
+          [socket.userId]
+        );
+
+        const allConnections = allConnectionsResult.rows.map(row => ({
+          id: row.id,
+          from: row.from_entity_id,
+          to: row.to_entity_id,
+          type: row.type,
+          bidirectional: row.bidirectional,
+          label: row.label || '',
+          color: row.color,
+          createdAt: row.created_at?.getTime() || Date.now(),
+          updatedAt: row.updated_at?.getTime() || Date.now(),
+          createdBy: row.created_by
+        }));
+
         socket.emit('scene:list-with-connections', {
           scenes,
-          connections
+          connections,
+          entities: allEntities,
+          entityConnections: allConnections
         });
       } catch (error) {
         console.error('Ошибка получения списка сцен с связями:', error);

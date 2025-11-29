@@ -16,15 +16,20 @@ function PropertiesPanel() {
     ? entities.find((e) => e.id === selectedEntityId)
     : null;
   
-  // Логирование для отладки
-  useEffect(() => {
-    if (selectedEntity) {
-      console.log('🔍 Selected entity updated:', { id: selectedEntity.id, type: selectedEntity.type, name: selectedEntity.name });
-    }
-  }, [selectedEntity]);
   const selectedConnection = selectedConnectionId
     ? connections.find((c) => c.id === selectedConnectionId)
     : null;
+
+  // Отладка
+  useEffect(() => {
+    console.log('🔍 PropertiesPanel render:', {
+      selectedEntityId,
+      selectedConnectionId,
+      entitiesCount: entities.length,
+      selectedEntity: selectedEntity ? { id: selectedEntity.id, name: selectedEntity.name } : null,
+      selectedConnection: selectedConnection ? { id: selectedConnection.id } : null
+    });
+  }, [selectedEntityId, selectedConnectionId, entities.length, selectedEntity, selectedConnection]);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -34,7 +39,20 @@ function PropertiesPanel() {
 
   // Обновляем форму при изменении выбранного объекта
   useEffect(() => {
+    console.log('📝 PropertiesPanel useEffect triggered:', {
+      selectedEntityId,
+      selectedEntity: selectedEntity ? { id: selectedEntity.id, name: selectedEntity.name } : null,
+      selectedConnectionId,
+      selectedConnection: selectedConnection ? { id: selectedConnection.id } : null
+    });
+    
     if (selectedEntity) {
+      console.log('✅ Updating form from selectedEntity:', {
+        name: selectedEntity.name,
+        description: selectedEntity.description,
+        color: selectedEntity.color,
+        type: selectedEntity.type
+      });
       setName(selectedEntity.name || '');
       setDescription(selectedEntity.description || '');
       setColor(selectedEntity.color || '#3b82f6');
@@ -50,51 +68,71 @@ function PropertiesPanel() {
       setColor('#3b82f6');
       setType('box');
     }
-  }, [selectedEntity, selectedConnection]);
+  }, [selectedEntity, selectedConnection, selectedEntityId, selectedConnectionId]);
 
   const handleSave = () => {
     if (selectedEntity && selectedEntityId) {
-      console.log('💾 PropertiesPanel handleSave:', { selectedEntityId, name, description, color, type });
+      const newName = name.trim();
+      const newDescription = description.trim();
+      
+      // Если ничего не изменилось, не отправляем запрос
+      if (newName === (selectedEntity.name || '') && 
+          newDescription === (selectedEntity.description || '') &&
+          color === (selectedEntity.color || '#3b82f6') &&
+          type === (selectedEntity.type || 'box')) {
+        return;
+      }
+      
       updateEntity(selectedEntityId, {
-        name,
-        description,
+        name: newName,
+        description: newDescription,
         color,
         type
       });
     } else if (selectedConnection && selectedConnectionId) {
+      const newLabel = name.trim();
+      
+      // Если ничего не изменилось, не отправляем запрос
+      if (newLabel === (selectedConnection.label || '') &&
+          color === (selectedConnection.color || '#ffffff')) {
+        return;
+      }
+      
       updateConnection(selectedConnectionId, {
-        label: name,
+        label: newLabel,
         color
       });
     }
   };
 
-  // Не показываем панель, если ничего не выбрано
-  if (!selectedEntity && !selectedConnection) {
-    return null;
-  }
-
+  // Панель должна всегда быть видна, как в SceneProperties
   return (
     <div className="properties-panel">
       <div className="properties-panel-header">
         <h3>
-          {selectedEntity ? 'Entity Properties' : 'Connection Properties'}
+          {selectedEntity ? 'Сущность Properties' : selectedConnection ? 'Connection Properties' : 'Properties'}
         </h3>
       </div>
       <div className="properties-panel-content">
-        <div className="property-group">
-          <label htmlFor="prop-name">
-            {selectedEntity ? 'Name' : 'Label'}
-          </label>
-          <input
-            id="prop-name"
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={handleSave}
-            placeholder={selectedEntity ? 'Entity name' : 'Connection label'}
-          />
-        </div>
+        {!selectedEntity && !selectedConnection ? (
+          <div className="properties-empty">
+            Выберите сущность или соединение для просмотра свойств
+          </div>
+        ) : (
+          <>
+            <div className="property-group">
+              <label htmlFor="prop-name">
+                {selectedEntity ? 'Name' : 'Label'}
+              </label>
+              <input
+                id="prop-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onBlur={handleSave}
+                placeholder={selectedEntity ? 'Entity name' : 'Connection label'}
+              />
+            </div>
 
         {selectedEntity && (
           <>
@@ -180,6 +218,8 @@ function PropertiesPanel() {
               <span>Z: {selectedEntity.position[2].toFixed(2)}</span>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

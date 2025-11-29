@@ -57,6 +57,10 @@ function ScenesView({ onSceneSelect }) {
   const entities = useSceneStore((state) => state.entities);
   const connections = useSceneStore((state) => state.connections);
   const getEntityPosition2D = useSceneStore((state) => state.getEntityPosition2D);
+  const updateEntityPosition2D = useSceneStore((state) => state.updateEntityPosition2D);
+  const updateEntity = useSceneStore((state) => state.updateEntity);
+  const selectEntity = useSceneStore((state) => state.selectEntity);
+  const setEntityScene = useSceneStore((state) => state.setEntityScene);
 
   // Загружаем все сцены с позициями при монтировании
   useEffect(() => {
@@ -143,10 +147,50 @@ function ScenesView({ onSceneSelect }) {
       // Даем небольшую задержку для загрузки данных
       const timer = setTimeout(() => {
         setLoading(false);
+        
+        // Центрируем камеру на сценах и сущностях после загрузки
+        if (allScenes.length > 0 || (entities && entities.length > 0)) {
+          // Вычисляем центр всех сцен и сущностей
+          let minX = Infinity, maxX = -Infinity;
+          let minZ = Infinity, maxZ = -Infinity;
+          
+          // Добавляем позиции сцен
+          allScenes.forEach(scene => {
+            if (!scene.parent_id) { // Только корневые сцены
+              const [x, z] = getSceneAbsolutePosition(scene);
+              const [width, height] = getSceneSize(scene);
+              minX = Math.min(minX, x - width / 2);
+              maxX = Math.max(maxX, x + width / 2);
+              minZ = Math.min(minZ, z - height / 2);
+              maxZ = Math.max(maxZ, z + height / 2);
+            }
+          });
+          
+          // Добавляем позиции сущностей
+          if (entities && entities.length > 0) {
+            entities.forEach(entity => {
+              const position2D = getEntityPosition2D(entity);
+              minX = Math.min(minX, position2D[0] - 60);
+              maxX = Math.max(maxX, position2D[0] + 60);
+              minZ = Math.min(minZ, position2D[1] - 40);
+              maxZ = Math.max(maxZ, position2D[1] + 40);
+            });
+          }
+          
+          // Если есть что центрировать
+          if (minX !== Infinity && maxX !== -Infinity) {
+            const centerX = (minX + maxX) / 2;
+            const centerZ = (minZ + maxZ) / 2;
+            
+            // Устанавливаем pan так, чтобы центр был в центре экрана
+            setPan({ x: -centerX, y: -centerZ });
+          }
+        }
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [socket, socketConnected, allScenes.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, socketConnected, allScenes.length, entities?.length]);
 
   // Получаем корневые сцены (без родителя)
   const rootScenes = useMemo(() => {
@@ -290,7 +334,7 @@ function ScenesView({ onSceneSelect }) {
 
   // Преобразование мировых координат в экранные
   // Адаптировано для работы с entities (как в Canvas2D)
-  const worldToScreen = (x, z) => {
+  const worldToScreen = useCallback((x, z) => {
     const { width, height } = getCanvasSize();
     const centerX = width / 2;
     const centerY = height / 2;
@@ -298,15 +342,18 @@ function ScenesView({ onSceneSelect }) {
       x: centerX + (x + pan.x) * zoom,
       y: centerY - (z + pan.y) * zoom // Используем Z как вертикаль в 2D
     };
-  };
+  }, [pan, zoom]);
 
   // Преобразование экранных координат в мировые
-  const screenToWorld = (x, y) => {
+  const screenToWorld = useCallback((screenX, screenY) => {
+    const { width, height } = getCanvasSize();
+    const centerX = width / 2;
+    const centerY = height / 2;
     return {
-      x: (x - pan.x) / zoom,
-      z: (y - pan.y) / zoom
+      x: (screenX - centerX) / zoom - pan.x,
+      z: (centerY - screenY) / zoom - pan.y // Z используется как вертикаль в 2D
     };
-  };
+  }, [pan, zoom]);
 
   // Получение центра видимой области канваса в мировых координатах
   const getCanvasCenter = () => {
@@ -321,6 +368,22 @@ function ScenesView({ onSceneSelect }) {
     const dx = Math.abs(screenX - screenPos.x);
     const dy = Math.abs(screenY - screenPos.y);
     return dx <= sceneWidth / 2 && dy <= sceneHeight / 2;
+  };
+
+  // Получение размера блока для сущности
+  const getBlockSize = () => {
+    return {
+      width: 120 * zoom,
+      height: 80 * zoom
+    };
+  };
+
+  // Проверка, находится ли точка внутри блока сущности
+  const isPointInBlock = (pointX, pointY, blockX, blockY) => {
+    const { width, height } = getBlockSize();
+    const dx = Math.abs(pointX - blockX);
+    const dy = Math.abs(pointY - blockY);
+    return dx <= width / 2 && dy <= height / 2;
   };
 
   // Получение размера канваса
@@ -703,11 +766,21 @@ function ScenesView({ onSceneSelect }) {
       
       // Рисуем entities (сущности)
       if (entities && entities.length > 0) {
-        entities.forEach(entity => {
-          // Пропускаем перетаскиваемую сущность в основном цикле
-          if (draggingEntityId === entity.id) {
-            return;
-          }
+        // Разделяем сущности на те, что внутри сцен, и те, что вне сцен
+        const entitiesInScenes = entities.filter(e => e.scene_id);
+        const entitiesOutsideScenes = entities.filter(e => !e.scene_id);
+        
+        // Рисуем сущности внутри сцен
+        // Для сущностей внутри сцен отображаем их в абсолютных координатах
+        // (они могут быть где угодно на карте, не обязательно строго внутри прямоугольника сцены)
+        entitiesInScenes.forEach(entity => {
+          if (draggingEntityId === entity.id) return; // Пропускаем перетаскиваемую
+          drawEntity(ctx, entity);
+        });
+        
+        // Рисуем сущности вне сцен
+        entitiesOutsideScenes.forEach(entity => {
+          if (draggingEntityId === entity.id) return; // Пропускаем перетаскиваемую
           drawEntity(ctx, entity);
         });
         
@@ -789,56 +862,102 @@ function ScenesView({ onSceneSelect }) {
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationFrameId);
     };
-    
-    // Добавляем обработчик wheel с passive: false для preventDefault
+  }, [allScenes, sceneConnections, pan, zoom, selectedSceneId, hoveredSceneId, draggingSceneId, localPositions, localSizes, rootScenes, getSceneAbsolutePosition, getSceneAbsolutePositionWithLayout, worldToScreen, screenToWorld, getSceneSize, calculateChildrenLayout, connectMode, connectingFrom, entities, connections, selectedEntityId, hoveredEntityId, draggingEntityId, localPositions2D, animationTime, getEntityPosition2D, getCanvasSize]);
+
+  // Обработчик wheel для зума (отдельный useEffect)
+  useEffect(() => {
     const canvasElement = canvasRef.current;
-    let handleWheelEvent = null;
+    if (!canvasElement || viewMode !== '2d') return;
     
-    if (canvasElement) {
-      handleWheelEvent = (e) => {
-        e.preventDefault();
-        
-        const rect = canvasElement.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-        
-        // Преобразуем позицию курсора в мировые координаты (до изменения zoom)
-        const worldPos = screenToWorld(mouseX, mouseY);
-        
-        // Вычисляем новый zoom
-        const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        const newZoom = Math.max(0.3, Math.min(3, zoom * delta));
-        
-        // Вычисляем новую позицию pan так, чтобы точка под курсором осталась на месте
-        const newPan = {
-          x: mouseX - worldPos.x * newZoom,
-          y: mouseY - worldPos.z * newZoom
-        };
-        
-        setZoom(newZoom);
-        setPan(newPan);
+    const handleWheelEvent = (e) => {
+      e.preventDefault();
+      
+      const rect = canvasElement.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      // Преобразуем позицию курсора в мировые координаты (до изменения zoom)
+      const worldPos = screenToWorld(mouseX, mouseY);
+      
+      // Вычисляем новый zoom
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.max(0.1, Math.min(3, zoom * delta));
+      
+      // Вычисляем новую позицию pan так, чтобы точка под курсором осталась на месте
+      const { width, height } = getCanvasSize();
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const newPan = {
+        x: (mouseX - centerX) / newZoom - worldPos.x,
+        y: (centerY - mouseY) / newZoom - worldPos.z
       };
       
-      canvasElement.addEventListener('wheel', handleWheelEvent, { passive: false });
-    }
+      setZoom(newZoom);
+      setPan(newPan);
+    };
+    
+    canvasElement.addEventListener('wheel', handleWheelEvent, { passive: false });
     
     return () => {
-      window.removeEventListener('resize', handleResize);
-      if (canvasElement && handleWheelEvent) {
-        canvasElement.removeEventListener('wheel', handleWheelEvent);
-      }
+      canvasElement.removeEventListener('wheel', handleWheelEvent);
     };
-  }, [allScenes, sceneConnections, pan, zoom, selectedSceneId, hoveredSceneId, draggingSceneId, localPositions, localSizes, rootScenes, getSceneAbsolutePosition, getSceneAbsolutePositionWithLayout, worldToScreen, screenToWorld, getSceneSize, calculateChildrenLayout, connectMode, connectingFrom, entities, connections, selectedEntityId, hoveredEntityId, draggingEntityId, localPositions2D, animationTime, getEntityPosition2D]);
+  }, [viewMode, zoom, pan, screenToWorld, getCanvasSize, setZoom, setPan]);
 
   // Обработчики мыши
   const handleMouseDown = useCallback((e) => {
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    const worldPos = screenToWorld(x, y);
     
     // Сохраняем начальную позицию для определения клика vs перетаскивания
     clickStartRef.current = { x, y };
     wasDraggingRef.current = false;
+    
+    // Сначала проверяем клик по entity (сущности имеют приоритет над сценами)
+    let clickedEntity = null;
+    if (entities && entities.length > 0 && !connectMode) {
+      for (let i = entities.length - 1; i >= 0; i--) {
+        const entity = entities[i];
+        // Пропускаем перетаскиваемую сущность
+        if (draggingEntityId === entity.id) {
+          continue;
+        }
+        const position2D = getEntityPosition2D(entity);
+        const { x: sx, y: sy } = worldToScreen(position2D[0], position2D[1]);
+        
+        if (isPointInBlock(x, y, sx, sy)) {
+          clickedEntity = entity;
+          break;
+        }
+      }
+    }
+    
+    if (clickedEntity) {
+      setDraggingEntityId(clickedEntity.id);
+      setSelectedEntityId(clickedEntity.id);
+      setIsDragging(true);
+      
+      // Сохраняем смещение для плавного перетаскивания
+      const position2D = getEntityPosition2D(clickedEntity);
+      const dragOffset = { 
+        x: worldPos.x - position2D[0], 
+        z: worldPos.z - position2D[1] 
+      };
+      setDragStart(dragOffset);
+      
+      // Устанавливаем локальную позицию
+      setLocalPositions2D(prev => ({
+        ...prev,
+        [clickedEntity.id]: [...position2D]
+      }));
+      
+      // Очищаем hover эффект для перетаскиваемой сущности
+      if (hoveredEntityId === clickedEntity.id) {
+        setHoveredEntityId(null);
+      }
+      return; // Не проверяем клик по сцене, если кликнули по entity
+    }
     
       // Проверяем клик по сцене (сначала дочерние, потом родительские)
       let clickedScene = null;
@@ -951,16 +1070,18 @@ function ScenesView({ onSceneSelect }) {
         }
       }
     } else {
+      // Панорамирование - начинаем перетаскивание камеры
       setIsDragging(true);
       setDragStart({ x, y });
       setSelectedSceneId(null);
     }
-  }, [allScenes, zoom, connectMode, connectingFrom, sceneConnections, getSceneAbsolutePosition, calculateChildrenLayout, getSceneSize, isPointInScene, screenToWorld, createSceneConnection, setSelectedSceneId, setDraggingSceneId, setIsDragging, setDragStart, setLocalPositions, setLocalSizes, setConnectingFrom, setConnectMode]);
+  }, [allScenes, zoom, connectMode, connectingFrom, sceneConnections, getSceneAbsolutePosition, calculateChildrenLayout, getSceneSize, isPointInScene, screenToWorld, createSceneConnection, setSelectedSceneId, setDraggingSceneId, setIsDragging, setDragStart, setLocalPositions, setLocalSizes, setConnectingFrom, setConnectMode, entities, draggingEntityId, getEntityPosition2D, isPointInBlock, setDraggingEntityId, setSelectedEntityId, hoveredEntityId, setHoveredEntityId, setLocalPositions2D]);
 
   const handleMouseMove = useCallback((e) => {
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    const worldPos = screenToWorld(x, y);
     
     // Проверяем, было ли перетаскивание (движение мыши более 5 пикселей)
     if (clickStartRef.current) {
@@ -970,6 +1091,26 @@ function ScenesView({ onSceneSelect }) {
       if (moveDistance > 5) {
         wasDraggingRef.current = true;
       }
+    }
+    
+    // Обработка перетаскивания entity
+    if (isDragging && draggingEntityId) {
+      const entity = entities.find(e => e.id === draggingEntityId);
+      if (entity && dragStart) {
+        // Вычисляем новую позицию на основе текущей позиции мыши
+        const newPosition2D = [
+          worldPos.x - dragStart.x,
+          worldPos.z - dragStart.z
+        ];
+        
+        // Обновляем локальное состояние для мгновенной перерисовки
+        setLocalPositions2D(prev => {
+          const updated = { ...prev };
+          updated[entity.id] = [...newPosition2D];
+          return updated;
+        });
+      }
+      return; // Не обрабатываем перетаскивание сцены, если перетаскиваем entity
     }
     
     if (isDragging && draggingSceneId) {
@@ -1027,13 +1168,12 @@ function ScenesView({ onSceneSelect }) {
         }
       }
     } else if (isDragging && !draggingSceneId) {
-      // Панорамирование
-      // pan хранится в экранных координатах (пикселях), поэтому просто добавляем разницу
+      // Панорамирование - используем разницу в экранных координатах
       const deltaX = x - dragStart.x;
       const deltaY = y - dragStart.y;
       setPan(prev => ({
         x: prev.x + deltaX,
-        y: prev.y + deltaY
+        y: prev.y - deltaY // Инвертируем Y для правильного направления
       }));
       setDragStart({ x, y });
       } else {
@@ -1083,15 +1223,136 @@ function ScenesView({ onSceneSelect }) {
         }
         
         setHoveredSceneId(hovered);
+      }
+    
+    // Проверка наведения на entities (только если не перетаскиваем)
+    if (!isDragging && !draggingEntityId && entities && entities.length > 0) {
+      let newHoveredEntityId = null;
+      
+      // Проверяем наведение на блоки сущностей
+      for (let i = entities.length - 1; i >= 0; i--) {
+        const entity = entities[i];
         
-        // Обновляем cursor
-        if (canvasRef.current) {
-          canvasRef.current.style.cursor = isDragging ? 'grabbing' : 'grab';
+        // Пропускаем перетаскиваемую сущность
+        if (draggingEntityId === entity.id) {
+          continue;
+        }
+        
+        const position2D = getEntityPosition2D(entity);
+        const { x: sx, y: sy } = worldToScreen(position2D[0], position2D[1]);
+        
+        if (isPointInBlock(x, y, sx, sy)) {
+          newHoveredEntityId = entity.id;
+          break;
         }
       }
-    }, [isDragging, draggingSceneId, allScenes, zoom, pan, getSceneAbsolutePosition, getSceneSize, screenToWorld, setLocalPositions, setHoveredSceneId, setIsDragging, setPan, setDragStart, clickStartRef, wasDraggingRef]);
+      
+      setHoveredEntityId(newHoveredEntityId);
+    }
+    
+    // Обновляем cursor
+    if (canvasRef.current) {
+      if (isDragging) {
+        canvasRef.current.style.cursor = draggingEntityId ? 'grabbing' : 'grabbing';
+      } else {
+        let cursorStyle = 'default';
+        if (hoveredEntityId) {
+          cursorStyle = 'grab';
+        } else if (hoveredSceneId) {
+          cursorStyle = 'grab';
+        }
+        canvasRef.current.style.cursor = cursorStyle;
+      }
+    }
+  }, [isDragging, draggingSceneId, draggingEntityId, allScenes, entities, zoom, pan, getSceneAbsolutePosition, getSceneSize, screenToWorld, setLocalPositions, setHoveredSceneId, setIsDragging, setPan, setDragStart, clickStartRef, wasDraggingRef, dragStart, setLocalPositions2D, hoveredEntityId, getEntityPosition2D, isPointInBlock, setHoveredEntityId]);
 
   const handleMouseUp = useCallback((e) => {
+    // Обработка завершения перетаскивания entity
+    if (draggingEntityId) {
+      const entity = entities.find(e => e.id === draggingEntityId);
+      if (entity) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const worldPos = screenToWorld(x, y);
+        
+        // Если было перетаскивание - обновляем позицию
+        if (localPositions2D[entity.id]) {
+          const finalPosition = localPositions2D[entity.id];
+          
+          // Обновляем 2D позицию (для отображения)
+          updateEntityPosition2D(entity.id, finalPosition);
+          
+          // ВАЖНО: Также обновляем 3D позицию и отправляем на сервер
+          // Y остается 1 (высота), X и Z берутся из 2D позиции
+          const newPosition3D = [finalPosition[0], entity.position?.[1] || 1, finalPosition[1]];
+          updateEntity(entity.id, { position: newPosition3D });
+          
+          // Проверяем, над какой сценой отпустили сущность
+          let targetSceneId = null;
+          let isExtracting = false;
+          
+          // Если сущность уже находится в сцене, проверяем, вышла ли она за пределы
+          if (entity.scene_id) {
+            const parentScene = allScenes.find(s => s.id === entity.scene_id);
+            if (parentScene) {
+              const [parentX, parentZ] = getSceneAbsolutePosition(parentScene);
+              const [parentWorldWidth, parentWorldHeight] = getSceneSize(parentScene);
+              
+              const dx = Math.abs(finalPosition[0] - parentX);
+              const dz = Math.abs(finalPosition[1] - parentZ);
+              
+              // Размер блока сущности
+              const blockSize = 60; // Половина размера блока (120/2)
+              
+              // Если сущность вышла за пределы родителя, извлекаем
+              if (dx + blockSize > parentWorldWidth / 2 || dz + blockSize > parentWorldHeight / 2) {
+                isExtracting = true;
+                targetSceneId = null;
+              } else {
+                // Остаемся внутри родителя
+                targetSceneId = entity.scene_id;
+              }
+            }
+          }
+          
+          // Если не извлекаем, проверяем, над какой сценой отпустили
+          if (!isExtracting) {
+            for (const scene of allScenes) {
+              if (scene.id === entity.scene_id) continue; // Пропускаем текущего родителя
+              
+              const [sceneX, sceneZ] = getSceneAbsolutePosition(scene);
+              const [sceneWorldWidth, sceneWorldHeight] = getSceneSize(scene);
+              
+              const dx = Math.abs(worldPos.x - sceneX);
+              const dz = Math.abs(worldPos.z - sceneZ);
+              
+              if (dx <= sceneWorldWidth / 2 && dz <= sceneWorldHeight / 2) {
+                targetSceneId = scene.id;
+                break;
+              }
+            }
+          }
+          
+          // Устанавливаем новую сцену, если изменилась
+          if (targetSceneId !== (entity.scene_id || null)) {
+            setEntityScene(entity.id, targetSceneId);
+          }
+          
+          // Очищаем локальную позицию
+          setLocalPositions2D(prev => {
+            const newPositions = { ...prev };
+            delete newPositions[draggingEntityId];
+            return newPositions;
+          });
+        }
+      }
+      
+      setIsDragging(false);
+      setDraggingEntityId(null);
+      return; // Не обрабатываем перетаскивание сцены, если перетаскивали entity
+    }
+    
     if (draggingSceneId) {
       dragStartScenePosRef.current = null;
       dragStartMousePosRef.current = null;
@@ -1360,7 +1621,7 @@ function ScenesView({ onSceneSelect }) {
       clickStartRef.current = null;
       wasDraggingRef.current = false;
     }
-  }, [draggingSceneId, allScenes, localPositions, updateScenePosition, setSceneParent, updateSceneSize, calculateChildrenLayout, getSceneAbsolutePosition, screenToWorld, setLocalPositions, setLocalSizes, setIsDragging, setDraggingSceneId, setHoveredSceneId, wasDraggingRef, clickStartRef]);
+  }, [draggingSceneId, draggingEntityId, allScenes, entities, localPositions, localPositions2D, updateScenePosition, updateEntityPosition2D, setSceneParent, setEntityScene, updateSceneSize, calculateChildrenLayout, getSceneAbsolutePosition, getSceneSize, screenToWorld, setLocalPositions, setLocalPositions2D, setLocalSizes, setIsDragging, setDraggingSceneId, setDraggingEntityId, setHoveredSceneId, wasDraggingRef, clickStartRef]);
 
   const handleClick = useCallback((e) => {
     // Если было перетаскивание, не обрабатываем клик

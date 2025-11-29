@@ -76,23 +76,61 @@ export const useSceneStore = create((set, get) => {
     socket.on('scene:state', (state) => {
       console.log('📥 Получено состояние сцены:', state);
       const currentState = get();
-      const updates = {
-        entities: state.entities || [],
-        connections: state.connections || [],
-        entityPositions2D: {} // Сбрасываем 2D позиции при загрузке новой сцены
-      };
       
-      // Если в состоянии есть sceneId, устанавливаем его как текущую сцену
-      if (state.sceneId) {
-        updates.currentSceneId = state.sceneId;
-        console.log('✅ Установлена текущая сцена:', state.sceneId, 'entities:', state.entities?.length || 0);
-      } else {
-        // Если sceneId нет, но есть entities, это означает, что мы в дефолтной сцене
-        // Оставляем currentSceneId как null, чтобы показывать корневые сцены
-        console.log('📋 Нет sceneId, показываем корневые сцены, entities:', state.entities?.length || 0);
+      // Инициализируем 2D позиции для всех сущностей из 3D координат
+      const newPositions2D = { ...currentState.entityPositions2D };
+      if (state.entities && state.entities.length > 0) {
+        state.entities.forEach(entity => {
+          if (!newPositions2D[entity.id] && entity.position) {
+            // Создаем 2D позицию из 3D (используем X и Z)
+            newPositions2D[entity.id] = [entity.position[0], entity.position[2] || 0];
+          }
+        });
       }
       
-      set(updates);
+      // Если мы в режиме просмотра всех сцен (currentSceneId === null), не перезаписываем entities
+      // Они будут загружены через loadAllScenes
+      if (currentState.currentSceneId === null && state.sceneId) {
+        // Мы переключаемся в конкретную сцену - обновляем entities
+        const updates = {
+          entities: state.entities || [],
+          connections: state.connections || [],
+          entityPositions2D: newPositions2D,
+          currentSceneId: state.sceneId
+        };
+        console.log('✅ Установлена текущая сцена:', state.sceneId, 'entities:', state.entities?.length || 0);
+        set(updates);
+      } else if (currentState.currentSceneId === null) {
+        // Мы в режиме просмотра всех сцен и получили entities без сцены - обновляем только если нет entities
+        if (currentState.entities.length === 0) {
+          const updates = {
+            entities: state.entities || [],
+            connections: state.connections || [],
+            entityPositions2D: newPositions2D
+          };
+          console.log('📋 Нет sceneId, показываем корневые сцены, entities:', state.entities?.length || 0);
+          set(updates);
+        }
+      } else {
+        // Мы в конкретной сцене - обновляем entities
+        const updates = {
+          entities: state.entities || [],
+          connections: state.connections || [],
+          entityPositions2D: newPositions2D
+        };
+        
+        // Если в состоянии есть sceneId, устанавливаем его как текущую сцену
+        if (state.sceneId) {
+          updates.currentSceneId = state.sceneId;
+          console.log('✅ Установлена текущая сцена:', state.sceneId, 'entities:', state.entities?.length || 0);
+        } else {
+          // Если sceneId нет, но есть entities, это означает, что мы в дефолтной сцене
+          // Оставляем currentSceneId как null, чтобы показывать корневые сцены
+          console.log('📋 Нет sceneId, показываем корневые сцены, entities:', state.entities?.length || 0);
+        }
+        
+        set(updates);
+      }
     });
 
     socket.on('scene:loaded', (scene) => {
@@ -228,6 +266,15 @@ export const useSceneStore = create((set, get) => {
         console.log('🔄 Store updated entity:', { id: changedEntity?.id, type: changedEntity?.type });
         return { entities: updatedEntities };
       });
+    });
+
+    socket.on('entity:scene-updated', ({ entityId, sceneId }) => {
+      console.log('📥 Получено entity:scene-updated:', { entityId, sceneId });
+      set((state) => ({
+        entities: state.entities.map(e =>
+          e.id === entityId ? { ...e, scene_id: sceneId } : e
+        )
+      }));
     });
 
     socket.on('entity:deleted', ({ id }) => {
@@ -417,6 +464,28 @@ export const useSceneStore = create((set, get) => {
       }));
     },
 
+    // Установка родительской сцены для сущности (scene_id)
+    setEntityScene: (entityId, sceneId) => {
+      const state = get();
+      if (!state.socket || !state.socket.connected) {
+        console.error('Socket не подключен');
+        return;
+      }
+
+      // Обновляем локально
+      set({
+        entities: state.entities.map(e =>
+          e.id === entityId ? { ...e, scene_id: sceneId || null } : e
+        )
+      });
+
+      // Отправляем на сервер
+      state.socket.emit('entity:set-scene', {
+        entityId,
+        sceneId: sceneId || null
+      });
+    },
+
     // Управление связями
     createConnection: (connectionData) => {
       if (!socket || !socket.connected) {
@@ -477,7 +546,9 @@ export const useSceneStore = create((set, get) => {
 
     // Выделение
     selectEntity: (id) => {
+      console.log('🎯 selectEntity called:', id);
       set({ selectedEntityId: id, selectedConnectionId: null });
+      console.log('✅ selectedEntityId set to:', id);
     },
 
     selectConnection: (id) => {
@@ -512,14 +583,23 @@ export const useSceneStore = create((set, get) => {
       set({ orbitControls: controls });
     },
 
-    // Обновление 2D позиции (не влияет на 3D)
+    // Обновление 2D позиции (также обновляет 3D позицию для сохранения)
     updateEntityPosition2D: (id, position2D) => {
+      const currentState = get();
+      const entity = currentState.entities.find(e => e.id === id);
+      
       set((state) => ({
         entityPositions2D: {
           ...state.entityPositions2D,
           [id]: position2D // [x, z] для 2D
         }
       }));
+      
+      // Также обновляем 3D позицию, чтобы она сохранялась
+      if (entity) {
+        const newPosition3D = [position2D[0], entity.position?.[1] || 1, position2D[1]];
+        get().updateEntityPosition3D(id, newPosition3D);
+      }
     },
 
     // Обновление 3D позиции (не влияет на 2D)
@@ -645,10 +725,13 @@ export const useSceneStore = create((set, get) => {
         return;
       }
 
+      // Устанавливаем currentSceneId в null, чтобы показывать все сущности
+      set({ currentSceneId: null });
+
       state.socket.emit('scene:list-with-connections');
 
       const handleList = (data) => {
-        const { scenes, connections } = data;
+        const { scenes, connections, entities, entityConnections } = data;
         const positions2D = {};
         
         scenes.forEach(scene => {
@@ -659,12 +742,34 @@ export const useSceneStore = create((set, get) => {
 
         // Убеждаемся, что connections - это массив
         const normalizedConnections = Array.isArray(connections) ? connections : [];
+        const normalizedEntities = Array.isArray(entities) ? entities : [];
+        const normalizedEntityConnections = Array.isArray(entityConnections) ? entityConnections : [];
 
-        set({
+        const currentState = get();
+        const updates = {
           allScenes: scenes,
           sceneConnections: normalizedConnections,
           scenePositions2D: positions2D
+        };
+
+        // loadAllScenes всегда загружает ВСЕ сущности пользователя для режима "Мои сцены"
+        // Обновляем сущности независимо от currentSceneId
+        updates.entities = normalizedEntities;
+        updates.connections = normalizedEntityConnections;
+        
+        // Инициализируем 2D позиции для всех сущностей из 3D координат
+        const newPositions2D = { ...currentState.entityPositions2D };
+        normalizedEntities.forEach(entity => {
+          if (entity.position && (!newPositions2D[entity.id] || 
+              (entity.position[0] !== newPositions2D[entity.id][0] || 
+               (entity.position[2] || 0) !== newPositions2D[entity.id][1]))) {
+            // Создаем или обновляем 2D позицию из 3D (используем X и Z)
+            newPositions2D[entity.id] = [entity.position[0], entity.position[2] || 0];
+          }
         });
+        updates.entityPositions2D = newPositions2D;
+
+        set(updates);
       };
 
       const handleError = ({ message }) => {

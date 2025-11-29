@@ -679,6 +679,7 @@ function Canvas2D() {
       }
     }
     
+    
     if (connectMode) {
       if (clickedEntity) {
         if (connectingFrom) {
@@ -767,8 +768,15 @@ function Canvas2D() {
           // Очищаем lastDraggedEntityIdRef при клике на пустое место
           lastDraggedEntityIdRef.current = null;
         }
-      } else {
-        // КЛИК НА БЛОК - устанавливаем выделение (оно уже установлено в handleMouseDown, но подтверждаем)
+      } else if (clickedEntity) {
+        // КЛИК НА БЛОК - устанавливаем выделение
+        console.log('🎯 Clicked on entity:', {
+          entityId: clickedEntity.id,
+          entityName: clickedEntity.name,
+          currentSelected: selectedEntityId,
+          willSelect: selectedEntityId !== clickedEntity.id
+        });
+        // ВСЕГДА устанавливаем выделение при клике, чтобы панель обновилась
         selectEntity(clickedEntity.id);
         selectConnection(null);
         // Сохраняем ID для возможного перетаскивания
@@ -809,8 +817,7 @@ function Canvas2D() {
       setDraggingEntityId(clickedEntity.id);
       lastDraggedEntityIdRef.current = clickedEntity.id; // Сохраняем для использования в handleCanvasClick
       setIsDragging(true);
-      // Устанавливаем выделение сразу при клике на блок
-      selectEntity(clickedEntity.id);
+      // НЕ устанавливаем выделение здесь - оно будет установлено в handleCanvasClick, если это не перетаскивание
       
       // Очищаем hover эффект для перетаскиваемой сущности, чтобы избежать подсветки на старом месте
       if (hoveredEntityId === clickedEntity.id) {
@@ -1073,8 +1080,29 @@ function Canvas2D() {
 
     const handleWheel = (e) => {
       e.preventDefault();
+      
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      // Преобразуем позицию курсора в мировые координаты (до изменения zoom)
+      const worldPos = screenToWorld(mouseX, mouseY);
+      
+      // Вычисляем новый zoom
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      setZoom(prev => Math.max(0.1, Math.min(3, prev * delta)));
+      const newZoom = Math.max(0.1, Math.min(3, zoom * delta));
+      
+      // Вычисляем новую позицию pan так, чтобы точка под курсором осталась на месте
+      const { width, height } = getCanvasSize();
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const newPan = {
+        x: (mouseX - centerX) / newZoom - worldPos.x,
+        y: (centerY - mouseY) / newZoom - worldPos.z
+      };
+      
+      setZoom(newZoom);
+      setPan(newPan);
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
@@ -1082,7 +1110,7 @@ function Canvas2D() {
     return () => {
       container.removeEventListener('wheel', handleWheel);
     };
-  }, []);
+  }, [zoom, pan, screenToWorld, getCanvasSize]);
 
   return (
     <div 

@@ -1,0 +1,130 @@
+.edit-entity-modal {
+  background: linear-gradient(180deg, #1a1f3a 0%, #0f1429 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 0;
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.edit-entity-modal .type-select-button {
+  width: 100%;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  font-family: inherit;
+}
+
+.edit-entity-modal .type-select-button:hover:not(:disabled) {
+  background: rgba(102, 126, 234, 0.1);
+  border-color: rgba(102, 126, 234, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.edit-entity-modal .type-select-button:focus {
+  outline: none;
+  border-color: rgba(102, 126, 234, 0.8);
+  background: rgba(102, 126, 234, 0.15);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.edit-entity-modal .type-select-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.edit-entity-modal .type-select-icon {
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.edit-entity-modal .type-select-label {
+  flex: 1;
+  text-align: left;
+  font-size: 14px;
+  color: #fff;
+}
+
+.edit-entity-modal .type-select-arrow {
+  font-size: 10px;
+  opacity: 0.5;
+  transition: transform 0.2s ease;
+}
+
+.edit-entity-modal .type-select-button:hover:not(:disabled) .type-select-arrow {
+  opacity: 0.8;
+  transform: translateY(1px);
+}
+
+.edit-entity-modal .color-input-group {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.edit-entity-modal .color-input-group input[type="color"] {
+  width: 60px;
+  height: 45px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+  transition: all 0.3s ease;
+}
+
+.edit-entity-modal .color-input-group input[type="color"]:hover:not(:disabled) {
+  border-color: rgba(102, 126, 234, 0.5);
+  transform: scale(1.05);
+}
+
+.edit-entity-modal .color-input-group input[type="color"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.edit-entity-modal .color-input-group input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.edit-entity-modal .color-input-group input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.edit-entity-modal .color-text-input {
+  flex: 1;
+}
+
