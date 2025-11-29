@@ -433,6 +433,81 @@ function ScenesView({ onSceneSelect }) {
         ctx.stroke();
       };
       
+      // Функция для нахождения точки пересечения линии с краем прямоугольника
+      const getRectangleEdgeIntersection = (centerX, centerY, width, height, targetX, targetY) => {
+        // Границы прямоугольника
+        const left = centerX - width / 2;
+        const right = centerX + width / 2;
+        const top = centerY - height / 2;
+        const bottom = centerY + height / 2;
+        
+        // Вектор направления от центра к цели
+        const dx = targetX - centerX;
+        const dy = targetY - centerY;
+        
+        // Находим точку пересечения с каждой стороной прямоугольника
+        let intersections = [];
+        
+        // Левая сторона (x = left)
+        if (dx < 0) {
+          const t = (left - centerX) / dx;
+          const y = centerY + dy * t;
+          if (y >= top && y <= bottom) {
+            intersections.push({ x: left, y: y });
+          }
+        }
+        
+        // Правая сторона (x = right)
+        if (dx > 0) {
+          const t = (right - centerX) / dx;
+          const y = centerY + dy * t;
+          if (y >= top && y <= bottom) {
+            intersections.push({ x: right, y: y });
+          }
+        }
+        
+        // Верхняя сторона (y = top)
+        if (dy < 0) {
+          const t = (top - centerY) / dy;
+          const x = centerX + dx * t;
+          if (x >= left && x <= right) {
+            intersections.push({ x: x, y: top });
+          }
+        }
+        
+        // Нижняя сторона (y = bottom)
+        if (dy > 0) {
+          const t = (bottom - centerY) / dy;
+          const x = centerX + dx * t;
+          if (x >= left && x <= right) {
+            intersections.push({ x: x, y: bottom });
+          }
+        }
+        
+        // Выбираем ближайшую точку к цели
+        if (intersections.length === 0) {
+          // Если нет пересечений (не должно происходить), возвращаем центр
+          return { x: centerX, y: centerY };
+        }
+        
+        let closest = intersections[0];
+        let minDist = Math.sqrt(
+          Math.pow(closest.x - targetX, 2) + Math.pow(closest.y - targetY, 2)
+        );
+        
+        for (let i = 1; i < intersections.length; i++) {
+          const dist = Math.sqrt(
+            Math.pow(intersections[i].x - targetX, 2) + Math.pow(intersections[i].y - targetY, 2)
+          );
+          if (dist < minDist) {
+            minDist = dist;
+            closest = intersections[i];
+          }
+        }
+        
+        return closest;
+      };
+      
       // Отрисовка связей
       const drawConnection = (ctx, connection) => {
         const fromScene = allScenes.find(s => s.id === connection.from);
@@ -459,33 +534,50 @@ function ScenesView({ onSceneSelect }) {
         const fromScreen = worldToScreen(fromX, fromZ);
         const toScreen = worldToScreen(toX, toZ);
         
+        // Получаем размеры сцен в экранных координатах
+        const [fromWorldWidth, fromWorldHeight] = getSceneSize(fromScene);
+        const [toWorldWidth, toWorldHeight] = getSceneSize(toScene);
+        const fromWidth = fromWorldWidth * zoom;
+        const fromHeight = fromWorldHeight * zoom;
+        const toWidth = toWorldWidth * zoom;
+        const toHeight = toWorldHeight * zoom;
+        
+        // Находим точки пересечения с краями прямоугольников
+        const fromEdge = getRectangleEdgeIntersection(
+          fromScreen.x, fromScreen.y, fromWidth, fromHeight,
+          toScreen.x, toScreen.y
+        );
+        const toEdge = getRectangleEdgeIntersection(
+          toScreen.x, toScreen.y, toWidth, toHeight,
+          fromScreen.x, fromScreen.y
+        );
+        
         // Рисуем линию связи с более ярким цветом и большей толщиной для лучшей видимости
         ctx.strokeStyle = connection.color || '#00ff00'; // Зеленый по умолчанию для лучшей видимости
         ctx.lineWidth = Math.max(2, 3 * zoom); // Минимум 2px, увеличивается с зумом
         ctx.shadowColor = 'rgba(0, 255, 0, 0.5)'; // Добавляем свечение для лучшей видимости
         ctx.shadowBlur = 4;
         ctx.beginPath();
-        ctx.moveTo(fromScreen.x, fromScreen.y);
-        ctx.lineTo(toScreen.x, toScreen.y);
+        ctx.moveTo(fromEdge.x, fromEdge.y);
+        ctx.lineTo(toEdge.x, toEdge.y);
         ctx.stroke();
         ctx.shadowBlur = 0; // Сбрасываем тень
         
         // Стрелка на конце связи
-        const angle = Math.atan2(toScreen.y - fromScreen.y, toScreen.x - fromScreen.x);
+        const angle = Math.atan2(toEdge.y - fromEdge.y, toEdge.x - fromEdge.x);
         const arrowLength = Math.max(8, 12 * zoom);
-        const arrowWidth = Math.max(4, 6 * zoom);
         ctx.strokeStyle = connection.color || '#00ff00';
         ctx.lineWidth = Math.max(2, 3 * zoom);
         ctx.beginPath();
-        ctx.moveTo(toScreen.x, toScreen.y);
+        ctx.moveTo(toEdge.x, toEdge.y);
         ctx.lineTo(
-          toScreen.x - arrowLength * Math.cos(angle - Math.PI / 6),
-          toScreen.y - arrowLength * Math.sin(angle - Math.PI / 6)
+          toEdge.x - arrowLength * Math.cos(angle - Math.PI / 6),
+          toEdge.y - arrowLength * Math.sin(angle - Math.PI / 6)
         );
-        ctx.moveTo(toScreen.x, toScreen.y);
+        ctx.moveTo(toEdge.x, toEdge.y);
         ctx.lineTo(
-          toScreen.x - arrowLength * Math.cos(angle + Math.PI / 6),
-          toScreen.y - arrowLength * Math.sin(angle + Math.PI / 6)
+          toEdge.x - arrowLength * Math.cos(angle + Math.PI / 6),
+          toEdge.y - arrowLength * Math.sin(angle + Math.PI / 6)
         );
         ctx.stroke();
       };
