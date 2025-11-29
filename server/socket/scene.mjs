@@ -12,6 +12,61 @@ export function setupSceneHandlers(io, sessionStore) {
     lastUpdate: Date.now()
   };
 
+  // Debounce для автоматического сохранения сцены в БД
+  const saveTimeouts = new Map(); // userId -> timeout
+  const SAVE_DEBOUNCE_MS = 2000; // Сохраняем через 2 секунды после последнего изменения
+
+  // Функция автоматического сохранения сцены в БД
+  async function saveSceneToDatabase(userId, state) {
+    if (!userId) {
+      return; // Не сохраняем для анонимных пользователей
+    }
+
+    // Отменяем предыдущий таймер для этого пользователя
+    if (saveTimeouts.has(userId)) {
+      clearTimeout(saveTimeouts.get(userId));
+    }
+
+    // Устанавливаем новый таймер
+    const timeout = setTimeout(async () => {
+      try {
+        // Проверяем, есть ли уже сохраненная сцена для этого пользователя
+        const existingScene = await pool.query(
+          `SELECT id FROM scenes WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+          [userId]
+        );
+
+        const sceneData = {
+          entities: state.entities,
+          connections: state.connections
+        };
+
+        if (existingScene.rows.length > 0) {
+          // Обновляем существующую сцену
+          await pool.query(
+            `UPDATE scenes SET data = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+            [JSON.stringify(sceneData), existingScene.rows[0].id]
+          );
+          console.log(`💾 Сцена обновлена в БД для пользователя ${userId}`);
+        } else {
+          // Создаем новую сцену
+          await pool.query(
+            `INSERT INTO scenes (user_id, name, data) VALUES ($1, $2, $3)`,
+            [userId, 'Auto-saved Scene', JSON.stringify(sceneData)]
+          );
+          console.log(`💾 Сцена создана в БД для пользователя ${userId}`);
+        }
+
+        saveTimeouts.delete(userId);
+      } catch (error) {
+        console.error('❌ Ошибка автоматического сохранения сцены:', error);
+        saveTimeouts.delete(userId);
+      }
+    }, SAVE_DEBOUNCE_MS);
+
+    saveTimeouts.set(userId, timeout);
+  }
+
   // Middleware для проверки авторизации через сессию
   // Socket.IO получает доступ к сессии через cookie
   io.use((socket, next) => {
@@ -231,7 +286,35 @@ export function setupSceneHandlers(io, sessionStore) {
     });
 
     // Присоединение к сцене - отправляем текущее состояние
-    socket.on('scene:join', () => {
+    socket.on('scene:join', async () => {
+      // Если пользователь авторизован, пытаемся загрузить его последнюю сохраненную сцену
+      if (socket.userId) {
+        try {
+          const result = await pool.query(
+            `SELECT data FROM scenes WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+            [socket.userId]
+          );
+
+          if (result.rows.length > 0) {
+            const sceneData = typeof result.rows[0].data === 'string' 
+              ? JSON.parse(result.rows[0].data) 
+              : result.rows[0].data;
+            
+            // Восстанавливаем состояние сцены из БД
+            sceneState.entities = sceneData.entities || [];
+            sceneState.connections = sceneData.connections || [];
+            sceneState.lastUpdate = Date.now();
+            
+            console.log(`📥 Загружена сохраненная сцена для пользователя ${socket.userId}`);
+          } else {
+            // Если нет сохраненной сцены, сохраняем текущее состояние (пустое)
+            saveSceneToDatabase(socket.userId, sceneState);
+          }
+        } catch (error) {
+          console.error('❌ Ошибка загрузки сцены при присоединении:', error);
+        }
+      }
+
       socket.emit('scene:state', {
         entities: sceneState.entities,
         connections: sceneState.connections
@@ -271,6 +354,9 @@ export function setupSceneHandlers(io, sessionStore) {
       // Синхронизация со всеми клиентами
       io.emit('entity:created', entity);
       console.log(`✨ Создана сущность ${entity.id} пользователем ${socket.userId}`);
+      
+      // Автоматическое сохранение сцены в БД
+      saveSceneToDatabase(socket.userId, sceneState);
     });
 
     // Обновление сущности (позиция, свойства)
@@ -300,6 +386,9 @@ export function setupSceneHandlers(io, sessionStore) {
 
       // Синхронизация
       io.emit('entity:updated', sceneState.entities[entityIndex]);
+      
+      // Автоматическое сохранение сцены в БД
+      saveSceneToDatabase(socket.userId, sceneState);
     });
 
     // Удаление сущности
@@ -328,6 +417,9 @@ export function setupSceneHandlers(io, sessionStore) {
       io.emit('entity:deleted', { id: entityId });
       io.emit('connections:updated', sceneState.connections);
       console.log(`🗑️ Удалена сущность ${entityId}`);
+      
+      // Автоматическое сохранение сцены в БД
+      saveSceneToDatabase(socket.userId, sceneState);
     });
 
     // Создание связи между сущностями
@@ -376,6 +468,9 @@ export function setupSceneHandlers(io, sessionStore) {
       // Синхронизация
       io.emit('connection:created', connection);
       console.log(`🔗 Создана связь ${connection.id} между ${from} и ${to}`);
+      
+      // Автоматическое сохранение сцены в БД
+      saveSceneToDatabase(socket.userId, sceneState);
     });
 
     // Обновление связи
@@ -403,6 +498,9 @@ export function setupSceneHandlers(io, sessionStore) {
 
       // Синхронизация
       io.emit('connection:updated', sceneState.connections[connIndex]);
+      
+      // Автоматическое сохранение сцены в БД
+      saveSceneToDatabase(socket.userId, sceneState);
     });
 
     // Удаление связи
@@ -424,6 +522,9 @@ export function setupSceneHandlers(io, sessionStore) {
       // Синхронизация
       io.emit('connection:deleted', { id: connectionId });
       console.log(`🔗 Удалена связь ${connectionId}`);
+      
+      // Автоматическое сохранение сцены в БД
+      saveSceneToDatabase(socket.userId, sceneState);
     });
 
     // Сохранение сцены в БД
