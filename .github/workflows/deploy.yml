@@ -101,8 +101,8 @@ jobs:
             fi
           done
           
-          # Копируем исходные файлы на сервер (кроме node_modules, .git, dist)
-          echo "Copying source files to server..."
+          # Копируем все файлы на сервер (кроме node_modules и .git)
+          echo "Copying files to server..."
           if command -v rsync &> /dev/null; then
             for i in {1..3}; do
               if rsync -avz --delete \
@@ -116,7 +116,7 @@ jobs:
                 --exclude='.env' \
                 --exclude='.env.local' \
                 ./ ${SSH_USER}@${SSH_HOST}:${REPO_DIR}/; then
-                echo "✅ Source files copied successfully on attempt $i"
+                echo "✅ Files copied successfully on attempt $i"
                 break
               else
                 echo "⚠️ Rsync attempt $i failed, retrying..."
@@ -136,7 +136,7 @@ jobs:
                   --exclude='.env' \
                   --exclude='.env.local' \
                   -czf - . | ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} "cd $REPO_DIR && tar -xzf -"; then
-                echo "✅ Source files copied successfully on attempt $i"
+                echo "✅ Files copied successfully on attempt $i"
                 break
               else
                 echo "⚠️ Tar attempt $i failed, retrying..."
@@ -145,55 +145,25 @@ jobs:
             done
           fi
           
-          # Копируем готовую папку dist на сервер (собранную в GitHub Actions)
-          echo "Copying built dist folder to server..."
-          if command -v rsync &> /dev/null; then
-            for i in {1..3}; do
-              if rsync -avz --delete \
-                -e "ssh $SSH_OPTS" \
-                dist/ ${SSH_USER}@${SSH_HOST}:${REPO_DIR}/dist/; then
-                echo "✅ Dist folder copied successfully on attempt $i"
-                break
-              else
-                echo "⚠️ Dist rsync attempt $i failed, retrying..."
-                sleep 3
-              fi
-            done
-          else
-            # Альтернативный метод с tar для dist
-            echo "Using tar method for dist folder..."
-            for i in {1..3}; do
-              if tar -czf - -C dist . | ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} "mkdir -p $REPO_DIR/dist && cd $REPO_DIR/dist && tar -xzf -"; then
-                echo "✅ Dist folder copied successfully on attempt $i"
-                break
-              else
-                echo "⚠️ Dist tar attempt $i failed, retrying..."
-                sleep 3
-              fi
-            done
-          fi
-          
           # Убеждаемся, что папка uploads существует на сервере
           ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} "mkdir -p $REPO_DIR/uploads/avatars"
           
-          # Выполняем команды на сервере (только установка production зависимостей и перезапуск)
+          # Выполняем команды на сервере
           ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} <<EOSSH
             set -e
             cd $REPO_DIR
             
             echo ""
-            echo "=== Installing production dependencies on server ==="
-            npm ci --production || npm install --production || echo "⚠️  npm install completed with warnings"
+            echo "=== Installing dependencies on server ==="
+            npm ci --production=false || npm install
             
             echo ""
-            echo "=== Verifying dist folder ==="
-            if [ -d "dist" ] && [ "$(ls -A dist)" ]; then
-              echo "✅ Dist folder exists and is not empty"
-              ls -lah dist/ | head -10
-            else
-              echo "❌ Dist folder is missing or empty!"
+            echo "=== Building application on server ==="
+            npm run build || {
+              echo "❌ Build failed"
               exit 1
-            fi
+            }
+            echo "✅ Build completed"
             
             echo ""
             echo "=== Restarting service ==="

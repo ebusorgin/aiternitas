@@ -12,8 +12,8 @@ function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Не показываем Footer на страницах входа и регистрации
-  const showFooter = !['/login', '/register'].includes(location.pathname);
+  // Не показываем Footer на страницах входа, регистрации и сцен
+  const showFooter = !['/login', '/register', '/scenes'].includes(location.pathname);
   // Показываем Sidebar для всех авторизованных пользователей
   const showSidebar = user && !loading;
 

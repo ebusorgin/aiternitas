@@ -165,18 +165,21 @@ function EntityCube({ entity }) {
         />
       </group>
 
-      {/* Текст с именем над кубом */}
+      {/* Текст с именем над кубом - улучшенная читаемость */}
       {entity.name && (
         <Text
-          position={[0, sy / 2 + 0.5, 0]}
-          fontSize={0.3}
+          position={[0, sy / 2 + 0.6, 0]}
+          fontSize={0.25}
           color="white"
           anchorX="center"
           anchorY="middle"
-          outlineWidth={0.02}
+          outlineWidth={0.04}
           outlineColor="#000000"
+          maxWidth={2}
+          renderOrder={1000}
         >
-          {entity.name}
+          {/* Показываем только первые 20 символов для читаемости */}
+          {entity.name.length > 20 ? entity.name.substring(0, 20) + '...' : entity.name}
         </Text>
       )}
 

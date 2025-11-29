@@ -69,17 +69,9 @@ function PropertiesPanel() {
     }
   };
 
+  // Не показываем панель, если ничего не выбрано
   if (!selectedEntity && !selectedConnection) {
-    return (
-      <div className="properties-panel">
-        <div className="properties-panel-header">
-          <h3>Properties</h3>
-        </div>
-        <div className="properties-panel-content">
-          <p className="properties-empty">Выберите объект для редактирования</p>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (

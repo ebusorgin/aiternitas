@@ -2,10 +2,14 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSceneStore } from '../store/sceneStore';
-import Canvas3D from '../components/workspace/Canvas3D';
+import { useScenesNavigation } from '../context/ScenesNavigationContext';
 import Canvas2D from '../components/workspace/Canvas2D';
+import Canvas3D from '../components/workspace/Canvas3D';
 import Toolbar from '../components/workspace/Toolbar';
 import PropertiesPanel from '../components/workspace/PropertiesPanel';
+import ScenesView from '../components/workspace/ScenesView';
+import CreateSceneModal from '../components/workspace/CreateSceneModal';
+import EntityTypeModal from '../components/workspace/EntityTypeModal';
 import './Home.css';
 import './Auth.css';
 
@@ -14,6 +18,7 @@ function Home() {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
+  const { showScenesList, hideScenes } = useScenesNavigation();
   
   // Form states
   const [name, setName] = useState('');
@@ -23,9 +28,15 @@ function Home() {
   const [success, setSuccess] = useState('');
   const [formLoading, setFormLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [isSceneModalOpen, setIsSceneModalOpen] = useState(false);
+  const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
 
   const initSocket = useSceneStore((state) => state.initSocket);
   const disconnectSocket = useSceneStore((state) => state.disconnectSocket);
+  const createEntity = useSceneStore((state) => state.createEntity);
+  const createScene = useSceneStore((state) => state.createScene);
+  const getCanvasCenter = useSceneStore((state) => state.getCanvasCenter);
+  const loadScene = useSceneStore((state) => state.loadScene);
 
   useEffect(() => {
     if (user) {
@@ -193,31 +204,127 @@ function Home() {
   };
 
   const viewMode = useSceneStore((state) => state.viewMode);
+  const currentSceneId = useSceneStore((state) => state.currentSceneId);
 
-  // Если пользователь авторизован, показываем workspace (3D или 2D)
+  // Если пользователь авторизован
   if (user && !loading) {
-    console.log('Rendering workspace for user:', user);
+    // Если явно запрошен список сцен (через меню), показываем ScenesView
+    if (showScenesList) {
+      return (
+        <ScenesView 
+          onSceneSelect={(sceneId) => {
+            hideScenes();
+          }}
+        />
+      );
+    }
+
+    // По умолчанию показываем workspace (2D или 3D) только если есть активная сцена
+    if (currentSceneId) {
+      return (
+        <div className="workspace-container">
+          <Toolbar />
+          <PropertiesPanel />
+          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+            {viewMode === '2d' ? <Canvas2D /> : <Canvas3D />}
+          </div>
+          
+          {/* Предупреждение о неподтвержденном email */}
+          {!user.email_verified && !user.google_id && (
+            <div className="email-verification-banner">
+              <p>⚠️ Ваш email не подтвержден. Пожалуйста, проверьте почту и подтвердите email.</p>
+              <button 
+                onClick={handleResendVerification}
+                className="btn-resend-verification"
+                disabled={formLoading}
+              >
+                Отправить письмо повторно
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+    
+    // Если нет активной сцены, показываем главную страницу с кнопками создания
     return (
-      <div className="workspace-container">
-        <Toolbar />
-        <PropertiesPanel />
-        <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-          {viewMode === '2d' ? <Canvas2D /> : <Canvas3D />}
+      <div className="home-main-page">
+        <div className="home-welcome">
+          <h1>Добро пожаловать в Aiternitas</h1>
+          <p>Создайте свою первую сцену или сущность, чтобы начать работу</p>
         </div>
         
-        {/* Предупреждение о неподтвержденном email */}
-        {!user.email_verified && !user.google_id && (
-          <div className="email-verification-banner">
-            <p>⚠️ Ваш email не подтвержден. Пожалуйста, проверьте почту и подтвердите email.</p>
-            <button 
-              onClick={handleResendVerification}
-              className="btn-resend-verification"
-              disabled={formLoading}
-            >
-              Отправить письмо повторно
-            </button>
-          </div>
-        )}
+        <div className="home-actions">
+          <button
+            className="home-action-btn create-scene-btn"
+            onClick={() => setIsSceneModalOpen(true)}
+          >
+            <div className="btn-icon">🎬</div>
+            <div className="btn-content">
+              <div className="btn-title">Создать сцену</div>
+              <div className="btn-description">Создайте новую сцену для организации ваших сущностей</div>
+            </div>
+          </button>
+          
+          <button
+            className="home-action-btn create-entity-btn"
+            onClick={() => setIsEntityModalOpen(true)}
+          >
+            <div className="btn-icon">👤</div>
+            <div className="btn-content">
+              <div className="btn-title">Создать сущность</div>
+              <div className="btn-description">Добавьте новую сущность (персонаж, объект и т.д.)</div>
+            </div>
+          </button>
+        </div>
+
+        <CreateSceneModal
+          isOpen={isSceneModalOpen}
+          onClose={() => setIsSceneModalOpen(false)}
+          onCreate={async (sceneData) => {
+            try {
+              // Для главной страницы создаем сцену в центре (0, 0)
+              // Позиция будет установлена при первом отображении в ScenesView
+              const sceneDataWithPosition = {
+                ...sceneData,
+                parent_id: null,
+                position_2d: [0, 0] // Центр по умолчанию
+              };
+              
+              const newScene = await createScene(sceneDataWithPosition);
+              setIsSceneModalOpen(false);
+              
+              // После создания сцены загружаем её
+              if (newScene && newScene.id) {
+                loadScene(newScene.id);
+              }
+              
+              return newScene;
+            } catch (error) {
+              console.error('Ошибка создания сцены:', error);
+              throw error;
+            }
+          }}
+        />
+
+        <EntityTypeModal
+          isOpen={isEntityModalOpen}
+          onClose={() => setIsEntityModalOpen(false)}
+          onSelectType={(type) => {
+            // Создаем сущность в центре (0, 1, 0)
+            // Если нет активной сцены, сущность будет создана без scene_id
+            createEntity({
+              position: null, // null означает использование центра canvas (если доступен) или [0, 1, 0]
+              size: [1, 1, 1],
+              name: `Entity ${Date.now()}`,
+              description: '',
+              color: '#3b82f6',
+              type: type || 'box'
+            });
+            
+            setIsEntityModalOpen(false);
+          }}
+        />
       </div>
     );
   }

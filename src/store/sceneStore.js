@@ -24,6 +24,7 @@ export const useSceneStore = create((set, get) => {
   let reconnectAttempts = 0;
   const maxReconnectAttempts = 5;
   let position3DUpdateTimeout = null;
+  let canvasCenterCallback = null; // Callback для получения центра canvas
 
   // Инициализация Socket.IO
   const initSocket = () => {
@@ -38,8 +39,16 @@ export const useSceneStore = create((set, get) => {
       reconnectAttempts = 0;
       set({ socketConnected: true });
       
-      // Присоединяемся к сцене
+      // Присоединяемся к сцене - сервер автоматически загрузит дефолтную сцену
       socket.emit('scene:join');
+      
+      // Также загружаем список всех сцен для отображения иерархии
+      setTimeout(() => {
+        const state = get();
+        if (state.socket && state.socket.connected) {
+          state.loadAllScenes();
+        }
+      }, 500); // Небольшая задержка, чтобы scene:join успел обработаться
     });
 
     socket.on('disconnect', () => {
@@ -66,10 +75,132 @@ export const useSceneStore = create((set, get) => {
     // Обработчики событий от сервера
     socket.on('scene:state', (state) => {
       console.log('📥 Получено состояние сцены:', state);
-      set({
+      const currentState = get();
+      const updates = {
         entities: state.entities || [],
-        connections: state.connections || []
-      });
+        connections: state.connections || [],
+        entityPositions2D: {} // Сбрасываем 2D позиции при загрузке новой сцены
+      };
+      
+      // Если в состоянии есть sceneId, устанавливаем его как текущую сцену
+      if (state.sceneId) {
+        updates.currentSceneId = state.sceneId;
+        console.log('✅ Установлена текущая сцена:', state.sceneId, 'entities:', state.entities?.length || 0);
+      } else {
+        // Если sceneId нет, но есть entities, это означает, что мы в дефолтной сцене
+        // Оставляем currentSceneId как null, чтобы показывать корневые сцены
+        console.log('📋 Нет sceneId, показываем корневые сцены, entities:', state.entities?.length || 0);
+      }
+      
+      set(updates);
+    });
+
+    socket.on('scene:loaded', (scene) => {
+      console.log('📥 Сцена загружена:', scene);
+      set({ currentSceneId: scene.id, currentSceneName: scene.name });
+    });
+
+    socket.on('scene:deleted', ({ id }) => {
+      console.log('🗑️ Сцена удалена:', id);
+      const state = get();
+      // Если удаленная сцена была текущей, очищаем состояние
+      if (state.currentSceneId === id) {
+        set({
+          entities: [],
+          connections: [],
+          selectedEntityId: null,
+          selectedConnectionId: null,
+          entityPositions2D: {},
+          currentSceneId: null,
+          currentSceneName: null
+        });
+      }
+      // Удаляем сцену из списка всех сцен
+      if (state.allScenes) {
+        set({
+          allScenes: state.allScenes.filter(s => s.id !== id),
+          sceneConnections: state.sceneConnections.filter(c => c.from !== id && c.to !== id)
+        });
+      }
+    });
+
+    // Обработчики для работы со сценами в 2D
+    socket.on('scene:created', (scene) => {
+      console.log('📥 Новая сцена создана:', scene);
+      const state = get();
+      if (state.allScenes) {
+        set({
+          allScenes: [...state.allScenes, {
+            ...scene,
+            position_2d: scene.position_2d || [0, 0],
+            parent_id: scene.parent_id || null
+          }]
+        });
+      }
+    });
+
+    socket.on('scene:position-updated', ({ sceneId, position2D }) => {
+      console.log('📍 Позиция сцены обновлена:', sceneId, position2D);
+      const state = get();
+      if (state.allScenes) {
+        set({
+          allScenes: state.allScenes.map(s => 
+            s.id === sceneId ? { ...s, position_2d: position2D } : s
+          ),
+          scenePositions2D: {
+            ...state.scenePositions2D,
+            [sceneId]: position2D
+          }
+        });
+      }
+    });
+
+    socket.on('scene:parent-updated', ({ sceneId, parentId }) => {
+      console.log('🔗 Родитель сцены обновлен:', sceneId, parentId);
+      const state = get();
+      if (state.allScenes) {
+        set({
+          allScenes: state.allScenes.map(s => 
+            s.id === sceneId ? { ...s, parent_id: parentId } : s
+          )
+        });
+      }
+    });
+
+    socket.on('scene:size-updated', ({ sceneId, size2D }) => {
+      console.log('📏 Размер сцены обновлен:', sceneId, size2D);
+      const state = get();
+      if (state.allScenes) {
+        set({
+          allScenes: state.allScenes.map(s => 
+            s.id === sceneId ? { ...s, size_2d: size2D } : s
+          )
+        });
+      }
+    });
+
+    socket.on('scene-connection:created', (connection) => {
+      console.log('🔗 Связь между сценами создана:', connection);
+      const state = get();
+      // Убеждаемся, что sceneConnections инициализирован
+      const currentConnections = state.sceneConnections || [];
+      // Проверяем, нет ли уже такой связи (избегаем дубликатов)
+      const exists = currentConnections.some(c => c.id === connection.id);
+      if (!exists) {
+        set({
+          sceneConnections: [...currentConnections, connection]
+        });
+      }
+    });
+
+    socket.on('scene-connection:deleted', ({ id }) => {
+      console.log('🗑️ Связь между сценами удалена:', id);
+      const state = get();
+      if (state.sceneConnections) {
+        set({
+          sceneConnections: state.sceneConnections.filter(c => c.id !== id)
+        });
+      }
     });
 
     socket.on('entity:created', (entity) => {
@@ -153,11 +284,19 @@ export const useSceneStore = create((set, get) => {
     connectMode: false,
     connectingFrom: null,
     cameraPosition: [0, 5, 10],
-    viewMode: '3d', // '3d' or '2d'
+    viewMode: '2d', // '3d' or '2d' - по умолчанию 2D вид
     entityPositions2D: {}, // Отдельное хранилище для 2D координат: { entityId: [x, z] }
     socket: null,
     socketConnected: false,
     error: null,
+    orbitControls: null, // Ссылка на OrbitControls для блокировки камеры
+    currentSceneId: null,
+    currentSceneName: null,
+    
+    // Состояние для работы со сценами в 2D (в разделе "Мои сцены")
+    allScenes: [], // Все сцены пользователя с позициями
+    sceneConnections: [], // Связи между сценами
+    scenePositions2D: {}, // Позиции сцен на 2D-карте: { sceneId: [x, z] }
 
     // Действия
     initSocket: () => {
@@ -181,7 +320,16 @@ export const useSceneStore = create((set, get) => {
       }
 
       const currentEntities = get().entities;
-      const requestedPosition = entityData.position || [0, 1, 0];
+      let requestedPosition = entityData.position;
+      
+      // Если позиция не указана или null, используем центр canvas
+      if (!requestedPosition && canvasCenterCallback) {
+        const center = canvasCenterCallback();
+        requestedPosition = [center.x, 1, center.z];
+      } else if (!requestedPosition) {
+        requestedPosition = [0, 1, 0];
+      }
+      
       const size = entityData.size || [1, 1, 1];
       const type = entityData.type || 'box';
       
@@ -359,6 +507,11 @@ export const useSceneStore = create((set, get) => {
       set({ viewMode: mode });
     },
 
+    // Установка ссылки на OrbitControls
+    setOrbitControls: (controls) => {
+      set({ orbitControls: controls });
+    },
+
     // Обновление 2D позиции (не влияет на 3D)
     updateEntityPosition2D: (id, position2D) => {
       set((state) => ({
@@ -456,7 +609,241 @@ export const useSceneStore = create((set, get) => {
           set({ entityPositions2D: newPositions2D });
         }
       }
-    }
+    },
+
+    // Загрузка сцены по ID
+    loadScene: (sceneId) => {
+      const state = get();
+      if (!state.socket || !state.socket.connected) {
+        console.error('Socket не подключен');
+        return;
+      }
+      
+      // Очищаем текущее состояние перед загрузкой новой сцены
+      set({
+        entities: [],
+        connections: [],
+        selectedEntityId: null,
+        selectedConnectionId: null,
+        entityPositions2D: {},
+        currentSceneId: sceneId || null,
+        currentSceneName: sceneId ? null : null
+      });
+      
+      if (sceneId) {
+        state.socket.emit('scene:load', sceneId);
+      }
+    },
+    
+    // Получение родительской сцены
+
+    // Действия для работы со сценами в 2D
+    loadAllScenes: () => {
+      const state = get();
+      if (!state.socket || !state.socket.connected) {
+        console.error('Socket не подключен');
+        return;
+      }
+
+      state.socket.emit('scene:list-with-connections');
+
+      const handleList = (data) => {
+        const { scenes, connections } = data;
+        const positions2D = {};
+        
+        scenes.forEach(scene => {
+          if (scene.position_2d) {
+            positions2D[scene.id] = scene.position_2d;
+          }
+        });
+
+        // Убеждаемся, что connections - это массив
+        const normalizedConnections = Array.isArray(connections) ? connections : [];
+
+        set({
+          allScenes: scenes,
+          sceneConnections: normalizedConnections,
+          scenePositions2D: positions2D
+        });
+      };
+
+      const handleError = ({ message }) => {
+        // Игнорируем ошибку "Связь уже существует" - это не критично при загрузке списка
+        if (message !== 'Связь уже существует') {
+          console.error('Ошибка загрузки списка сцен:', message);
+        }
+      };
+
+      state.socket.once('scene:list-with-connections', handleList);
+      state.socket.once('error', handleError);
+
+      setTimeout(() => {
+        state.socket.off('scene:list-with-connections', handleList);
+        state.socket.off('error', handleError);
+      }, 5000);
+    },
+
+    updateScenePosition: (sceneId, position2D) => {
+      const state = get();
+      if (!state.socket || !state.socket.connected) {
+        console.error('Socket не подключен');
+        return;
+      }
+
+      // Обновляем локально
+      set({
+        allScenes: state.allScenes.map(s => 
+          s.id === sceneId ? { ...s, position_2d: position2D } : s
+        ),
+        scenePositions2D: {
+          ...state.scenePositions2D,
+          [sceneId]: position2D
+        }
+      });
+
+      // Отправляем на сервер
+      state.socket.emit('scene:update-position', {
+        sceneId,
+        position2D
+      });
+    },
+
+    setSceneParent: (sceneId, parentId, position2D = null) => {
+      const state = get();
+      if (!state.socket || !state.socket.connected) {
+        console.error('Socket не подключен');
+        return;
+      }
+
+      // Обновляем локально
+      const updates = {};
+      if (parentId !== undefined) {
+        updates.parent_id = parentId;
+      }
+      if (position2D) {
+        updates.position_2d = position2D;
+      }
+      
+      set({
+        allScenes: state.allScenes.map(s => 
+          s.id === sceneId ? { ...s, ...updates } : s
+        )
+      });
+
+      // Отправляем на сервер
+      const data = {
+        sceneId,
+        parentId: parentId !== undefined ? (parentId || null) : undefined
+      };
+      if (position2D) {
+        data.position2D = position2D;
+      }
+      state.socket.emit('scene:set-parent', data);
+    },
+
+    createSceneConnection: (fromSceneId, toSceneId, data = {}) => {
+      const state = get();
+      if (!state.socket || !state.socket.connected) {
+        console.error('Socket не подключен');
+        return;
+      }
+
+      state.socket.emit('scene-connection:create', {
+        fromSceneId,
+        toSceneId,
+        type: data.type || 'one-way',
+        bidirectional: data.bidirectional || false,
+        label: data.label || '',
+        color: data.color || '#ffffff'
+      });
+    },
+
+    deleteSceneConnection: (connectionId) => {
+      const state = get();
+      if (!state.socket || !state.socket.connected) {
+        console.error('Socket не подключен');
+        return;
+      }
+
+      // Удаляем локально
+      set({
+        sceneConnections: state.sceneConnections.filter(c => c.id !== connectionId)
+      });
+
+      // Отправляем на сервер
+      state.socket.emit('scene-connection:delete', connectionId);
+    },
+
+    updateSceneSize: (sceneId, size2D) => {
+      const state = get();
+      if (!state.socket || !state.socket.connected) {
+        console.error('Socket не подключен');
+        return;
+      }
+
+      // Обновляем локально
+      set({
+        allScenes: state.allScenes.map(s => 
+          s.id === sceneId ? { ...s, size_2d: size2D } : s
+        )
+      });
+
+      // Отправляем на сервер
+      state.socket.emit('scene:update-size', {
+        sceneId,
+        size2D
+      });
+    },
+    
+    // Создание сцены
+    createScene: (sceneData) => {
+      const state = get();
+      if (!state.socket || !state.socket.connected) {
+        console.error('Socket не подключен');
+        return Promise.reject(new Error('Socket не подключен'));
+      }
+      
+      return new Promise((resolve, reject) => {
+        state.socket.emit('scene:create', sceneData);
+        
+        const handleSceneCreated = (newScene) => {
+          state.socket.off('scene:created', handleSceneCreated);
+          state.socket.off('error', handleError);
+          // Обновляем список сцен
+          get().loadAllScenes();
+          resolve(newScene);
+        };
+        
+        const handleError = ({ message }) => {
+          state.socket.off('scene:created', handleSceneCreated);
+          state.socket.off('error', handleError);
+          reject(new Error(message));
+        };
+        
+        state.socket.once('scene:created', handleSceneCreated);
+        state.socket.once('error', handleError);
+        
+        setTimeout(() => {
+          state.socket.off('scene:created', handleSceneCreated);
+          state.socket.off('error', handleError);
+          reject(new Error('Таймаут создания сцены'));
+        }, 5000);
+      });
+    },
+    
+    // Установка callback для получения центра canvas
+    setCanvasCenterCallback: (callback) => {
+      canvasCenterCallback = callback;
+    },
+    
+    // Получение центра canvas (для использования в компонентах)
+    getCanvasCenter: () => {
+      if (canvasCenterCallback) {
+        return canvasCenterCallback();
+      }
+      return null;
+    },
+
   };
 });
 

@@ -1,0 +1,70 @@
+.delete-scene-modal {
+  background: linear-gradient(180deg, #1a1f3a 0%, #0f1429 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 0;
+  max-width: 450px;
+  width: 90%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal-body {
+  padding: 24px;
+  text-align: center;
+}
+
+.delete-warning-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
+  color: #ff6b6b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 107, 107, 0.1);
+  border-radius: 50%;
+}
+
+.delete-warning-text {
+  font-size: 16px;
+  color: #e0e0e0;
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+}
+
+.delete-warning-text strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.delete-warning-subtext {
+  font-size: 13px;
+  color: #888;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.btn-danger {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  background: linear-gradient(135deg, rgba(220, 53, 69, 0.8) 0%, rgba(255, 107, 107, 0.8) 100%);
+  color: #fff;
+  border: 1px solid rgba(220, 53, 69, 0.5);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(220, 53, 69, 1) 0%, rgba(255, 107, 107, 1) 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+

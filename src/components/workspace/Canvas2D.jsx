@@ -706,8 +706,10 @@ function Canvas2D() {
           if (!fromEntity || !toEntity) continue;
           
           const blockSize = getBlockSize();
-          const fromPos = worldToScreen(fromEntity.position[0], fromEntity.position[1]);
-          const toPos = worldToScreen(toEntity.position[0], toEntity.position[1]);
+          const fromPos2D = getEntityPosition2D(fromEntity);
+          const toPos2D = getEntityPosition2D(toEntity);
+          const fromPos = worldToScreen(fromPos2D[0], fromPos2D[1]);
+          const toPos = worldToScreen(toPos2D[0], toPos2D[1]);
           
           const dx = toPos.x - fromPos.x;
           const dy = toPos.y - fromPos.y;
@@ -756,18 +758,21 @@ function Canvas2D() {
         if (clickedConnection) {
           selectConnection(clickedConnection.id);
           selectEntity(null);
+          // Очищаем lastDraggedEntityIdRef при клике на соединение
+          lastDraggedEntityIdRef.current = null;
         } else {
-          // Клик на пустое место - сбрасываем выделение ТОЛЬКО если не было клика на блок
-          // Если был клик на блок, выделение уже установлено в handleMouseDown и не должно сбрасываться
-          if (!lastDraggedEntityIdRef.current) {
-            selectEntity(null);
-            selectConnection(null);
-          }
+          // Клик на пустое место - всегда сбрасываем выделение
+          selectEntity(null);
+          selectConnection(null);
+          // Очищаем lastDraggedEntityIdRef при клике на пустое место
+          lastDraggedEntityIdRef.current = null;
         }
       } else {
         // КЛИК НА БЛОК - устанавливаем выделение (оно уже установлено в handleMouseDown, но подтверждаем)
         selectEntity(clickedEntity.id);
         selectConnection(null);
+        // Сохраняем ID для возможного перетаскивания
+        lastDraggedEntityIdRef.current = clickedEntity.id;
       }
     }
     
@@ -1011,7 +1016,9 @@ function Canvas2D() {
 
   const handleMouseUp = (e) => {
     // Сохраняем ID блока для сохранения выделения
-    const entityIdToSelect = draggingEntityId || lastDraggedEntityIdRef.current;
+    // ВАЖНО: Сохраняем выделение только если было перетаскивание (draggingEntityId установлен)
+    // Если был просто клик, выделение будет обработано в handleCanvasClick
+    const entityIdToSelect = draggingEntityId;
     
     // Обновляем позицию при перетаскивании
     if (draggingEntityId) {
@@ -1035,8 +1042,8 @@ function Canvas2D() {
       }
     }
     
-    // ВАЖНО: Сохраняем выделение сразу после обновления позиции
-    // Используем requestAnimationFrame чтобы это произошло после всех обновлений store
+    // ВАЖНО: Сохраняем выделение только если было перетаскивание
+    // Для простого клика выделение обрабатывается в handleCanvasClick
     if (entityIdToSelect) {
       requestAnimationFrame(() => {
         selectEntity(entityIdToSelect);

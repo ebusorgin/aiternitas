@@ -7,12 +7,14 @@ function MoveArrow({
   position, 
   rotation, 
   color, 
-  onClick, 
+  onClick,
+  onPointerDown,
   onHover, 
   onLeave,
   isHovered,
   otherHovered,
-  arrowSize
+  arrowSize,
+  isDragging
 }) {
   const groupRef = useRef();
   const targetScale = useRef(1);
@@ -23,7 +25,10 @@ function MoveArrow({
     
     let target = 1;
     
-    if (isHovered) {
+    if (isDragging) {
+      // Во время перетаскивания увеличиваем стрелку
+      target = 1.6;
+    } else if (isHovered) {
       // Эта стрелка наведена - увеличиваем
       target = 1.4;
     } else if (otherHovered) {
@@ -50,13 +55,25 @@ function MoveArrow({
   const handlePointerOver = (e) => {
     e.stopPropagation();
     if (onHover) onHover();
-    document.body.style.cursor = 'pointer';
+    if (!isDragging) {
+      document.body.style.cursor = 'pointer';
+    }
   };
 
   const handlePointerOut = (e) => {
     e.stopPropagation();
     if (onLeave) onLeave();
-    document.body.style.cursor = 'default';
+    if (!isDragging) {
+      document.body.style.cursor = 'default';
+    }
+  };
+
+  const handlePointerDown = (e) => {
+    e.stopPropagation();
+    if (onPointerDown) {
+      onPointerDown(e);
+    }
+    document.body.style.cursor = 'grabbing';
   };
 
   return (
@@ -65,6 +82,7 @@ function MoveArrow({
       position={position} 
       rotation={rotation}
       onClick={onClick}
+      onPointerDown={handlePointerDown}
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}
     >

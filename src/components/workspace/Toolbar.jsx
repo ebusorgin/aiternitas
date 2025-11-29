@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 import EntityTypeModal from './EntityTypeModal';
+import CreateSceneModal from './CreateSceneModal';
 import './Toolbar.css';
 
 function Toolbar() {
@@ -9,12 +10,17 @@ function Toolbar() {
   const deleteConnection = useSceneStore((state) => state.deleteConnection);
   const selectedEntityId = useSceneStore((state) => state.selectedEntityId);
   const selectedConnectionId = useSceneStore((state) => state.selectedConnectionId);
+  const currentSceneId = useSceneStore((state) => state.currentSceneId);
+  const allScenes = useSceneStore((state) => state.allScenes);
   const connectMode = useSceneStore((state) => state.connectMode);
   const setConnectMode = useSceneStore((state) => state.setConnectMode);
   const viewMode = useSceneStore((state) => state.viewMode);
   const setViewMode = useSceneStore((state) => state.setViewMode);
   const clearSelection = useSceneStore((state) => state.clearSelection);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const createScene = useSceneStore((state) => state.createScene);
+  const getCanvasCenter = useSceneStore((state) => state.getCanvasCenter);
+  const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
+  const [isSceneModalOpen, setIsSceneModalOpen] = useState(false);
 
   // Обработка горячих клавиш
   useEffect(() => {
@@ -23,7 +29,7 @@ function Toolbar() {
       if (event.key === 'n' || event.key === 'N') {
         if (!event.ctrlKey && !event.metaKey) {
           event.preventDefault();
-          setIsModalOpen(true);
+          setIsEntityModalOpen(true);
         }
       }
 
@@ -58,15 +64,42 @@ function Toolbar() {
   }, [connectMode, selectedEntityId, selectedConnectionId, setConnectMode, deleteEntity, deleteConnection, clearSelection]);
 
   const handleNewPersonage = (type) => {
-    // Создаем сущность в центре сцены с выбранным типом
+    // Создаем сущность в центре экрана (позиция будет рассчитана в store)
     createEntity({
-      position: [0, 1, 0],
+      position: null, // null означает, что нужно использовать центр canvas
       size: [1, 1, 1],
       name: `Entity ${Date.now()}`,
       description: '',
       color: '#3b82f6',
       type: type || 'box'
     });
+  };
+  
+  const handleCreateScene = async (sceneData) => {
+    try {
+      // Для корневых сцен устанавливаем позицию в центре canvas
+      // Для дочерних сцен позиция будет рассчитана через layout
+      let position_2d = null;
+      if (!currentSceneId) {
+        // Получаем центр canvas через callback из store
+        const center = getCanvasCenter ? getCanvasCenter() : null;
+        if (center) {
+          position_2d = [center.x, center.z];
+        } else {
+          position_2d = [0, 0]; // Fallback
+        }
+      }
+      
+      const sceneDataWithParent = {
+        ...sceneData,
+        parent_id: currentSceneId || null,
+        position_2d: position_2d
+      };
+      await createScene(sceneDataWithParent);
+      setIsSceneModalOpen(false);
+    } catch (error) {
+      console.error('Ошибка создания сцены:', error);
+    }
   };
 
   const handleDelete = () => {
@@ -82,10 +115,17 @@ function Toolbar() {
       <div className="toolbar-group">
         <button
           className="toolbar-btn"
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => setIsEntityModalOpen(true)}
           title="Создать персонаж (N)"
         >
           ➕ New Personage
+        </button>
+        <button
+          className="toolbar-btn"
+          onClick={() => setIsSceneModalOpen(true)}
+          title="Создать сцену"
+        >
+          ➕ New Scene
         </button>
         <button
           className="toolbar-btn"
@@ -117,6 +157,7 @@ function Toolbar() {
         </button>
       </div>
 
+
       <div className="toolbar-group">
         <button
           className="toolbar-btn"
@@ -128,9 +169,15 @@ function Toolbar() {
       </div>
 
       <EntityTypeModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={isEntityModalOpen}
+        onClose={() => setIsEntityModalOpen(false)}
         onSelectType={handleNewPersonage}
+      />
+      
+      <CreateSceneModal
+        isOpen={isSceneModalOpen}
+        onClose={() => setIsSceneModalOpen(false)}
+        onCreate={handleCreateScene}
       />
     </div>
   );

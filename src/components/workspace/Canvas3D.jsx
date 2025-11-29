@@ -11,8 +11,22 @@ import { useSceneStore } from '../../store/sceneStore';
 function Canvas3D() {
   const entities = useSceneStore((state) => state.entities);
   const connections = useSceneStore((state) => state.connections);
+  const clearSelection = useSceneStore((state) => state.clearSelection);
+  const connectMode = useSceneStore((state) => state.connectMode);
+  const setConnectingFrom = useSceneStore((state) => state.setConnectingFrom);
 
   console.log('Canvas3D render:', { entitiesCount: entities.length, connectionsCount: connections.length });
+
+  // Обработка клика на пустое место
+  const handlePointerMissed = (event) => {
+    // Если не в режиме соединения, сбрасываем выделение
+    if (!connectMode) {
+      clearSelection();
+    } else {
+      // В режиме соединения отменяем выбор начальной точки
+      setConnectingFrom(null);
+    }
+  };
 
   return (
     <Canvas
@@ -31,6 +45,7 @@ function Canvas3D() {
       onError={(error) => {
         console.error('Canvas3D error:', error);
       }}
+      onPointerMissed={handlePointerMissed}
     >
       {/* Освещение - яркое и многоуровневое */}
       <ambientLight intensity={1.2} color="#ffffff" />

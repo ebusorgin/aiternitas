@@ -1,12 +1,14 @@
 import { useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 
 function CameraController() {
   const { camera, gl } = useThree();
   const selectedEntityId = useSceneStore((state) => state.selectedEntityId);
   const entities = useSceneStore((state) => state.entities);
+  const setOrbitControls = useSceneStore((state) => state.setOrbitControls);
+  const controlsRef = useRef();
 
   // Обработка горячих клавиш
   useEffect(() => {
@@ -34,6 +36,12 @@ function CameraController() {
 
   return (
     <OrbitControls
+      ref={(controls) => {
+        controlsRef.current = controls;
+        if (controls) {
+          setOrbitControls(controls);
+        }
+      }}
       enablePan={true}
       enableZoom={true}
       enableRotate={true}
