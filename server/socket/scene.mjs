@@ -596,6 +596,12 @@ export function setupSceneHandlers(io, sessionStore) {
           connections: sceneState.connections
         });
 
+        // Обновляем updated_at в БД при загрузке
+        await pool.query(
+          `UPDATE scenes SET updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+          [sceneId]
+        );
+
         socket.emit('scene:loaded', {
           id: scene.id,
           name: scene.name,
