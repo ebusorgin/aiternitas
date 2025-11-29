@@ -3,6 +3,7 @@ import { useSceneStore } from '../../store/sceneStore';
 import CreateSceneModal from './CreateSceneModal';
 import DeleteSceneModal from './DeleteSceneModal';
 import SceneProperties from './SceneProperties';
+import PropertiesPanel from './PropertiesPanel';
 import ScenesCanvas3D from './ScenesCanvas3D';
 import EntityTypeModal from './EntityTypeModal';
 import { ENTITY_TYPES } from './EntityShape';
@@ -28,7 +29,8 @@ function ScenesView({ onSceneSelect }) {
   const [connectingFrom, setConnectingFrom] = useState(null);
   // Состояния для работы с entities
   const [hoveredEntityId, setHoveredEntityId] = useState(null);
-  const [selectedEntityId, setSelectedEntityId] = useState(null);
+  // Используем selectedEntityId из store, чтобы PropertiesPanel мог работать
+  const selectedEntityId = useSceneStore((state) => state.selectedEntityId);
   const [draggingEntityId, setDraggingEntityId] = useState(null);
   const [localPositions2D, setLocalPositions2D] = useState({});
   const [animationTime, setAnimationTime] = useState(0);
@@ -935,7 +937,8 @@ function ScenesView({ onSceneSelect }) {
     
     if (clickedEntity) {
       setDraggingEntityId(clickedEntity.id);
-      setSelectedEntityId(clickedEntity.id);
+      // Используем selectEntity из store, чтобы PropertiesPanel обновился
+      selectEntity(clickedEntity.id);
       setIsDragging(true);
       
       // Сохраняем смещение для плавного перетаскивания
@@ -1075,7 +1078,7 @@ function ScenesView({ onSceneSelect }) {
       setDragStart({ x, y });
       setSelectedSceneId(null);
     }
-  }, [allScenes, zoom, connectMode, connectingFrom, sceneConnections, getSceneAbsolutePosition, calculateChildrenLayout, getSceneSize, isPointInScene, screenToWorld, createSceneConnection, setSelectedSceneId, setDraggingSceneId, setIsDragging, setDragStart, setLocalPositions, setLocalSizes, setConnectingFrom, setConnectMode, entities, draggingEntityId, getEntityPosition2D, isPointInBlock, setDraggingEntityId, setSelectedEntityId, hoveredEntityId, setHoveredEntityId, setLocalPositions2D]);
+  }, [allScenes, zoom, connectMode, connectingFrom, sceneConnections, getSceneAbsolutePosition, calculateChildrenLayout, getSceneSize, isPointInScene, screenToWorld, createSceneConnection, setSelectedSceneId, setDraggingSceneId, setIsDragging, setDragStart, setLocalPositions, setLocalSizes, setConnectingFrom, setConnectMode, entities, draggingEntityId, getEntityPosition2D, isPointInBlock, setDraggingEntityId, selectEntity, hoveredEntityId, setHoveredEntityId, setLocalPositions2D, selectedEntityId]);
 
   const handleMouseMove = useCallback((e) => {
     const rect = canvasRef.current.getBoundingClientRect();
@@ -1643,6 +1646,31 @@ function ScenesView({ onSceneSelect }) {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
+    // СНАЧАЛА проверяем клик по сущности (сущности имеют приоритет над сценами)
+    let clickedEntity = null;
+    if (entities && entities.length > 0) {
+      for (let i = entities.length - 1; i >= 0; i--) {
+        const entity = entities[i];
+        const position2D = getEntityPosition2D(entity);
+        const { x: sx, y: sy } = worldToScreen(position2D[0], position2D[1]);
+        
+        if (isPointInBlock(x, y, sx, sy)) {
+          clickedEntity = entity;
+          break;
+        }
+      }
+    }
+    
+    if (clickedEntity) {
+      // Клик по сущности - выделяем её
+      console.log('🎯 ScenesView: Clicked on entity:', clickedEntity.id, clickedEntity.name);
+      selectEntity(clickedEntity.id);
+      setSelectedSceneId(null); // Снимаем выделение со сцены
+      clickStartRef.current = null;
+      wasDraggingRef.current = false;
+      return;
+    }
+    
     // Проверяем, был ли клик по сцене
     let clickedScene = null;
     
@@ -1687,14 +1715,19 @@ function ScenesView({ onSceneSelect }) {
       }
     }
     
-    // Если кликнули на пустое место, сбрасываем выделение
-    if (!clickedScene) {
+    // Если кликнули по сцене, выделяем её и снимаем выделение с сущности
+    if (clickedScene) {
+      setSelectedSceneId(clickedScene.id);
+      selectEntity(null); // Снимаем выделение с сущности
+    } else {
+      // Кликнули на пустое место - сбрасываем все выделения
       setSelectedSceneId(null);
+      selectEntity(null);
     }
     
     clickStartRef.current = null;
     wasDraggingRef.current = false;
-  }, [allScenes, selectedSceneId, zoom, getSceneAbsolutePosition, getSceneSize, isPointInScene, wasDraggingRef, clickStartRef, setSelectedSceneId, calculateChildrenLayout]);
+  }, [allScenes, selectedSceneId, zoom, getSceneAbsolutePosition, getSceneSize, isPointInScene, wasDraggingRef, clickStartRef, setSelectedSceneId, calculateChildrenLayout, entities, getEntityPosition2D, isPointInBlock, selectEntity, worldToScreen]);
 
   const handleDoubleClick = useCallback((e) => {
     const rect = canvasRef.current.getBoundingClientRect();
@@ -1898,14 +1931,19 @@ function ScenesView({ onSceneSelect }) {
         </div>
       </div>
 
-      {/* Floating Scene Properties */}
-      <SceneProperties
-        selectedScene={allScenes.find(s => s.id === selectedSceneId) || null}
-        socket={socket}
-        onSceneUpdated={(sceneId, updates) => {
-          // Обновление произойдет через событие scene:updated от сервера
-        }}
-      />
+      {/* Floating Scene Properties - показываем только если выбрана сцена, но не сущность */}
+      {selectedSceneId && !selectedEntityId && (
+        <SceneProperties
+          selectedScene={allScenes.find(s => s.id === selectedSceneId) || null}
+          socket={socket}
+          onSceneUpdated={(sceneId, updates) => {
+            // Обновление произойдет через событие scene:updated от сервера
+          }}
+        />
+      )}
+      
+      {/* Entity Properties Panel - показываем только если выбрана сущность */}
+      {selectedEntityId && <PropertiesPanel />}
 
         <div className="scenes-view-content" ref={containerRef}>
         {loading ? (
