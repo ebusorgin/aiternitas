@@ -98,7 +98,7 @@ class SocketService {
   }
 
   // Emit event with promise-based callback
-  emit(event, data = {}) {
+  emit(event, data = {}, timeoutMs = 10000) {
     return new Promise((resolve, reject) => {
       if (!this.socket?.connected) {
         return reject(new Error('Socket not connected'));
@@ -106,7 +106,7 @@ class SocketService {
 
       const timeout = setTimeout(() => {
         reject(new Error(`Timeout waiting for response to ${event}`));
-      }, 10000);
+      }, timeoutMs);
 
       this.socket.emit(event, data, (response) => {
         clearTimeout(timeout);
@@ -169,7 +169,9 @@ class SocketService {
       'flowchart:navigated:into',
       'flowchart:navigated:up',
       'flowchart:navigated:root',
-      'flowchart:saved'
+      'flowchart:saved',
+      'flowchart:generated',
+      'flowchart:generate-progress'
     ];
 
     flowchartEvents.forEach(event => {
@@ -383,6 +385,17 @@ class SocketService {
     try {
       return await this.emit('flowchart:navigate:root', {});
     } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  // Generate company using AI (longer timeout for multi-step GPT)
+  async generateCompany(name, description) {
+    try {
+      // 120 second timeout for 5-step AI generation
+      return await this.emit('flowchart:generate-company', { name, description }, 120000);
+    } catch (error) {
+      console.error('Generate company error:', error);
       return { success: false, error: error.message };
     }
   }

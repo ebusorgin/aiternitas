@@ -108,6 +108,19 @@
   transition: all 0.2s ease;
 }
 
+.action-btn.generate-btn {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.2), rgba(79, 70, 229, 0.15));
+  border: 1px solid rgba(147, 51, 234, 0.3);
+  color: #a78bfa;
+}
+
+.action-btn.generate-btn:hover {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.3), rgba(79, 70, 229, 0.25));
+  border-color: rgba(147, 51, 234, 0.5);
+  box-shadow: 0 4px 20px rgba(147, 51, 234, 0.2);
+  transform: translateY(-1px);
+}
+
 .action-btn.root-btn {
   background: rgba(59, 130, 246, 0.15);
   border: 1px solid rgba(59, 130, 246, 0.3);

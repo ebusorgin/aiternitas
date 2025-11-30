@@ -1,12 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useFlowchartStore } from '../store/flowchartStore';
 import { useAuth } from '../context/AuthContext';
 import FlowchartCanvas from '../components/flowchart/FlowchartCanvas';
 import PropertiesPanel from '../components/flowchart/PropertiesPanel';
+import GenerateCompanyModal from '../components/flowchart/GenerateCompanyModal';
 import './Companies.css';
 
 function Companies() {
   const { user, socketConnected } = useAuth();
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
   
   const elements = useFlowchartStore((state) => state.elements);
   const connections = useFlowchartStore((state) => state.connections);
@@ -62,6 +64,14 @@ function Companies() {
         </div>
         
         <div className="header-actions">
+          <button 
+            className="action-btn generate-btn"
+            onClick={() => setShowGenerateModal(true)}
+          >
+            <span>✨</span>
+            Сгенерировать
+          </button>
+          
           {currentViewId && (
             <button 
               className="action-btn root-btn"
@@ -117,6 +127,11 @@ function Companies() {
           </div>
         </div>
       </div>
+
+      {/* Generate Company Modal */}
+      {showGenerateModal && (
+        <GenerateCompanyModal onClose={() => setShowGenerateModal(false)} />
+      )}
     </div>
   );
 }

@@ -64,6 +64,52 @@ export const CONNECTION_DIRECTIONS = {
   bidirectional: { id: 'bidirectional', name: 'Двунаправленная', icon: '↔' }
 };
 
+// Типы связей для организационной структуры
+export const CONNECTION_TYPES = {
+  manages: { 
+    id: 'manages', 
+    name: 'Руководит', 
+    icon: '👔',
+    color: '#6366f1',
+    defaultDirection: 'outgoing'
+  },
+  reports_to: { 
+    id: 'reports_to', 
+    name: 'Подчиняется', 
+    icon: '📊',
+    color: '#3b82f6',
+    defaultDirection: 'outgoing'
+  },
+  collaborates: { 
+    id: 'collaborates', 
+    name: 'Сотрудничает', 
+    icon: '🤝',
+    color: '#22c55e',
+    defaultDirection: 'bidirectional'
+  },
+  approves: { 
+    id: 'approves', 
+    name: 'Согласовывает', 
+    icon: '✅',
+    color: '#f59e0b',
+    defaultDirection: 'outgoing'
+  },
+  consults: { 
+    id: 'consults', 
+    name: 'Консультирует', 
+    icon: '💬',
+    color: '#8b5cf6',
+    defaultDirection: 'outgoing'
+  },
+  supports: { 
+    id: 'supports', 
+    name: 'Обеспечивает', 
+    icon: '🔧',
+    color: '#ef4444',
+    defaultDirection: 'outgoing'
+  }
+};
+
 // Базовый размер элемента
 const BASE_SIZE = 100;
 // Коэффициент уменьшения для дочерних элементов
@@ -660,7 +706,7 @@ export const useFlowchartStore = create((set, get) => ({
 
   // === ДЕЙСТВИЯ С СОЕДИНЕНИЯМИ ===
 
-  addConnection: (fromId, toId, direction = 'outgoing') => {
+  addConnection: (fromId, toId, direction = 'outgoing', type = 'collaborates') => {
     const { connections } = get();
     
     const exists = connections.some(
@@ -669,11 +715,14 @@ export const useFlowchartStore = create((set, get) => ({
     
     if (exists || fromId === toId) return null;
 
+    const connType = CONNECTION_TYPES[type] || CONNECTION_TYPES.collaborates;
+
     const newConnection = {
       id: `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       from: fromId,
       to: toId,
       direction: direction,
+      type: type,
       description: '',
       label: ''
     };
@@ -734,10 +783,10 @@ export const useFlowchartStore = create((set, get) => ({
     set({ isConnecting: true, connectingFrom: elementId });
   },
 
-  finishConnecting: (elementId, direction = 'outgoing') => {
+  finishConnecting: (elementId, direction = 'outgoing', type = 'collaborates') => {
     const { connectingFrom } = get();
     if (connectingFrom && elementId && connectingFrom !== elementId) {
-      get().addConnection(connectingFrom, elementId, direction);
+      get().addConnection(connectingFrom, elementId, direction, type);
     }
     set({ isConnecting: false, connectingFrom: null });
   },
@@ -914,6 +963,16 @@ export const useFlowchartStore = create((set, get) => ({
       lastSaved: null,
       hasUnsavedChanges: false
     });
+  },
+
+  // Set elements (for AI generation, import, etc.)
+  setElements: (elements) => {
+    set({ elements, selectedElementId: null });
+  },
+
+  // Set connections (for AI generation, import, etc.)
+  setConnections: (connections) => {
+    set({ connections, selectedConnectionId: null });
   },
 
   // === СОХРАНЕНИЕ / ЗАГРУЗКА через Socket.IO ===

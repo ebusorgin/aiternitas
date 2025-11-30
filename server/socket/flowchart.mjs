@@ -3,6 +3,7 @@
 
 import pool from '../db.mjs';
 import { userRooms } from './auth.mjs';
+import { generateCompanyStructure, convertToFlowchartElements } from '../services/openai.mjs';
 
 export function setupFlowchartHandlers(io, socket) {
   
@@ -429,6 +430,75 @@ export function setupFlowchartHandlers(io, socket) {
     } catch (error) {
       console.error('Navigate root error:', error);
       callback?.({ success: false, error: 'Ошибка навигации' });
+    }
+  });
+
+  // === AI GENERATION ===
+
+  // Generate company structure using GPT
+  socket.on('flowchart:generate-company', async (data, callback) => {
+    if (!socket.userId) {
+      return callback?.({ success: false, error: 'Требуется авторизация' });
+    }
+
+    try {
+      const { name, description } = data;
+      
+      if (!name || name.trim().length === 0) {
+        return callback?.({ success: false, error: 'Название компании обязательно' });
+      }
+
+      console.log(`🤖 Generating company for user ${socket.userId}: ${name}`);
+      console.log(`📝 Description: ${description || '(empty)'}`);
+
+      // Progress callback to send updates to client
+      const onProgress = (progress) => {
+        socket.emit('flowchart:generate-progress', progress);
+        console.log(`📊 Progress: Step ${progress.step}/${progress.total} - ${progress.message}`);
+      };
+
+      // Call OpenAI multi-step generation
+      console.log('🔄 Starting multi-step generation...');
+      const structure = await generateCompanyStructure(name, description || '', onProgress);
+      console.log('✅ Multi-step generation complete');
+      
+      // Convert GPT response to flowchart elements (with root company element)
+      const { elements, connections } = convertToFlowchartElements(structure, name, description || '');
+
+      // Save to database
+      const result = await pool.query(
+        `INSERT INTO flowcharts (user_id, name, elements, connections, view_state)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (user_id, name) 
+         DO UPDATE SET 
+           elements = EXCLUDED.elements,
+           connections = EXCLUDED.connections,
+           view_state = EXCLUDED.view_state,
+           updated_at = CURRENT_TIMESTAMP
+         RETURNING id, updated_at`,
+        [socket.userId, name, JSON.stringify(elements), JSON.stringify(connections), JSON.stringify({ currentViewId: null, zoom: 1, pan: { x: 0, y: 0 } })]
+      );
+
+      console.log(`✅ Company generated for user ${socket.userId}: ${elements.length} elements, ${connections.length} connections`);
+
+      // Broadcast to all user's clients
+      emitToUser('flowchart:generated', {
+        elements,
+        connections,
+        flowchartId: result.rows[0].id
+      });
+
+      callback?.({
+        success: true,
+        elements,
+        connections,
+        flowchartId: result.rows[0].id,
+        updatedAt: result.rows[0].updated_at
+      });
+
+    } catch (error) {
+      console.error('Company generation error:', error);
+      callback?.({ success: false, error: error.message || 'Ошибка генерации компании' });
     }
   });
 

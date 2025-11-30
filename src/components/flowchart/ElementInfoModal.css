@@ -22,8 +22,8 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   width: 90%;
-  max-width: 420px;
-  max-height: 80vh;
+  max-width: 520px;
+  max-height: 85vh;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   animation: slideUp 0.25s ease;
@@ -78,6 +78,30 @@
   color: rgba(255, 255, 255, 0.5);
 }
 
+.info-subtitle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.info-position {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: rgba(34, 197, 94, 0.2);
+  border-radius: 4px;
+  color: #86efac;
+}
+
+.info-level {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: rgba(147, 51, 234, 0.2);
+  border-radius: 4px;
+  color: #c4b5fd;
+  text-transform: uppercase;
+}
+
 .info-close-btn {
   width: 32px;
   height: 32px;
@@ -99,7 +123,7 @@
 /* Content */
 .info-modal-content {
   padding: 20px;
-  max-height: 400px;
+  max-height: 55vh;
   overflow-y: auto;
 }
 
@@ -134,6 +158,115 @@
   font-size: 14px;
   color: rgba(255, 255, 255, 0.8);
   line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+/* Mission section */
+.info-mission {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.info-mission h4 {
+  color: #a5b4fc;
+  margin-bottom: 8px;
+}
+
+.mission-text {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* List styling */
+.info-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.info-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.4;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.info-list li:last-child {
+  border-bottom: none;
+}
+
+.list-icon {
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+
+/* Tags */
+.info-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.info-tag {
+  display: inline-block;
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.info-tag.competency {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #86efac;
+}
+
+.info-tag.kpi {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+}
+
+.info-tag.interact {
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+}
+
+.info-tag.dept {
+  background: rgba(147, 51, 234, 0.15);
+  border: 1px solid rgba(147, 51, 234, 0.3);
+  color: #c4b5fd;
+}
+
+/* Connection type badge */
+.conn-type-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.conn-type-name {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
 }
 
 /* Parent card */

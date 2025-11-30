@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { useFlowchartStore, ELEMENT_TYPES } from '../../store/flowchartStore';
+import { useFlowchartStore, ELEMENT_TYPES, CONNECTION_TYPES } from '../../store/flowchartStore';
 import ContextMenu from './ContextMenu';
 import ElementInfoModal from './ElementInfoModal';
 import './FlowchartCanvas.css';
@@ -377,8 +377,10 @@ function FlowchartCanvas() {
       y: fromEdge.y + Math.sin(angle) * fromArrowOffset
     };
     
-    // Цвета
-    const lineColor = isSelected ? '#fbbf24' : '#60a5fa';
+    // Цвета на основе типа связи
+    const connType = CONNECTION_TYPES[connection.type] || CONNECTION_TYPES.collaborates;
+    const typeColor = connType?.color || '#60a5fa';
+    const lineColor = isSelected ? '#fbbf24' : typeColor;
     const lineWidth = isSelected ? 4 : 3;
     
     // Рисуем линию
@@ -423,28 +425,33 @@ function FlowchartCanvas() {
       drawArrow(fromEdge.x, fromEdge.y, angle + Math.PI);
     }
     
-    // Метка связи
-    if ((connection.label || connection.description) && zoom > 0.5) {
-      const labelText = connection.label || '';
-      if (labelText) {
+    // Метка связи (показываем тип или description)
+    const showLabel = connection.type || connection.label || connection.description;
+    if (showLabel && zoom > 0.4) {
+      const connTypeInfo = CONNECTION_TYPES[connection.type];
+      const labelText = connection.label || connTypeInfo?.name || '';
+      const icon = connTypeInfo?.icon || '';
+      const displayText = icon ? `${icon} ${labelText}` : labelText;
+      
+      if (displayText) {
         const midX = (fromEdge.x + toEdge.x) / 2;
         const midY = (fromEdge.y + toEdge.y) / 2;
         
-        ctx.font = `bold ${12 * zoom}px Arial`;
-        const labelWidth = ctx.measureText(labelText).width + 16;
+        ctx.font = `bold ${11 * zoom}px Arial`;
+        const labelWidth = ctx.measureText(displayText).width + 16 * zoom;
         
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
         ctx.beginPath();
-        ctx.roundRect(midX - labelWidth/2, midY - 12 * zoom, labelWidth, 24 * zoom, 6 * zoom);
+        ctx.roundRect(midX - labelWidth/2, midY - 11 * zoom, labelWidth, 22 * zoom, 6 * zoom);
         ctx.fill();
-        ctx.strokeStyle = lineColor;
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = typeColor;
+        ctx.lineWidth = 2;
         ctx.stroke();
         
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(labelText, midX, midY);
+        ctx.fillText(displayText, midX, midY);
       }
     }
   }, [elements, getVisibleElements, worldToScreen, zoom]);

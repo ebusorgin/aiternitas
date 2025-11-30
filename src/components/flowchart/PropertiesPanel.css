@@ -597,6 +597,61 @@
   flex-shrink: 0;
 }
 
+/* ============== CONNECTION TYPE SELECTOR ============== */
+
+.connection-type-selector {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.type-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.type-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.type-btn.active {
+  color: #fff;
+}
+
+.type-btn .type-icon {
+  font-size: 16px;
+}
+
+.type-btn .type-name {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.connection-type-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.connection-type-name {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+}
+
 .direction-selector {
   display: flex;
   gap: 8px;

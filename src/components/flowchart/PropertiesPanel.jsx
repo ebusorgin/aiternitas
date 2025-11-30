@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useFlowchartStore, ELEMENT_TYPES, CONNECTION_DIRECTIONS } from '../../store/flowchartStore';
+import { useFlowchartStore, ELEMENT_TYPES, CONNECTION_DIRECTIONS, CONNECTION_TYPES } from '../../store/flowchartStore';
 import './PropertiesPanel.css';
 
 // Компонент рекурсивного дерева детей
@@ -94,11 +94,12 @@ function ConnectionsList({ elementId }) {
     if (!otherElement) return null;
     
     const otherType = ELEMENT_TYPES[otherElement.type];
+    const connType = CONNECTION_TYPES[conn.type];
     
     return (
       <div key={conn.id} className="connection-item" onClick={() => selectConnection(conn.id)}>
-        <span className="connection-direction">
-          {CONNECTION_DIRECTIONS[conn.direction]?.icon || '→'}
+        <span className="connection-type-badge" style={{ backgroundColor: connType?.color || '#60a5fa' }}>
+          {connType?.icon || CONNECTION_DIRECTIONS[conn.direction]?.icon || '→'}
         </span>
         <span 
           className="connection-target"
@@ -110,11 +111,9 @@ function ConnectionsList({ elementId }) {
           <span className="target-icon">{otherType?.icon}</span>
           <span className="target-name">{otherElement.name}</span>
         </span>
-        {conn.description && (
-          <span className="connection-desc" title={conn.description}>
-            {conn.description.slice(0, 20)}{conn.description.length > 20 ? '...' : ''}
-          </span>
-        )}
+        <span className="connection-type-name">
+          {connType?.name || ''}
+        </span>
       </div>
     );
   };
@@ -180,6 +179,7 @@ function PropertiesPanel() {
   const [connectionDescription, setConnectionDescription] = useState('');
   const [connectionLabel, setConnectionLabel] = useState('');
   const [connectionDirection, setConnectionDirection] = useState('outgoing');
+  const [connectionType, setConnectionType] = useState('collaborates');
 
   useEffect(() => {
     if (selectedElement) {
@@ -191,6 +191,7 @@ function PropertiesPanel() {
       setConnectionDescription(selectedConnection.description || '');
       setConnectionLabel(selectedConnection.label || '');
       setConnectionDirection(selectedConnection.direction || 'outgoing');
+      setConnectionType(selectedConnection.type || 'collaborates');
     }
   }, [selectedElement, selectedConnection]);
 
@@ -275,6 +276,35 @@ function PropertiesPanel() {
               <span className="endpoint-icon">{toType?.icon}</span>
               <span className="endpoint-name">{toElement?.name}</span>
             </div>
+          </div>
+
+          {/* Тип связи */}
+          <div className="properties-divider">
+            <span>Тип связи</span>
+          </div>
+          
+          <div className="connection-type-selector">
+            {Object.entries(CONNECTION_TYPES).map(([id, typeInfo]) => (
+              <button
+                key={id}
+                className={`type-btn ${connectionType === id ? 'active' : ''}`}
+                style={{ 
+                  borderColor: connectionType === id ? typeInfo.color : 'transparent',
+                  backgroundColor: connectionType === id ? typeInfo.color + '20' : 'transparent'
+                }}
+                onClick={() => {
+                  setConnectionType(id);
+                  setConnectionDirection(typeInfo.defaultDirection);
+                  updateConnection(selectedConnectionId, { 
+                    type: id, 
+                    direction: typeInfo.defaultDirection 
+                  });
+                }}
+              >
+                <span className="type-icon">{typeInfo.icon}</span>
+                <span className="type-name">{typeInfo.name}</span>
+              </button>
+            ))}
           </div>
 
           {/* Направление связи */}
