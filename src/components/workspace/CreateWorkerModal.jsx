@@ -1,100 +1,103 @@
 import { useState, useEffect } from 'react';
-import { useSceneStore } from '../../store/sceneStore';
-import { ENTITY_TYPES } from './EntityShape';
 import EntityTypeModal from './EntityTypeModal';
-import './EditEntityModal.css';
+import { ENTITY_TYPES } from './EntityShape';
+import './CreateWorkerModal.css';
 
-function EditEntityModal({ isOpen, onClose, elementId }) {
-  const elements = useSceneStore((state) => state.elements);
-  const updateElement = useSceneStore((state) => state.updateElement);
-  
-  const element = elementId ? elements.find((e) => e.id === elementId) : null;
-  
+function CreateWorkerModal({ isOpen, onClose, onCreate }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [type, setType] = useState('worker');
   const [color, setColor] = useState('#3b82f6');
-  const [type, setType] = useState('box');
+  const [emissive, setEmissive] = useState('#000000');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
 
-  // Заполняем форму данными элемента при открытии
+  // Сброс состояния при открытии модалки
   useEffect(() => {
-    if (isOpen && element) {
-      setName(element.name || '');
-      setDescription(element.description || '');
-      setColor(element.color || '#3b82f6');
-      setType(element.type || 'box');
+    if (isOpen) {
+      setName('');
+      setDescription('');
+      setType('worker');
+      setColor('#3b82f6');
+      setEmissive('#000000');
       setError('');
       setLoading(false);
+      setIsTypeModalOpen(false);
     }
-  }, [isOpen, element]);
+  }, [isOpen]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
     if (!name.trim()) {
-      setError('Имя элемента обязательно');
-      return;
-    }
-
-    if (!element) {
-      setError('Элемент не найден');
+      setError('Имя воркера обязательно');
       return;
     }
 
     setLoading(true);
     try {
-      console.log('💾 Редактируем элемент:', { elementId, name: name.trim(), description: description.trim(), color, type });
-      updateElement(elementId, {
-        name: name.trim(),
-        description: description.trim() || '',
+      console.log('📝 Создаем воркера:', { 
+        name: name.trim(), 
+        description: description.trim() || null,
+        type,
         color,
-        type
+        emissive
       });
-      
+      const result = await onCreate({
+        name: name.trim(),
+        description: description.trim() || null,
+        type,
+        color,
+        emissive
+      });
+      console.log('✅ Воркер успешно создан:', result);
+      setName('');
+      setDescription('');
+      setType('worker');
+      setColor('#3b82f6');
+      setEmissive('#000000');
       setLoading(false);
       onClose();
     } catch (err) {
-      console.error('❌ Ошибка редактирования элемента:', err);
-      setError(err.message || 'Ошибка редактирования элемента');
+      console.error('❌ Ошибка создания воркера:', err);
+      setError(err.message || 'Ошибка создания воркера');
       setLoading(false);
     }
   };
 
   const handleCancel = () => {
-    if (element) {
-      setName(element.name || '');
-      setDescription(element.description || '');
-      setColor(element.color || '#3b82f6');
-      setType(element.type || 'box');
-    }
+    setName('');
+    setDescription('');
+    setType('worker');
+    setColor('#3b82f6');
+    setEmissive('#000000');
     setError('');
     setLoading(false);
     setIsTypeModalOpen(false);
     onClose();
   };
 
-  if (!isOpen || !element) return null;
+  if (!isOpen) return null;
 
   return (
     <div className="modal-overlay" onClick={handleCancel}>
-      <div className="modal-content edit-entity-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-content create-worker-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Редактировать элемент</h2>
+          <h2>Создать нового воркера</h2>
           <button className="modal-close" onClick={handleCancel}>&times;</button>
         </div>
 
         <form onSubmit={handleSubmit} className="modal-form">
           <div className="form-group">
-            <label htmlFor="element-name">Название элемента *</label>
+            <label htmlFor="worker-name">Название воркера *</label>
             <input
               type="text"
-              id="element-name"
+              id="worker-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Введите название элемента"
+              placeholder="Введите название воркера"
               required
               autoFocus
               disabled={loading}
@@ -102,17 +105,28 @@ function EditEntityModal({ isOpen, onClose, elementId }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="element-type">Тип элемента</label>
-            <button
-              id="element-type"
-              type="button"
-              onClick={() => setIsTypeModalOpen(true)}
-              className="type-select-button"
+            <label htmlFor="worker-description">Описание</label>
+            <textarea
+              id="worker-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Введите описание воркера (необязательно)"
+              rows="4"
               disabled={loading}
-              title="Выберите тип элемента"
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="worker-type">Тип персонажа</label>
+            <button
+              type="button"
+              id="worker-type"
+              className="type-select-button"
+              onClick={() => setIsTypeModalOpen(true)}
+              disabled={loading}
             >
               <span className="type-select-icon">
-                {ENTITY_TYPES[type]?.icon || '📦'}
+                {ENTITY_TYPES[type]?.icon || '👷'}
               </span>
               <span className="type-select-label">
                 {ENTITY_TYPES[type]?.label || type}
@@ -130,23 +144,11 @@ function EditEntityModal({ isOpen, onClose, elementId }) {
           </div>
 
           <div className="form-group">
-            <label htmlFor="element-description">Описание</label>
-            <textarea
-              id="element-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Введите описание элемента (необязательно)"
-              rows="4"
-              disabled={loading}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="element-color">Цвет</label>
+            <label htmlFor="worker-color">Цвет</label>
             <div className="color-input-group">
               <input
-                id="element-color"
                 type="color"
+                id="worker-color"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
                 disabled={loading}
@@ -156,6 +158,27 @@ function EditEntityModal({ isOpen, onClose, elementId }) {
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
                 placeholder="#3b82f6"
+                className="color-text-input"
+                disabled={loading}
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="worker-emissive">Цвет сферы</label>
+            <div className="color-input-group">
+              <input
+                type="color"
+                id="worker-emissive"
+                value={emissive}
+                onChange={(e) => setEmissive(e.target.value)}
+                disabled={loading}
+              />
+              <input
+                type="text"
+                value={emissive}
+                onChange={(e) => setEmissive(e.target.value)}
+                placeholder="#000000"
                 className="color-text-input"
                 disabled={loading}
               />
@@ -178,7 +201,7 @@ function EditEntityModal({ isOpen, onClose, elementId }) {
               className="btn-primary"
               disabled={loading || !name.trim()}
             >
-              {loading ? 'Сохранение...' : 'Сохранить'}
+              {loading ? 'Создание...' : 'Создать воркера'}
             </button>
           </div>
         </form>
@@ -187,5 +210,5 @@ function EditEntityModal({ isOpen, onClose, elementId }) {
   );
 }
 
-export default EditEntityModal;
+export default CreateWorkerModal;
 

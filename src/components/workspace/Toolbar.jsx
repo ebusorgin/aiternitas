@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
-import EntityTypeModal from './EntityTypeModal';
+import ElementTypeModal from './ElementTypeModal';
 import CreateSceneModal from './CreateSceneModal';
+import CreateWorkerModal from './CreateWorkerModal';
+import CreateBlockModal from './CreateBlockModal';
 import './Toolbar.css';
 
 function Toolbar() {
@@ -19,17 +21,19 @@ function Toolbar() {
   const clearSelection = useSceneStore((state) => state.clearSelection);
   const createScene = useSceneStore((state) => state.createScene);
   const getCanvasCenter = useSceneStore((state) => state.getCanvasCenter);
-  const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
+  const [isElementTypeModalOpen, setIsElementTypeModalOpen] = useState(false);
   const [isSceneModalOpen, setIsSceneModalOpen] = useState(false);
+  const [isWorkerModalOpen, setIsWorkerModalOpen] = useState(false);
+  const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
 
   // Обработка горячих клавиш
   useEffect(() => {
     const handleKeyPress = (event) => {
-      // N - создать новый персонаж
+      // N - создать новый элемент
       if (event.key === 'n' || event.key === 'N') {
         if (!event.ctrlKey && !event.metaKey) {
           event.preventDefault();
-          setIsEntityModalOpen(true);
+          setIsElementTypeModalOpen(true);
         }
       }
 
@@ -63,18 +67,23 @@ function Toolbar() {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [connectMode, selectedEntityId, selectedConnectionId, setConnectMode, deleteEntity, deleteConnection, clearSelection]);
 
-  const handleNewPersonage = (type) => {
-    // Создаем сущность в центре экрана (позиция будет рассчитана в store)
-    createEntity({
-      position: null, // null означает, что нужно использовать центр canvas
-      size: [1, 1, 1],
-      name: `Entity ${Date.now()}`,
-      description: '',
-      color: '#3b82f6',
-      type: type || 'box'
-    });
+  const handleElementTypeSelect = (elementType) => {
+    setIsElementTypeModalOpen(false);
+    switch (elementType) {
+      case 'scene':
+        setIsSceneModalOpen(true);
+        break;
+      case 'worker':
+        setIsWorkerModalOpen(true);
+        break;
+      case 'block':
+        setIsBlockModalOpen(true);
+        break;
+      default:
+        console.error('Unknown element type:', elementType);
+    }
   };
-  
+
   const handleCreateScene = async (sceneData) => {
     try {
       // Для корневых сцен устанавливаем позицию в центре canvas
@@ -102,6 +111,43 @@ function Toolbar() {
     }
   };
 
+  const handleCreateWorker = async (workerData) => {
+    try {
+      // Создаем воркера в центре экрана (позиция будет рассчитана в store)
+      createEntity({
+        position: null, // null означает, что нужно использовать центр canvas
+        size: [1, 1, 1],
+        name: workerData.name,
+        description: workerData.description || '',
+        color: workerData.color || '#3b82f6',
+        emissive: workerData.emissive || '#000000',
+        type: workerData.type || 'worker',
+        elementType: 'worker'
+      });
+      setIsWorkerModalOpen(false);
+    } catch (error) {
+      console.error('Ошибка создания воркера:', error);
+    }
+  };
+
+  const handleCreateBlock = async (blockData) => {
+    try {
+      // Создаем блок в центре экрана (позиция будет рассчитана в store)
+      createEntity({
+        position: null, // null означает, что нужно использовать центр canvas
+        size: [1, 1, 1],
+        name: blockData.name,
+        description: blockData.description || '',
+        color: blockData.color || '#3b82f6',
+        type: 'block',
+        elementType: 'block'
+      });
+      setIsBlockModalOpen(false);
+    } catch (error) {
+      console.error('Ошибка создания блока:', error);
+    }
+  };
+
   const handleDelete = () => {
     if (selectedEntityId) {
       deleteEntity(selectedEntityId);
@@ -115,17 +161,10 @@ function Toolbar() {
       <div className="toolbar-group">
         <button
           className="toolbar-btn"
-          onClick={() => setIsEntityModalOpen(true)}
-          title="Создать персонаж (N)"
+          onClick={() => setIsElementTypeModalOpen(true)}
+          title="Создать элемент (N)"
         >
-          ➕ New Personage
-        </button>
-        <button
-          className="toolbar-btn"
-          onClick={() => setIsSceneModalOpen(true)}
-          title="Создать сцену"
-        >
-          ➕ New Scene
+          ➕ New Element
         </button>
         <button
           className="toolbar-btn"
@@ -168,16 +207,28 @@ function Toolbar() {
         </button>
       </div>
 
-      <EntityTypeModal
-        isOpen={isEntityModalOpen}
-        onClose={() => setIsEntityModalOpen(false)}
-        onSelectType={handleNewPersonage}
+      <ElementTypeModal
+        isOpen={isElementTypeModalOpen}
+        onClose={() => setIsElementTypeModalOpen(false)}
+        onSelectType={handleElementTypeSelect}
       />
       
       <CreateSceneModal
         isOpen={isSceneModalOpen}
         onClose={() => setIsSceneModalOpen(false)}
         onCreate={handleCreateScene}
+      />
+
+      <CreateWorkerModal
+        isOpen={isWorkerModalOpen}
+        onClose={() => setIsWorkerModalOpen(false)}
+        onCreate={handleCreateWorker}
+      />
+
+      <CreateBlockModal
+        isOpen={isBlockModalOpen}
+        onClose={() => setIsBlockModalOpen(false)}
+        onCreate={handleCreateBlock}
       />
     </div>
   );

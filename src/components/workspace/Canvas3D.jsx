@@ -9,13 +9,13 @@ import InteractionLayer from './InteractionLayer';
 import { useSceneStore } from '../../store/sceneStore';
 
 function Canvas3D() {
-  const entities = useSceneStore((state) => state.entities);
+  const elements = useSceneStore((state) => state.elements);
   const connections = useSceneStore((state) => state.connections);
   const clearSelection = useSceneStore((state) => state.clearSelection);
   const connectMode = useSceneStore((state) => state.connectMode);
   const setConnectingFrom = useSceneStore((state) => state.setConnectingFrom);
 
-  console.log('Canvas3D render:', { entitiesCount: entities.length, connectionsCount: connections.length });
+  console.log('Canvas3D render:', { elementsCount: elements.length, connectionsCount: connections.length });
 
   // Обработка клика на пустое место
   const handlePointerMissed = (event) => {
@@ -90,28 +90,28 @@ function Canvas3D() {
       {/* Дополнительный свет снизу для лучшей видимости */}
       <pointLight position={[0, -5, 0]} intensity={0.4} color="#667eea" />
 
-      {/* Сущности (кубы) */}
+      {/* Элементы (кубы) */}
       <Suspense fallback={null}>
-        {entities.map((entity) => (
-          <EntityCube key={entity.id} entity={entity} />
+        {elements.map((element) => (
+          <EntityCube key={element.id} element={element} />
         ))}
       </Suspense>
 
-      {/* Связи между сущностями */}
+      {/* Связи между элементами */}
       {connections.map((connection) => {
-        const fromEntity = entities.find((e) => e.id === connection.from);
-        const toEntity = entities.find((e) => e.id === connection.to);
+        const fromElement = elements.find((e) => e.id === connection.from);
+        const toElement = elements.find((e) => e.id === connection.to);
         
-        if (!fromEntity || !toEntity) return null;
+        if (!fromElement || !toElement) return null;
 
         return (
           <Connection
             key={connection.id}
             connection={connection}
-            fromPosition={fromEntity.position}
-            toPosition={toEntity.position}
-            fromEntity={fromEntity}
-            toEntity={toEntity}
+            fromPosition={fromElement.position}
+            toPosition={toElement.position}
+            fromElement={fromElement}
+            toElement={toElement}
           />
         );
       })}

@@ -7,20 +7,20 @@ export function setupSceneHandlers(io, sessionStore) {
   // Хранилище состояния сцены (в памяти, для real-time синхронизации)
   // В production можно использовать Redis для масштабирования
   const sceneState = {
-    entities: [],
+    elements: [],
     connections: [],
     lastUpdate: Date.now(),
-    currentSceneId: null // Текущая активная сцена (null означает entities без сцены)
+    currentSceneId: null // Текущая активная сцена (null означает элементы без сцены)
   };
 
   // Debounce для автоматического сохранения сцены в БД
   const saveTimeouts = new Map(); // userId -> timeout
   const SAVE_DEBOUNCE_MS = 2000; // Сохраняем через 2 секунды после последнего изменения
 
-  // Функция автоматического сохранения entities в БД
-  // sceneId может быть null, если entities создаются без сцены
-  async function saveSceneToDatabase(userId, state, sceneId = null) {
-    console.log(`🔍 saveSceneToDatabase вызвана: userId=${userId}, entities=${state.entities.length}, connections=${state.connections.length}`);
+  // Функция автоматического сохранения элементов в БД
+  // sceneId может быть null, если элементы создаются без сцены
+  async function saveElementsToDatabase(userId, state, sceneId = null) {
+    console.log(`🔍 saveElementsToDatabase вызвана: userId=${userId}, elements=${state.elements.length}`);
     
     if (!userId) {
       console.log('⚠️ saveSceneToDatabase: userId отсутствует, сохранение пропущено');
@@ -42,106 +42,64 @@ export function setupSceneHandlers(io, sessionStore) {
         const testQuery = await pool.query('SELECT NOW()');
         console.log(`✅ Подключение к БД работает, текущее время: ${testQuery.rows[0].now}`);
         
-        // Используем переданный sceneId (может быть null для entities без сцены)
-        // Если sceneId не передан, используем null (entities без сцены)
+        // Используем переданный sceneId (может быть null для elements без сцены)
+        // Если sceneId не передан, используем null (elements без сцены)
 
-        // Сохраняем сущности
-        // Если sceneId есть, сохраняем entities с этим scene_id
-        // Если sceneId нет, сохраняем entities с scene_id = NULL (entities без сцены)
-        console.log(`📊 Сохранение ${state.entities.length} сущностей...`);
-        for (const entity of state.entities) {
+        // Сохраняем элементы
+        // Если sceneId есть, сохраняем элементы с этим parent_id
+        // Если sceneId нет, сохраняем элементы с parent_id = NULL (элементы без сцены)
+        console.log(`📊 Сохранение ${state.elements.length} элементов...`);
+        for (const element of state.elements) {
           await pool.query(
-            `INSERT INTO entities (id, scene_id, user_id, name, description, type, color, position, size, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            `INSERT INTO elements (id, user_id, name, description, element_type, type, parent_id, position_2d, position, size_2d, size, color, emissive, background, show_grid, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
              ON CONFLICT (id) DO UPDATE SET
                name = EXCLUDED.name,
                description = EXCLUDED.description,
+               element_type = EXCLUDED.element_type,
                type = EXCLUDED.type,
-               color = EXCLUDED.color,
+               parent_id = EXCLUDED.parent_id,
+               position_2d = EXCLUDED.position_2d,
                position = EXCLUDED.position,
+               size_2d = EXCLUDED.size_2d,
                size = EXCLUDED.size,
-               scene_id = EXCLUDED.scene_id,
-               updated_at = CURRENT_TIMESTAMP`,
-            [
-              entity.id,
-              entity.scene_id || sceneId || null, // Используем scene_id из entity, если есть, иначе переданный sceneId
-              userId,
-              entity.name || 'Untitled Entity',
-              entity.description || '',
-              entity.type || 'box',
-              entity.color || '#3b82f6',
-              JSON.stringify(entity.position || [0, 0, 0]),
-              JSON.stringify(entity.size || [1, 1, 1]),
-              entity.createdBy || userId
-            ]
-          );
-        }
-        console.log(`✅ Сохранено ${state.entities.length} сущностей${sceneId ? ` для сцены ${sceneId}` : ' без сцены'}`);
-
-        // ВАЖНО: Не удаляем сущности автоматически при сохранении
-        // Удаление должно происходить только явно через entity:delete
-        // Это предотвращает случайное удаление сущностей при сохранении одной сцены
-        // Сущности могут принадлежать разным сценам или не иметь сцены вообще
-
-        // Сохраняем связи
-        console.log(`📊 Сохранение ${state.connections.length} связей...`);
-        for (const connection of state.connections) {
-          await pool.query(
-            `INSERT INTO connections (id, scene_id, user_id, from_entity_id, to_entity_id, type, bidirectional, label, color, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-             ON CONFLICT (id) DO UPDATE SET
-               type = EXCLUDED.type,
-               bidirectional = EXCLUDED.bidirectional,
-               label = EXCLUDED.label,
                color = EXCLUDED.color,
+               emissive = EXCLUDED.emissive,
+               background = EXCLUDED.background,
+               show_grid = EXCLUDED.show_grid,
                updated_at = CURRENT_TIMESTAMP`,
             [
-              connection.id,
-              sceneId,
+              element.id,
               userId,
-              connection.from,
-              connection.to,
-              connection.type || 'one-way',
-              connection.bidirectional || false,
-              connection.label || '',
-              connection.color || '#ffffff',
-              connection.createdBy || userId
+              element.name || 'Untitled Element',
+              element.description || '',
+              element.elementType || 'worker',
+              element.type || null,
+              element.parent_id || sceneId || null,
+              element.position_2d ? JSON.stringify(element.position_2d) : null,
+              element.position ? JSON.stringify(element.position) : null,
+              element.size_2d ? JSON.stringify(element.size_2d) : null,
+              element.size ? JSON.stringify(element.size) : null,
+              element.color || null,
+              element.emissive || null,
+              element.background || null,
+              element.showGrid !== undefined ? element.showGrid : null,
+              element.createdBy || userId
             ]
           );
         }
-        console.log(`✅ Сохранено ${state.connections.length} связей`);
+        console.log(`✅ Сохранено ${state.elements.length} элементов${sceneId ? ` для сцены ${sceneId}` : ' без сцены'}`);
 
-        // Удаляем связи, которых нет в текущем состоянии
-        // Если sceneId есть, удаляем connections этой сцены, которых нет в состоянии
-        // Если sceneId нет, удаляем connections без сцены, которых нет в состоянии
-        const connectionIds = state.connections.map(c => c.id);
-        if (connectionIds.length > 0) {
-          if (sceneId) {
-            await pool.query(
-              `DELETE FROM connections WHERE scene_id = $1 AND id != ALL($2::text[])`,
-              [sceneId, connectionIds]
-            );
-          } else {
-            await pool.query(
-              `DELETE FROM connections WHERE user_id = $1 AND scene_id IS NULL AND id != ALL($2::text[])`,
-              [userId, connectionIds]
-            );
-          }
-        } else {
-          if (sceneId) {
-            await pool.query(
-              `DELETE FROM connections WHERE scene_id = $1`,
-              [sceneId]
-            );
-          } else {
-            await pool.query(
-              `DELETE FROM connections WHERE user_id = $1 AND scene_id IS NULL`,
-              [userId]
-            );
-          }
-        }
+        // ВАЖНО: Не удаляем элементы автоматически при сохранении
+        // Удаление должно происходить только явно через element:delete
+        // Это предотвращает случайное удаление элементов при сохранении одной сцены
+        // Элементы могут принадлежать разным сценам или не иметь сцены вообще
 
-        console.log(`✅ Сцена полностью сохранена в БД: scene_id=${sceneId}, entities=${state.entities.length}, connections=${state.connections.length}`);
+        // ПРИМЕЧАНИЕ: Связи (connections) больше не сохраняются здесь,
+        // так как они сохраняются напрямую в БД через connection:create/update/delete
+        // Это предотвращает конфликты и дублирование сохранения
+
+        console.log(`✅ Сцена полностью сохранена в БД: scene_id=${sceneId}, elements=${state.elements.length}`);
         saveTimeouts.delete(userId);
       } catch (error) {
         console.error('❌ Ошибка автоматического сохранения сцены:', error);
@@ -383,15 +341,15 @@ export function setupSceneHandlers(io, sessionStore) {
       // Если пользователь авторизован, пытаемся загрузить его дефолтную сцену (первую корневую)
       if (socket.userId) {
         try {
-          // Сначала ищем корневую сцену (parent_id IS NULL) с наибольшим количеством entities
+          // Сначала ищем корневую сцену (parent_id IS NULL) с наибольшим количеством элементов
           // Это будет дефолтная сцена, в которой показываются все остальные
           let sceneResult = await pool.query(
-            `SELECT s.id, COUNT(e.id) as entities_count
-             FROM scenes s
-             LEFT JOIN entities e ON e.scene_id = s.id
-             WHERE s.user_id = $1 AND s.parent_id IS NULL
+            `SELECT s.id, COUNT(e.id) as elements_count
+             FROM elements s
+             LEFT JOIN elements e ON e.parent_id = s.id
+             WHERE s.user_id = $1 AND s.element_type = 'scene' AND s.parent_id IS NULL
              GROUP BY s.id
-             ORDER BY entities_count DESC, s.created_at ASC
+             ORDER BY elements_count DESC, s.created_at ASC
              LIMIT 1`,
             [socket.userId]
           );
@@ -399,7 +357,7 @@ export function setupSceneHandlers(io, sessionStore) {
           // Если корневой сцены нет, берем последнюю обновленную
           if (sceneResult.rows.length === 0) {
             sceneResult = await pool.query(
-              `SELECT id FROM scenes WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+              `SELECT id FROM elements WHERE user_id = $1 AND element_type = 'scene' ORDER BY updated_at DESC LIMIT 1`,
               [socket.userId]
             );
           }
@@ -408,101 +366,95 @@ export function setupSceneHandlers(io, sessionStore) {
             const sceneId = sceneResult.rows[0].id;
             loadedSceneId = sceneId;
             
-            // Загружаем сущности из БД
-            const entitiesResult = await pool.query(
-              `SELECT id, name, description, type, color, position, size, scene_id, created_at, updated_at, created_by
-               FROM entities WHERE scene_id = $1 ORDER BY created_at`,
+            // Загружаем все дочерние элементы из БД
+            const elementsResult = await pool.query(
+              `SELECT id, name, description, element_type, type, parent_id, position_2d, position, size_2d, size, color, emissive, background, show_grid, created_at, updated_at, created_by
+               FROM elements WHERE parent_id = $1 ORDER BY created_at`,
               [sceneId]
             );
             
             // Загружаем связи из БД
             const connectionsResult = await pool.query(
-              `SELECT id, from_entity_id, to_entity_id, type, bidirectional, label, color, created_at, updated_at, created_by
-               FROM connections WHERE scene_id = $1 ORDER BY created_at`,
-              [sceneId]
+              `SELECT c.id, c.from_element_id, c.to_element_id, c.type, c.bidirectional, c.label, c.color, c.created_at, c.updated_at, c.created_by
+               FROM elements_connections c
+               INNER JOIN elements e1 ON e1.id = c.from_element_id
+               INNER JOIN elements e2 ON e2.id = c.to_element_id
+               WHERE c.user_id = $1 AND (e1.parent_id = $2 OR e2.parent_id = $2)
+               ORDER BY c.created_at`,
+              [socket.userId, sceneId]
             );
             
             // Преобразуем данные из БД в формат приложения
-            sceneState.entities = entitiesResult.rows.map(row => ({
+            sceneState.elements = elementsResult.rows.map(row => ({
               id: row.id,
               name: row.name,
               description: row.description || '',
-              type: row.type,
-              color: row.color,
-              position: typeof row.position === 'string' ? JSON.parse(row.position) : row.position,
-              size: typeof row.size === 'string' ? JSON.parse(row.size) : row.size,
-              scene_id: row.scene_id || null,
+              elementType: row.element_type,
+              type: row.type || null,
+              parent_id: row.parent_id || null,
+              position_2d: row.position_2d ? (typeof row.position_2d === 'string' ? JSON.parse(row.position_2d) : row.position_2d) : null,
+              position: row.position ? (typeof row.position === 'string' ? JSON.parse(row.position) : row.position) : null,
+              size_2d: row.size_2d ? (typeof row.size_2d === 'string' ? JSON.parse(row.size_2d) : row.size_2d) : null,
+              size: row.size ? (typeof row.size === 'string' ? JSON.parse(row.size) : row.size) : null,
+              color: row.color || null,
+              emissive: row.emissive || null,
+              background: row.background || null,
+              showGrid: row.show_grid !== undefined ? row.show_grid : null,
               createdAt: row.created_at?.getTime() || Date.now(),
               updatedAt: row.updated_at?.getTime() || Date.now(),
               createdBy: row.created_by
             }));
             
-            sceneState.connections = connectionsResult.rows.map(row => ({
-              id: row.id,
-              from: row.from_entity_id,
-              to: row.to_entity_id,
-              type: row.type,
-              bidirectional: row.bidirectional,
-              label: row.label || '',
-              color: row.color,
-              createdAt: row.created_at?.getTime() || Date.now(),
-              updatedAt: row.updated_at?.getTime() || Date.now(),
-              createdBy: row.created_by
-            }));
+            // connections больше не загружаются в sceneState, так как они загружаются отдельно через scene:list-with-connections
             
             sceneState.lastUpdate = Date.now();
             
-            console.log(`📥 Загружена сохраненная сцена для пользователя ${socket.userId}: ${sceneState.entities.length} сущностей, ${sceneState.connections.length} связей`);
+            console.log(`📥 Загружена сохраненная сцена для пользователя ${socket.userId}: ${sceneState.elements.length} элементов`);
           } else {
-            // Если нет сохраненной сцены, загружаем entities без сцены (scene_id IS NULL)
-            console.log(`📥 Нет сохраненной сцены для пользователя ${socket.userId}, загружаем entities без сцены`);
+            // Если нет сохраненной сцены, загружаем элементы без сцены (parent_id IS NULL)
+            console.log(`📥 Нет сохраненной сцены для пользователя ${socket.userId}, загружаем элементы без сцены`);
             
-            const entitiesResult = await pool.query(
-              `SELECT id, name, description, type, color, position, size, scene_id, created_at, updated_at, created_by
-               FROM entities WHERE user_id = $1 AND scene_id IS NULL ORDER BY created_at`,
+            const elementsResult = await pool.query(
+              `SELECT id, name, description, element_type, type, parent_id, position_2d, position, size_2d, size, color, emissive, background, show_grid, created_at, updated_at, created_by
+               FROM elements WHERE user_id = $1 AND parent_id IS NULL AND element_type != 'scene' ORDER BY created_at`,
               [socket.userId]
             );
             
             const connectionsResult = await pool.query(
-              `SELECT c.id, c.from_entity_id, c.to_entity_id, c.type, c.bidirectional, c.label, c.color, c.created_at, c.updated_at, c.created_by
-               FROM connections c
-               INNER JOIN entities e1 ON e1.id = c.from_entity_id
-               INNER JOIN entities e2 ON e2.id = c.to_entity_id
-               WHERE c.user_id = $1 AND (e1.scene_id IS NULL AND e2.scene_id IS NULL)
+              `SELECT c.id, c.from_element_id, c.to_element_id, c.type, c.bidirectional, c.label, c.color, c.created_at, c.updated_at, c.created_by
+               FROM elements_connections c
+               INNER JOIN elements e1 ON e1.id = c.from_element_id
+               INNER JOIN elements e2 ON e2.id = c.to_element_id
+               WHERE c.user_id = $1 AND (e1.parent_id IS NULL AND e2.parent_id IS NULL)
                ORDER BY c.created_at`,
               [socket.userId]
             );
             
-            sceneState.entities = entitiesResult.rows.map(row => ({
+            sceneState.elements = elementsResult.rows.map(row => ({
               id: row.id,
               name: row.name,
               description: row.description || '',
-              type: row.type,
-              color: row.color,
-              position: typeof row.position === 'string' ? JSON.parse(row.position) : row.position,
-              size: typeof row.size === 'string' ? JSON.parse(row.size) : row.size,
-              scene_id: row.scene_id || null,
+              elementType: row.element_type,
+              type: row.type || null,
+              parent_id: row.parent_id || null,
+              position_2d: row.position_2d ? (typeof row.position_2d === 'string' ? JSON.parse(row.position_2d) : row.position_2d) : null,
+              position: row.position ? (typeof row.position === 'string' ? JSON.parse(row.position) : row.position) : null,
+              size_2d: row.size_2d ? (typeof row.size_2d === 'string' ? JSON.parse(row.size_2d) : row.size_2d) : null,
+              size: row.size ? (typeof row.size === 'string' ? JSON.parse(row.size) : row.size) : null,
+              color: row.color || null,
+              emissive: row.emissive || null,
+              background: row.background || null,
+              showGrid: row.show_grid !== undefined ? row.show_grid : null,
               createdAt: row.created_at?.getTime() || Date.now(),
               updatedAt: row.updated_at?.getTime() || Date.now(),
               createdBy: row.created_by
             }));
             
-            sceneState.connections = connectionsResult.rows.map(row => ({
-              id: row.id,
-              from: row.from_entity_id,
-              to: row.to_entity_id,
-              type: row.type,
-              bidirectional: row.bidirectional,
-              label: row.label || '',
-              color: row.color,
-              createdAt: row.created_at?.getTime() || Date.now(),
-              updatedAt: row.updated_at?.getTime() || Date.now(),
-              createdBy: row.created_by
-            }));
+            // connections больше не загружаются в sceneState, так как они загружаются отдельно через scene:list-with-connections
             
             sceneState.lastUpdate = Date.now();
             
-            console.log(`📥 Загружены entities без сцены для пользователя ${socket.userId}: ${sceneState.entities.length} сущностей, ${sceneState.connections.length} связей`);
+            console.log(`📥 Загружены элементы без сцены для пользователя ${socket.userId}: ${sceneState.elements.length} элементов`);
           }
         } catch (error) {
           console.error('❌ Ошибка загрузки сцены при присоединении:', error);
@@ -513,10 +465,10 @@ export function setupSceneHandlers(io, sessionStore) {
       sceneState.currentSceneId = loadedSceneId;
       
       // Отправляем состояние сцены и ID сцены, если она была загружена
-      // Если sceneId = null, но есть entities, это означает, что показываем entities без сцены
+      // Если sceneId = null, но есть elements, это означает, что показываем elements без сцены
       socket.emit('scene:state', {
-        entities: sceneState.entities,
-        connections: sceneState.connections,
+        elements: sceneState.elements,
+        // connections больше не отправляются здесь, так как они загружаются отдельно через scene:list-with-connections
         sceneId: loadedSceneId
       });
       
@@ -524,7 +476,7 @@ export function setupSceneHandlers(io, sessionStore) {
       if (loadedSceneId) {
         try {
           const sceneInfo = await pool.query(
-            'SELECT name FROM scenes WHERE id = $1 AND user_id = $2',
+            'SELECT name FROM elements WHERE id = $1 AND user_id = $2 AND element_type = \'scene\'',
             [loadedSceneId, socket.userId]
           );
           if (sceneInfo.rows.length > 0) {
@@ -541,49 +493,56 @@ export function setupSceneHandlers(io, sessionStore) {
       console.log(`📥 Клиент ${socket.id} присоединился к сцене${loadedSceneId ? ` (scene_id=${loadedSceneId})` : ''}`);
     });
 
-    // Создание новой сущности (куба)
-    socket.on('entity:create', (entityData) => {
-      console.log('🔍 entity:create event:', { 
+    // Создание нового элемента
+    socket.on('element:create', (elementData) => {
+      console.log('🔍 element:create event:', { 
         socketId: socket.id, 
         userId: socket.userId,
         userName: socket.userName,
-        entityData 
+        elementData 
       });
       
       if (!socket.userId) {
-        console.log('❌ entity:create: userId отсутствует для socket', socket.id);
-        socket.emit('error', { message: 'Требуется авторизация для создания сущностей' });
+        console.log('❌ element:create: userId отсутствует для socket', socket.id);
+        socket.emit('error', { message: 'Требуется авторизация для создания элементов' });
         return;
       }
       
-      console.log(`✅ entity:create: userId=${socket.userId} установлен, продолжаем создание`);
+      console.log(`✅ element:create: userId=${socket.userId} установлен, продолжаем создание`);
 
-      const entity = {
-        id: entityData.id || `entity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        name: entityData.name || `Entity ${sceneState.entities.length + 1}`,
-        description: entityData.description || '',
-        color: entityData.color || '#3b82f6',
-        position: entityData.position || [0, 0, 0],
-        size: entityData.size || [1, 1, 1],
-        type: entityData.type || 'box',
+      const element = {
+        id: elementData.id || `element_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: elementData.name || `Element ${sceneState.elements.length + 1}`,
+        description: elementData.description || '',
+        color: elementData.color || '#3b82f6',
+        emissive: elementData.emissive || null,
+        position: elementData.position || [0, 0, 0],
+        position_2d: elementData.position_2d || null,
+        size: elementData.size || [1, 1, 1],
+        size_2d: elementData.size_2d || null,
+        type: elementData.type || 'box',
+        elementType: elementData.elementType || (elementData.type === 'block' ? 'block' : 'worker'),
+        parent_id: elementData.parent_id || null,
+        background: elementData.background || null,
+        showGrid: elementData.showGrid !== undefined ? elementData.showGrid : null,
         createdAt: Date.now(),
         createdBy: socket.userId
       };
 
-      sceneState.entities.push(entity);
+      sceneState.elements.push(element);
       sceneState.lastUpdate = Date.now();
 
       // Синхронизация со всеми клиентами
-      io.emit('entity:created', entity);
-      console.log(`✨ Создана сущность ${entity.id} пользователем ${socket.userId}`);
+      io.emit('element:created', element);
+      console.log(`✨ Создан элемент ${element.id} пользователем ${socket.userId}`);
       
-      // Автоматическое сохранение entities в БД
-      // Используем currentSceneId из состояния (может быть null для entities без сцены)
-      saveSceneToDatabase(socket.userId, sceneState, sceneState.currentSceneId);
+      // Автоматическое сохранение элементов в БД
+      // Используем currentSceneId из состояния (может быть null для элементов без сцены)
+      saveElementsToDatabase(socket.userId, sceneState, sceneState.currentSceneId);
     });
 
-    // Обновление сущности (позиция, свойства)
-    socket.on('entity:update', async (updateData) => {
+    // Обновление элемента (позиция, свойства)
+    socket.on('element:update', async (updateData) => {
       if (!socket.userId) {
         socket.emit('error', { message: 'Требуется авторизация' });
         return;
@@ -591,235 +550,360 @@ export function setupSceneHandlers(io, sessionStore) {
 
       const { id, ...updates } = updateData;
       
-      // Проверяем, есть ли сущность в sceneState.entities
-      let entity = sceneState.entities.find(e => e.id === id);
+      // Проверяем, есть ли элемент в sceneState.elements
+      let element = sceneState.elements.find(e => e.id === id);
       
-      // Если сущности нет в sceneState, загружаем её из БД
-      if (!entity) {
+      // Если элемента нет в sceneState, загружаем его из БД
+      if (!element) {
         try {
-          const entityResult = await pool.query(
-            `SELECT id, name, description, type, color, position, size, scene_id, created_by
-             FROM entities 
+          const elementResult = await pool.query(
+            `SELECT id, name, description, element_type, type, parent_id, position_2d, position, size_2d, size, color, emissive, background, show_grid, created_by
+             FROM elements 
              WHERE id = $1 AND user_id = $2`,
             [id, socket.userId]
           );
           
-          if (entityResult.rows.length === 0) {
-            socket.emit('error', { message: 'Сущность не найдена' });
+          if (elementResult.rows.length === 0) {
+            socket.emit('error', { message: 'Элемент не найден' });
             return;
           }
           
-          const row = entityResult.rows[0];
-          entity = {
+          const row = elementResult.rows[0];
+          element = {
             id: row.id,
             name: row.name,
             description: row.description || '',
-            type: row.type,
-            color: row.color,
-            position: typeof row.position === 'string' ? JSON.parse(row.position) : row.position,
-            size: typeof row.size === 'string' ? JSON.parse(row.size) : row.size,
-            scene_id: row.scene_id || null,
+            elementType: row.element_type,
+            type: row.type || null,
+            parent_id: row.parent_id || null,
+            position_2d: row.position_2d ? (typeof row.position_2d === 'string' ? JSON.parse(row.position_2d) : row.position_2d) : null,
+            position: row.position ? (typeof row.position === 'string' ? JSON.parse(row.position) : row.position) : null,
+            size_2d: row.size_2d ? (typeof row.size_2d === 'string' ? JSON.parse(row.size_2d) : row.size_2d) : null,
+            size: row.size ? (typeof row.size === 'string' ? JSON.parse(row.size) : row.size) : null,
+            color: row.color || null,
+            emissive: row.emissive || null,
+            background: row.background || null,
+            showGrid: row.show_grid !== undefined ? row.show_grid : null,
             createdAt: Date.now(),
             updatedAt: Date.now(),
             createdBy: row.created_by
           };
         } catch (error) {
-          console.error(`❌ Ошибка загрузки сущности ${id} из БД:`, error);
-          socket.emit('error', { message: 'Ошибка загрузки сущности' });
+          console.error(`❌ Ошибка загрузки элемента ${id} из БД:`, error);
+          socket.emit('error', { message: 'Ошибка загрузки элемента' });
           return;
         }
       }
       
-      // Обновляем сущность
-      const updatedEntity = {
-        ...entity,
+      // Обновляем элемент
+      const updatedElement = {
+        ...element,
         ...updates,
         updatedAt: Date.now(),
         updatedBy: socket.userId
       };
       
-      // Обновляем в sceneState, если она там была
-      const entityIndex = sceneState.entities.findIndex(e => e.id === id);
-      if (entityIndex !== -1) {
-        sceneState.entities[entityIndex] = updatedEntity;
+      // Обновляем в sceneState, если он там был
+      const elementIndex = sceneState.elements.findIndex(e => e.id === id);
+      if (elementIndex !== -1) {
+        sceneState.elements[elementIndex] = updatedElement;
         sceneState.lastUpdate = Date.now();
       }
 
       // Синхронизация
-      io.emit('entity:updated', updatedEntity);
+      io.emit('element:updated', updatedElement);
       
-      // ВАЖНО: Сохраняем сущность напрямую в БД, а не через saveSceneToDatabase
-      // Это предотвращает удаление других сущностей
+      // ВАЖНО: Сохраняем элемент напрямую в БД, а не через saveElementsToDatabase
+      // Это предотвращает удаление других элементов
       try {
         await pool.query(
-          `INSERT INTO entities (id, scene_id, user_id, name, description, type, color, position, size, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          `INSERT INTO elements (id, user_id, name, description, element_type, type, parent_id, position_2d, position, size_2d, size, color, emissive, background, show_grid, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
            ON CONFLICT (id) DO UPDATE SET
              name = EXCLUDED.name,
              description = EXCLUDED.description,
+             element_type = EXCLUDED.element_type,
              type = EXCLUDED.type,
-             color = EXCLUDED.color,
+             parent_id = EXCLUDED.parent_id,
+             position_2d = EXCLUDED.position_2d,
              position = EXCLUDED.position,
+             size_2d = EXCLUDED.size_2d,
              size = EXCLUDED.size,
-             scene_id = EXCLUDED.scene_id,
+             color = EXCLUDED.color,
+             emissive = EXCLUDED.emissive,
+             background = EXCLUDED.background,
+             show_grid = EXCLUDED.show_grid,
              updated_at = CURRENT_TIMESTAMP`,
           [
-            updatedEntity.id,
-            updatedEntity.scene_id || null,
+            updatedElement.id,
             socket.userId,
-            updatedEntity.name || 'Untitled Entity',
-            updatedEntity.description || '',
-            updatedEntity.type || 'box',
-            updatedEntity.color || '#3b82f6',
-            JSON.stringify(updatedEntity.position || [0, 0, 0]),
-            JSON.stringify(updatedEntity.size || [1, 1, 1]),
-            updatedEntity.createdBy || socket.userId
+            updatedElement.name || 'Untitled Element',
+            updatedElement.description || '',
+            updatedElement.elementType || 'worker',
+            updatedElement.type || null,
+            updatedElement.parent_id || null,
+            updatedElement.position_2d ? JSON.stringify(updatedElement.position_2d) : null,
+            updatedElement.position ? JSON.stringify(updatedElement.position) : null,
+            updatedElement.size_2d ? JSON.stringify(updatedElement.size_2d) : null,
+            updatedElement.size ? JSON.stringify(updatedElement.size) : null,
+            updatedElement.color || null,
+            updatedElement.emissive || null,
+            updatedElement.background || null,
+            updatedElement.showGrid !== undefined ? updatedElement.showGrid : null,
+            updatedElement.createdBy || socket.userId
           ]
         );
-        console.log(`💾 Сущность ${id} сохранена в БД`);
+        console.log(`💾 Элемент ${id} сохранен в БД`);
       } catch (error) {
-        console.error(`❌ Ошибка сохранения сущности ${id}:`, error);
+        console.error(`❌ Ошибка сохранения элемента ${id}:`, error);
       }
     });
 
-    // Удаление сущности
-    socket.on('entity:delete', (entityId) => {
+    // Удаление элемента
+    socket.on('element:delete', async (elementId) => {
       if (!socket.userId) {
         socket.emit('error', { message: 'Требуется авторизация' });
         return;
       }
 
-      const entityIndex = sceneState.entities.findIndex(e => e.id === entityId);
-      if (entityIndex === -1) {
-        socket.emit('error', { message: 'Сущность не найдена' });
-        return;
+      try {
+        const elementIndex = sceneState.elements.findIndex(e => e.id === elementId);
+        if (elementIndex === -1) {
+          socket.emit('error', { message: 'Элемент не найден' });
+          return;
+        }
+
+        sceneState.elements.splice(elementIndex, 1);
+        
+        // Удаляем все связи с этим элементом напрямую из БД
+        await pool.query(
+          `DELETE FROM elements_connections 
+           WHERE (from_element_id = $1 OR to_element_id = $1) AND user_id = $2`,
+          [elementId, socket.userId]
+        );
+
+        // Получаем все удаленные связи для синхронизации с клиентами
+        // Примечание: связи уже удалены, но нужно уведомить клиентов
+        // Клиенты получат уведомление через connection:deleted события
+        // Но проще всего - просто перезагрузить связи через scene:list-with-connections
+
+        sceneState.lastUpdate = Date.now();
+
+        // Синхронизация
+        io.emit('element:deleted', { id: elementId });
+        // Уведомляем, что связи нужно перезагрузить
+        io.emit('connections:reload');
+        console.log(`🗑️ Удален элемент ${elementId} и все его связи`);
+        
+        // Автоматическое сохранение элементов в БД
+        // Используем currentSceneId из состояния (может быть null для элементов без сцены)
+        saveElementsToDatabase(socket.userId, sceneState, sceneState.currentSceneId);
+      } catch (error) {
+        console.error('Ошибка удаления элемента:', error);
+        socket.emit('error', { message: 'Ошибка удаления элемента' });
       }
-
-      sceneState.entities.splice(entityIndex, 1);
-      
-      // Удаляем все связи с этой сущностью
-      sceneState.connections = sceneState.connections.filter(
-        conn => conn.from !== entityId && conn.to !== entityId
-      );
-
-      sceneState.lastUpdate = Date.now();
-
-      // Синхронизация
-      io.emit('entity:deleted', { id: entityId });
-      io.emit('connections:updated', sceneState.connections);
-      console.log(`🗑️ Удалена сущность ${entityId}`);
-      
-      // Автоматическое сохранение entities в БД
-      // Используем currentSceneId из состояния (может быть null для entities без сцены)
-      saveSceneToDatabase(socket.userId, sceneState, sceneState.currentSceneId);
     });
 
     // Создание связи между сущностями
-    socket.on('connection:create', (connectionData) => {
+    socket.on('connection:create', async (connectionData) => {
       if (!socket.userId) {
         socket.emit('error', { message: 'Требуется авторизация' });
         return;
       }
 
-      const { from, to, ...rest } = connectionData;
-      
-      // Проверяем существование сущностей
-      const fromExists = sceneState.entities.some(e => e.id === from);
-      const toExists = sceneState.entities.some(e => e.id === to);
+      try {
+        const { from, to, type = 'one-way', bidirectional = false, label, color = '#ffffff' } = connectionData;
+        
+        if (!from || !to) {
+          socket.emit('error', { message: 'ID элементов обязательны' });
+          return;
+        }
 
-      if (!fromExists || !toExists) {
-        socket.emit('error', { message: 'Одна из сущностей не найдена' });
-        return;
+        if (from === to) {
+          socket.emit('error', { message: 'Нельзя создать связь элемента с самим собой' });
+          return;
+        }
+
+        // Проверяем права доступа к обоим элементам
+        const elementsCheck = await pool.query(
+          'SELECT id, element_type FROM elements WHERE id IN ($1, $2) AND user_id = $3',
+          [from, to, socket.userId]
+        );
+
+        if (elementsCheck.rows.length !== 2) {
+          socket.emit('error', { message: 'Один из элементов не найден или нет доступа' });
+          return;
+        }
+
+        // Проверяем, нет ли уже такой связи
+        const existingCheck = await pool.query(
+          `SELECT id FROM elements_connections 
+           WHERE from_element_id = $1 AND to_element_id = $2 AND user_id = $3`,
+          [from, to, socket.userId]
+        );
+
+        if (existingCheck.rows.length > 0) {
+          socket.emit('error', { message: 'Связь уже существует' });
+          return;
+        }
+
+        const connectionId = connectionData.id || `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // Создаем связь в таблице elements_connections
+        const result = await pool.query(
+          `INSERT INTO elements_connections 
+           (id, user_id, from_element_id, to_element_id, type, bidirectional, label, color, created_by) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+           RETURNING id, from_element_id, to_element_id, type, bidirectional, label, color, created_at`,
+          [connectionId, socket.userId, from, to, type, bidirectional, label || null, color, socket.userId]
+        );
+
+        const newConnection = {
+          id: result.rows[0].id,
+          from: result.rows[0].from_element_id,
+          to: result.rows[0].to_element_id,
+          type: result.rows[0].type,
+          bidirectional: result.rows[0].bidirectional,
+          label: result.rows[0].label || '',
+          color: result.rows[0].color,
+          createdAt: result.rows[0].created_at?.getTime() || Date.now(),
+          createdBy: socket.userId
+        };
+
+        // Синхронизируем со всеми клиентами
+        // Примечание: не обновляем sceneState.connections, так как связи сохраняются напрямую в БД
+        io.emit('connection:created', newConnection);
+        console.log(`🔗 Создана связь ${newConnection.id} между ${from} и ${to}`);
+      } catch (error) {
+        console.error('Ошибка создания связи:', error);
+        socket.emit('error', { message: 'Ошибка создания связи' });
       }
-
-      // Проверяем, нет ли уже такой связи
-      const exists = sceneState.connections.some(
-        conn => conn.from === from && conn.to === to
-      );
-
-      if (exists) {
-        socket.emit('error', { message: 'Связь уже существует' });
-        return;
-      }
-
-      const connection = {
-        id: connectionData.id || `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        from,
-        to,
-        type: rest.type || 'one-way',
-        bidirectional: rest.bidirectional || false,
-        label: rest.label || '',
-        color: rest.color || '#ffffff',
-        createdAt: Date.now(),
-        createdBy: socket.userId
-      };
-
-      sceneState.connections.push(connection);
-      sceneState.lastUpdate = Date.now();
-
-      // Синхронизация
-      io.emit('connection:created', connection);
-      console.log(`🔗 Создана связь ${connection.id} между ${from} и ${to}`);
-      
-      // Автоматическое сохранение entities в БД
-      // Используем currentSceneId из состояния (может быть null для entities без сцены)
-      saveSceneToDatabase(socket.userId, sceneState, sceneState.currentSceneId);
     });
 
     // Обновление связи
-    socket.on('connection:update', (updateData) => {
+    socket.on('connection:update', async (updateData) => {
       if (!socket.userId) {
         socket.emit('error', { message: 'Требуется авторизация' });
         return;
       }
 
-      const { id, ...updates } = updateData;
-      const connIndex = sceneState.connections.findIndex(c => c.id === id);
+      try {
+        const { id, ...updates } = updateData;
+        
+        if (!id) {
+          socket.emit('error', { message: 'ID связи обязателен' });
+          return;
+        }
 
-      if (connIndex === -1) {
-        socket.emit('error', { message: 'Связь не найдена' });
-        return;
+        // Проверяем права доступа
+        const connectionCheck = await pool.query(
+          'SELECT id FROM elements_connections WHERE id = $1 AND user_id = $2',
+          [id, socket.userId]
+        );
+
+        if (connectionCheck.rows.length === 0) {
+          socket.emit('error', { message: 'Связь не найдена или нет доступа' });
+          return;
+        }
+
+        // Обновляем связь в БД
+        const updateFields = [];
+        const updateValues = [];
+        let paramIndex = 1;
+
+        if (updates.type !== undefined) {
+          updateFields.push(`type = $${paramIndex++}`);
+          updateValues.push(updates.type);
+        }
+        if (updates.bidirectional !== undefined) {
+          updateFields.push(`bidirectional = $${paramIndex++}`);
+          updateValues.push(updates.bidirectional);
+        }
+        if (updates.label !== undefined) {
+          updateFields.push(`label = $${paramIndex++}`);
+          updateValues.push(updates.label);
+        }
+        if (updates.color !== undefined) {
+          updateFields.push(`color = $${paramIndex++}`);
+          updateValues.push(updates.color);
+        }
+
+        if (updateFields.length === 0) {
+          socket.emit('error', { message: 'Нет полей для обновления' });
+          return;
+        }
+
+        updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
+        updateValues.push(id, socket.userId);
+
+        const result = await pool.query(
+          `UPDATE elements_connections 
+           SET ${updateFields.join(', ')} 
+           WHERE id = $${paramIndex++} AND user_id = $${paramIndex++}
+           RETURNING id, from_element_id, to_element_id, type, bidirectional, label, color, created_at, updated_at`,
+          updateValues
+        );
+
+        const updatedConnection = {
+          id: result.rows[0].id,
+          from: result.rows[0].from_element_id,
+          to: result.rows[0].to_element_id,
+          type: result.rows[0].type,
+          bidirectional: result.rows[0].bidirectional,
+          label: result.rows[0].label || '',
+          color: result.rows[0].color,
+          createdAt: result.rows[0].created_at?.getTime() || Date.now(),
+          updatedAt: result.rows[0].updated_at?.getTime() || Date.now()
+        };
+
+        // Синхронизация
+        // Примечание: не обновляем sceneState.connections, так как связи сохраняются напрямую в БД
+        io.emit('connection:updated', updatedConnection);
+        console.log(`🔗 Связь ${id} обновлена`);
+      } catch (error) {
+        console.error('Ошибка обновления связи:', error);
+        socket.emit('error', { message: 'Ошибка обновления связи' });
       }
-
-      sceneState.connections[connIndex] = {
-        ...sceneState.connections[connIndex],
-        ...updates,
-        updatedAt: Date.now()
-      };
-
-      sceneState.lastUpdate = Date.now();
-
-      // Синхронизация
-      io.emit('connection:updated', sceneState.connections[connIndex]);
-      
-      // Автоматическое сохранение entities в БД
-      // Используем currentSceneId из состояния (может быть null для entities без сцены)
-      saveSceneToDatabase(socket.userId, sceneState, sceneState.currentSceneId);
     });
 
     // Удаление связи
-    socket.on('connection:delete', (connectionId) => {
+    socket.on('connection:delete', async (connectionId) => {
       if (!socket.userId) {
         socket.emit('error', { message: 'Требуется авторизация' });
         return;
       }
 
-      const connIndex = sceneState.connections.findIndex(c => c.id === connectionId);
-      if (connIndex === -1) {
-        socket.emit('error', { message: 'Связь не найдена' });
-        return;
+      try {
+        if (!connectionId) {
+          socket.emit('error', { message: 'ID связи обязателен' });
+          return;
+        }
+
+        // Проверяем права доступа
+        const connectionCheck = await pool.query(
+          'SELECT id FROM elements_connections WHERE id = $1 AND user_id = $2',
+          [connectionId, socket.userId]
+        );
+
+        if (connectionCheck.rows.length === 0) {
+          socket.emit('error', { message: 'Связь не найдена или нет доступа' });
+          return;
+        }
+
+        // Удаляем связь из БД
+        await pool.query(
+          'DELETE FROM elements_connections WHERE id = $1',
+          [connectionId]
+        );
+
+        // Синхронизация
+        // Примечание: не обновляем sceneState.connections, так как связи сохраняются напрямую в БД
+        io.emit('connection:deleted', { id: connectionId });
+        console.log(`🔗 Удалена связь ${connectionId}`);
+      } catch (error) {
+        console.error('Ошибка удаления связи:', error);
+        socket.emit('error', { message: 'Ошибка удаления связи' });
       }
-
-      sceneState.connections.splice(connIndex, 1);
-      sceneState.lastUpdate = Date.now();
-
-      // Синхронизация
-      io.emit('connection:deleted', { id: connectionId });
-      console.log(`🔗 Удалена связь ${connectionId}`);
-      
-      // Автоматическое сохранение entities в БД
-      // Используем currentSceneId из состояния (может быть null для entities без сцены)
-      saveSceneToDatabase(socket.userId, sceneState, sceneState.currentSceneId);
     });
 
     // Сохранение сцены в БД (ручное сохранение с именем)
@@ -832,44 +916,66 @@ export function setupSceneHandlers(io, sessionStore) {
       try {
         const { name, description } = sceneData;
         const data = sceneData.data || {
-          entities: sceneState.entities,
-          connections: sceneState.connections
+          elements: sceneState.elements,
+          // connections больше не используются здесь, так как они загружаются отдельно
+          connections: []
         };
         
-        // Создаем новую сцену с именем и описанием
+        // Создаем новую сцену (элемент с element_type='scene')
+        const sceneId = sceneData.id || `scene_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const sceneResult = await pool.query(
-          `INSERT INTO scenes (user_id, name, description) 
-           VALUES ($1, $2, $3) 
+          `INSERT INTO elements (id, user_id, name, description, element_type, background, show_grid, created_by) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
            RETURNING id, created_at`,
-          [socket.userId, name || 'Untitled Scene', description || null]
+          [
+            sceneId,
+            socket.userId, 
+            name || 'Untitled Scene', 
+            description || null,
+            'scene',
+            data.background || '#000000',
+            data.showGrid !== undefined ? data.showGrid : true,
+            socket.userId
+          ]
         );
         
-        const sceneId = sceneResult.rows[0].id;
-        
-        // Сохраняем сущности
-        for (const entity of data.entities || []) {
+        // Сохраняем элементы
+        for (const element of data.elements || []) {
           await pool.query(
-            `INSERT INTO entities (id, scene_id, user_id, name, description, type, color, position, size, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            `INSERT INTO elements (id, user_id, name, description, element_type, type, parent_id, position_2d, position, size_2d, size, color, emissive, background, show_grid, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
              ON CONFLICT (id) DO UPDATE SET
                name = EXCLUDED.name,
                description = EXCLUDED.description,
+               element_type = EXCLUDED.element_type,
                type = EXCLUDED.type,
-               color = EXCLUDED.color,
+               parent_id = EXCLUDED.parent_id,
+               position_2d = EXCLUDED.position_2d,
                position = EXCLUDED.position,
+               size_2d = EXCLUDED.size_2d,
                size = EXCLUDED.size,
+               color = EXCLUDED.color,
+               emissive = EXCLUDED.emissive,
+               background = EXCLUDED.background,
+               show_grid = EXCLUDED.show_grid,
                updated_at = CURRENT_TIMESTAMP`,
             [
-              entity.id,
-              sceneId,
+              element.id,
               socket.userId,
-              entity.name || 'Untitled Entity',
-              entity.description || '',
-              entity.type || 'box',
-              entity.color || '#3b82f6',
-              JSON.stringify(entity.position || [0, 0, 0]),
-              JSON.stringify(entity.size || [1, 1, 1]),
-              entity.createdBy || socket.userId
+              element.name || 'Untitled Element',
+              element.description || '',
+              element.elementType || 'worker',
+              element.type || null,
+              element.parent_id || sceneId,
+              element.position_2d ? JSON.stringify(element.position_2d) : null,
+              element.position ? JSON.stringify(element.position) : null,
+              element.size_2d ? JSON.stringify(element.size_2d) : null,
+              element.size ? JSON.stringify(element.size) : null,
+              element.color || null,
+              element.emissive || null,
+              element.background || null,
+              element.showGrid !== undefined ? element.showGrid : null,
+              element.createdBy || socket.userId
             ]
           );
         }
@@ -877,8 +983,8 @@ export function setupSceneHandlers(io, sessionStore) {
         // Сохраняем связи
         for (const connection of data.connections || []) {
           await pool.query(
-            `INSERT INTO connections (id, scene_id, user_id, from_entity_id, to_entity_id, type, bidirectional, label, color, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            `INSERT INTO elements_connections (id, user_id, from_element_id, to_element_id, type, bidirectional, label, color, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              ON CONFLICT (id) DO UPDATE SET
                type = EXCLUDED.type,
                bidirectional = EXCLUDED.bidirectional,
@@ -887,7 +993,6 @@ export function setupSceneHandlers(io, sessionStore) {
                updated_at = CURRENT_TIMESTAMP`,
             [
               connection.id,
-              sceneId,
               socket.userId,
               connection.from,
               connection.to,
@@ -921,10 +1026,11 @@ export function setupSceneHandlers(io, sessionStore) {
       }
 
       try {
+        // Загружаем сцену (элемент с element_type='scene')
         const sceneResult = await pool.query(
-          `SELECT id, name, description, created_at, updated_at 
-           FROM scenes 
-           WHERE id = $1 AND user_id = $2`,
+          `SELECT id, name, description, element_type, parent_id, position_2d, size_2d, background, show_grid, created_at, updated_at 
+           FROM elements 
+           WHERE id = $1 AND user_id = $2 AND element_type = 'scene'`,
           [sceneId, socket.userId]
         );
 
@@ -935,71 +1041,76 @@ export function setupSceneHandlers(io, sessionStore) {
 
         const scene = sceneResult.rows[0];
         
-        // Загружаем сущности из БД
-        const entitiesResult = await pool.query(
-          `SELECT id, name, description, type, color, position, size, scene_id, created_at, updated_at, created_by
-           FROM entities WHERE scene_id = $1 ORDER BY created_at`,
+        // Загружаем все дочерние элементы (worker, block, другие scene)
+        const elementsResult = await pool.query(
+          `SELECT id, name, description, element_type, type, parent_id, position_2d, position, size_2d, size, color, emissive, background, show_grid, created_at, updated_at, created_by
+           FROM elements WHERE parent_id = $1 ORDER BY created_at`,
           [sceneId]
         );
         
-        // Загружаем связи из БД
+        // Загружаем связи между элементами этой сцены
         const connectionsResult = await pool.query(
-          `SELECT id, from_entity_id, to_entity_id, type, bidirectional, label, color, created_at, updated_at, created_by
-           FROM connections WHERE scene_id = $1 ORDER BY created_at`,
-          [sceneId]
+          `SELECT c.id, c.from_element_id, c.to_element_id, c.type, c.bidirectional, c.label, c.color, c.created_at, c.updated_at, c.created_by
+           FROM elements_connections c
+           INNER JOIN elements e1 ON e1.id = c.from_element_id
+           INNER JOIN elements e2 ON e2.id = c.to_element_id
+           WHERE c.user_id = $1 AND (e1.parent_id = $2 OR e2.parent_id = $2)
+           ORDER BY c.created_at`,
+          [socket.userId, sceneId]
         );
         
         // Преобразуем данные из БД в формат приложения
-        sceneState.entities = entitiesResult.rows.map(row => ({
+        sceneState.elements = elementsResult.rows.map(row => ({
           id: row.id,
           name: row.name,
           description: row.description || '',
-          type: row.type,
-          color: row.color,
-          position: typeof row.position === 'string' ? JSON.parse(row.position) : row.position,
-          size: typeof row.size === 'string' ? JSON.parse(row.size) : row.size,
-          scene_id: row.scene_id || null,
+          elementType: row.element_type,
+          type: row.type || null,
+          parent_id: row.parent_id || null,
+          position_2d: row.position_2d ? (typeof row.position_2d === 'string' ? JSON.parse(row.position_2d) : row.position_2d) : null,
+          position: row.position ? (typeof row.position === 'string' ? JSON.parse(row.position) : row.position) : null,
+          size_2d: row.size_2d ? (typeof row.size_2d === 'string' ? JSON.parse(row.size_2d) : row.size_2d) : null,
+          size: row.size ? (typeof row.size === 'string' ? JSON.parse(row.size) : row.size) : null,
+          color: row.color || null,
+          emissive: row.emissive || null,
+          background: row.background || null,
+          showGrid: row.show_grid !== undefined ? row.show_grid : null,
           createdAt: row.created_at?.getTime() || Date.now(),
           updatedAt: row.updated_at?.getTime() || Date.now(),
           createdBy: row.created_by
         }));
         
-        sceneState.connections = connectionsResult.rows.map(row => ({
-          id: row.id,
-          from: row.from_entity_id,
-          to: row.to_entity_id,
-          type: row.type,
-          bidirectional: row.bidirectional,
-          label: row.label || '',
-          color: row.color,
-          createdAt: row.created_at?.getTime() || Date.now(),
-          updatedAt: row.updated_at?.getTime() || Date.now(),
-          createdBy: row.created_by
-        }));
+        // connections больше не загружаются в sceneState, так как они загружаются отдельно через scene:list-with-connections
         
         sceneState.lastUpdate = Date.now();
         sceneState.currentSceneId = sceneId; // Обновляем текущую сцену
 
         // Синхронизируем со всеми клиентами
         io.emit('scene:state', {
-          entities: sceneState.entities,
-          connections: sceneState.connections,
+          elements: sceneState.elements,
+          // connections больше не отправляются здесь, так как они загружаются отдельно через scene:list-with-connections
           sceneId: sceneId
         });
 
         // Обновляем updated_at в БД при загрузке
         await pool.query(
-          `UPDATE scenes SET updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+          `UPDATE elements SET updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
           [sceneId]
         );
 
         socket.emit('scene:loaded', {
-          id: sceneResult.rows[0].id,
-          name: sceneResult.rows[0].name,
-          createdAt: sceneResult.rows[0].created_at
+          id: scene.id,
+          name: scene.name,
+          description: scene.description || '',
+          parent_id: scene.parent_id || null,
+          position_2d: scene.position_2d ? (typeof scene.position_2d === 'string' ? JSON.parse(scene.position_2d) : scene.position_2d) : [0, 0],
+          size_2d: scene.size_2d ? (typeof scene.size_2d === 'string' ? JSON.parse(scene.size_2d) : scene.size_2d) : [200, 150],
+          background: scene.background || '#000000',
+          showGrid: scene.show_grid !== undefined ? scene.show_grid : true,
+          createdAt: scene.created_at
         });
 
-        console.log(`📥 Сцена ${sceneId} загружена пользователем ${socket.userId}: ${sceneState.entities.length} сущностей, ${sceneState.connections.length} связей`);
+        console.log(`📥 Сцена ${sceneId} загружена пользователем ${socket.userId}: ${sceneState.elements.length} элементов`);
       } catch (error) {
         console.error('Ошибка загрузки сцены:', error);
         socket.emit('error', { message: 'Ошибка загрузки сцены' });
@@ -1015,9 +1126,9 @@ export function setupSceneHandlers(io, sessionStore) {
 
       try {
         const result = await pool.query(
-          `SELECT id, name, description, parent_id, position_2d, size_2d, created_at, updated_at 
-           FROM scenes 
-           WHERE user_id = $1 
+          `SELECT id, name, description, parent_id, position_2d, size_2d, background, show_grid, created_at, updated_at 
+           FROM elements 
+           WHERE user_id = $1 AND element_type = 'scene' AND parent_id IS NULL
            ORDER BY updated_at DESC 
            LIMIT 50`,
           [socket.userId]
@@ -1026,9 +1137,11 @@ export function setupSceneHandlers(io, sessionStore) {
         // Преобразуем position_2d и size_2d из JSONB в массив
         const scenes = result.rows.map(row => ({
           ...row,
-          position_2d: row.position_2d || [0, 0],
-          size_2d: row.size_2d || [200, 150],
-          parent_id: row.parent_id || null
+          position_2d: row.position_2d ? (typeof row.position_2d === 'string' ? JSON.parse(row.position_2d) : row.position_2d) : [0, 0],
+          size_2d: row.size_2d ? (typeof row.size_2d === 'string' ? JSON.parse(row.size_2d) : row.size_2d) : [200, 150],
+          parent_id: row.parent_id || null,
+          background: row.background || '#000000',
+          showGrid: row.show_grid !== undefined ? row.show_grid : true
         }));
 
         socket.emit('scene:list', scenes);
@@ -1058,32 +1171,40 @@ export function setupSceneHandlers(io, sessionStore) {
         }
 
         const { parent_id, position_2d } = sceneData;
+        const sceneId = sceneData.id || `scene_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         console.log(`💾 Вставляем сцену в БД: userId=${socket.userId}, name="${name.trim()}"`);
         const sceneResult = await pool.query(
-          `INSERT INTO scenes (user_id, name, description, parent_id, position_2d, size_2d) 
-           VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb) 
-           RETURNING id, name, description, parent_id, position_2d, size_2d, created_at, updated_at`,
+          `INSERT INTO elements (id, user_id, name, description, element_type, parent_id, position_2d, size_2d, background, show_grid, created_by) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11) 
+           RETURNING id, name, description, parent_id, position_2d, size_2d, background, show_grid, created_at, updated_at`,
           [
+            sceneId,
             socket.userId, 
             name.trim(), 
             (description || '').trim() || null,
+            'scene',
             parent_id || null,
             JSON.stringify(position_2d || [0, 0]),
-            JSON.stringify(sceneData.size_2d || [200, 150])
+            JSON.stringify(sceneData.size_2d || [200, 150]),
+            sceneData.background || '#000000',
+            sceneData.showGrid !== undefined ? sceneData.showGrid : true,
+            socket.userId
           ]
         );
 
         const newScene = sceneResult.rows[0];
-        newScene.position_2d = newScene.position_2d || [0, 0];
-        newScene.size_2d = newScene.size_2d || [200, 150];
+        newScene.position_2d = newScene.position_2d ? (typeof newScene.position_2d === 'string' ? JSON.parse(newScene.position_2d) : newScene.position_2d) : [0, 0];
+        newScene.size_2d = newScene.size_2d ? (typeof newScene.size_2d === 'string' ? JSON.parse(newScene.size_2d) : newScene.size_2d) : [200, 150];
         newScene.parent_id = newScene.parent_id || null;
+        newScene.background = newScene.background || '#000000';
+        newScene.showGrid = newScene.show_grid !== undefined ? newScene.show_grid : true;
         console.log(`✅ Сцена создана в БД:`, newScene);
         
         // Очищаем текущее состояние сцены только для этого пользователя
         // Не отправляем scene:state всем, так как каждый клиент должен загрузить сцену явно
-        sceneState.entities = [];
-        sceneState.connections = [];
+        sceneState.elements = [];
+        // connections больше не хранятся в sceneState
         sceneState.lastUpdate = Date.now();
 
         // Отправляем событие создания сцены
@@ -1109,7 +1230,7 @@ export function setupSceneHandlers(io, sessionStore) {
       try {
         // Проверяем, что сцена принадлежит пользователю
         const sceneResult = await pool.query(
-          `SELECT id FROM scenes WHERE id = $1 AND user_id = $2`,
+          `SELECT id FROM elements WHERE id = $1 AND user_id = $2 AND element_type = 'scene'`,
           [sceneId, socket.userId]
         );
 
@@ -1118,32 +1239,43 @@ export function setupSceneHandlers(io, sessionStore) {
           return;
         }
 
-        // Перемещаем дочерние сцены на верхний уровень
+        // Перемещаем дочерние элементы на верхний уровень (parent_id = NULL)
         await pool.query(
-          `UPDATE scenes SET parent_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE parent_id = $1`,
+          `UPDATE elements SET parent_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE parent_id = $1`,
           [sceneId]
         );
 
-        // Удаляем связи, связанные с этой сценой
+        // Удаляем связи, связанные с этой сценой и её дочерними элементами
         await pool.query(
-          `DELETE FROM scene_connections WHERE from_scene_id = $1 OR to_scene_id = $1`,
+          `DELETE FROM elements_connections 
+           WHERE user_id = $1 AND (
+             from_element_id = $2 OR to_element_id = $2 OR
+             from_element_id IN (SELECT id FROM elements WHERE parent_id = $2) OR
+             to_element_id IN (SELECT id FROM elements WHERE parent_id = $2)
+           )`,
+          [socket.userId, sceneId]
+        );
+
+        // Удаляем все дочерние элементы
+        await pool.query(
+          `DELETE FROM elements WHERE parent_id = $1`,
           [sceneId]
         );
 
-        // Удаляем сцену (сущности и связи удалятся автоматически через CASCADE)
+        // Удаляем сцену
         await pool.query(
-          `DELETE FROM scenes WHERE id = $1`,
+          `DELETE FROM elements WHERE id = $1`,
           [sceneId]
         );
 
         // Очищаем состояние сцены, так как удаленная сцена могла быть загружена
-        sceneState.entities = [];
-        sceneState.connections = [];
+        sceneState.elements = [];
+        // connections больше не хранятся в sceneState
         sceneState.lastUpdate = Date.now();
 
         // Отправляем пустое состояние всем клиентам
         io.emit('scene:state', {
-          entities: [],
+          elements: [],
           connections: [],
           sceneId: null
         });
@@ -1175,7 +1307,7 @@ export function setupSceneHandlers(io, sessionStore) {
         visited.add(currentId);
         
         const result = await pool.query(
-          'SELECT parent_id FROM scenes WHERE id = $1',
+          'SELECT parent_id FROM elements WHERE id = $1 AND element_type = \'scene\'',
           [currentId]
         );
         
@@ -1205,7 +1337,7 @@ export function setupSceneHandlers(io, sessionStore) {
 
         // Проверяем права доступа
         const sceneCheck = await pool.query(
-          'SELECT id FROM scenes WHERE id = $1 AND user_id = $2',
+          'SELECT id FROM elements WHERE id = $1 AND user_id = $2 AND element_type = \'scene\'',
           [sceneId, socket.userId]
         );
 
@@ -1216,7 +1348,7 @@ export function setupSceneHandlers(io, sessionStore) {
 
         // Обновляем позицию
         await pool.query(
-          `UPDATE scenes SET position_2d = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+          `UPDATE elements SET position_2d = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
           [JSON.stringify(position2D), sceneId]
         );
 
@@ -1250,7 +1382,7 @@ export function setupSceneHandlers(io, sessionStore) {
 
         // Проверяем права доступа к сцене
         const sceneCheck = await pool.query(
-          'SELECT id FROM scenes WHERE id = $1 AND user_id = $2',
+          'SELECT id FROM elements WHERE id = $1 AND user_id = $2 AND element_type = \'scene\'',
           [sceneId, socket.userId]
         );
 
@@ -1261,7 +1393,7 @@ export function setupSceneHandlers(io, sessionStore) {
 
         // Обновляем размер сцены
         await pool.query(
-          `UPDATE scenes SET size_2d = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+          `UPDATE elements SET size_2d = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
           [JSON.stringify(size2D), sceneId]
         );
 
@@ -1295,7 +1427,7 @@ export function setupSceneHandlers(io, sessionStore) {
 
         // Проверяем права доступа к сцене
         const sceneCheck = await pool.query(
-          'SELECT id FROM scenes WHERE id = $1 AND user_id = $2',
+          'SELECT id FROM elements WHERE id = $1 AND user_id = $2 AND element_type = \'scene\'',
           [sceneId, socket.userId]
         );
 
@@ -1306,7 +1438,7 @@ export function setupSceneHandlers(io, sessionStore) {
 
         // Обновляем название и описание сцены
         await pool.query(
-          `UPDATE scenes SET name = $1, description = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+          `UPDATE elements SET name = $1, description = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
           [name || '', description || '', sceneId]
         );
 
@@ -1341,7 +1473,7 @@ export function setupSceneHandlers(io, sessionStore) {
 
         // Проверяем права доступа к сцене
         const sceneCheck = await pool.query(
-          'SELECT id FROM scenes WHERE id = $1 AND user_id = $2',
+          'SELECT id FROM elements WHERE id = $1 AND user_id = $2 AND element_type = \'scene\'',
           [sceneId, socket.userId]
         );
 
@@ -1353,7 +1485,7 @@ export function setupSceneHandlers(io, sessionStore) {
         // Если указан parentId, проверяем права доступа к родительской сцене
         if (parentId) {
           const parentCheck = await pool.query(
-            'SELECT id FROM scenes WHERE id = $1 AND user_id = $2',
+            'SELECT id FROM elements WHERE id = $1 AND user_id = $2 AND element_type = \'scene\'',
             [parentId, socket.userId]
           );
 
@@ -1374,7 +1506,7 @@ export function setupSceneHandlers(io, sessionStore) {
         if (position2D && Array.isArray(position2D) && position2D.length === 2) {
           // Обновляем и parent_id, и позицию одновременно (при извлечении)
           await pool.query(
-            `UPDATE scenes SET parent_id = $1, position_2d = $2::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+            `UPDATE elements SET parent_id = $1, position_2d = $2::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
             [parentId || null, JSON.stringify(position2D), sceneId]
           );
           console.log(`🔗 Сцена ${sceneId}: parent_id = ${parentId || 'null'}, позиция = [${position2D[0]}, ${position2D[1]}]`);
@@ -1391,7 +1523,7 @@ export function setupSceneHandlers(io, sessionStore) {
         } else {
           // Обновляем только parent_id (при вложении)
           await pool.query(
-            `UPDATE scenes SET parent_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+            `UPDATE elements SET parent_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
             [parentId || null, sceneId]
           );
           
@@ -1409,37 +1541,37 @@ export function setupSceneHandlers(io, sessionStore) {
       }
     });
 
-    // Установка родительской сцены для сущности (scene_id)
-    socket.on('entity:set-scene', async (data) => {
+    // Установка родительской сцены для элемента (parent_id)
+    socket.on('element:set-scene', async (data) => {
       if (!socket.userId) {
         socket.emit('error', { message: 'Требуется авторизация' });
         return;
       }
 
       try {
-        const { entityId, sceneId } = data;
+        const { elementId, sceneId } = data;
         
-        if (!entityId) {
-          socket.emit('error', { message: 'ID сущности обязателен' });
+        if (!elementId) {
+          socket.emit('error', { message: 'ID элемента обязателен' });
           return;
         }
 
-        // Проверяем права доступа к сущности
-        const entityCheck = await pool.query(
-          'SELECT id, user_id FROM entities WHERE id = $1 AND user_id = $2',
-          [entityId, socket.userId]
+        // Проверяем права доступа к элементу
+        const elementCheck = await pool.query(
+          'SELECT id, user_id FROM elements WHERE id = $1 AND user_id = $2',
+          [elementId, socket.userId]
         );
 
-        if (entityCheck.rows.length === 0) {
-          socket.emit('error', { message: 'Сущность не найдена или нет доступа' });
+        if (elementCheck.rows.length === 0) {
+          socket.emit('error', { message: 'Элемент не найден или нет доступа' });
           return;
         }
 
-        // Если sceneId указан, проверяем права доступа к сцене
+        // Если sceneId указан, проверяем права доступа к сцене (элемент с element_type='scene')
         if (sceneId) {
           const sceneCheck = await pool.query(
-            'SELECT id FROM scenes WHERE id = $1 AND user_id = $2',
-            [sceneId, socket.userId]
+            'SELECT id FROM elements WHERE id = $1 AND user_id = $2 AND element_type = $3',
+            [sceneId, socket.userId, 'scene']
           );
 
           if (sceneCheck.rows.length === 0) {
@@ -1448,146 +1580,31 @@ export function setupSceneHandlers(io, sessionStore) {
           }
         }
 
-        // Обновляем scene_id у сущности
+        // Обновляем parent_id у элемента
         await pool.query(
-          `UPDATE entities SET scene_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-          [sceneId || null, entityId]
+          `UPDATE elements SET parent_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+          [sceneId || null, elementId]
         );
 
-        // Обновляем в локальном состоянии, если сущность есть
-        const entityIndex = sceneState.entities.findIndex(e => e.id === entityId);
-        if (entityIndex !== -1) {
-          sceneState.entities[entityIndex].scene_id = sceneId || null;
+        // Обновляем в локальном состоянии, если элемент есть
+        const elementIndex = sceneState.elements.findIndex(e => e.id === elementId);
+        if (elementIndex !== -1) {
+          sceneState.elements[elementIndex].parent_id = sceneId || null;
         }
 
         // Синхронизируем со всеми клиентами
-        io.emit('entity:scene-updated', {
-          entityId,
+        io.emit('element:scene-updated', {
+          elementId,
           sceneId: sceneId || null
         });
 
-        console.log(`🔗 Сущность ${entityId} теперь в сцене: ${sceneId || 'null'}`);
+        console.log(`🔗 Элемент ${elementId} теперь в сцене: ${sceneId || 'null'}`);
       } catch (error) {
-        console.error('Ошибка установки сцены для сущности:', error);
-        socket.emit('error', { message: 'Ошибка установки сцены для сущности' });
+        console.error('Ошибка установки сцены для элемента:', error);
+        socket.emit('error', { message: 'Ошибка установки сцены для элемента' });
       }
     });
 
-    // Создание связи между сценами
-    socket.on('scene-connection:create', async (data) => {
-      if (!socket.userId) {
-        socket.emit('error', { message: 'Требуется авторизация' });
-        return;
-      }
-
-      try {
-        const { fromSceneId, toSceneId, type = 'one-way', bidirectional = false, label, color = '#ffffff' } = data;
-        
-        if (!fromSceneId || !toSceneId) {
-          socket.emit('error', { message: 'ID сцен обязательны' });
-          return;
-        }
-
-        if (fromSceneId === toSceneId) {
-          socket.emit('error', { message: 'Нельзя создать связь сцены с самой собой' });
-          return;
-        }
-
-        // Проверяем права доступа к обеим сценам
-        const scenesCheck = await pool.query(
-          'SELECT id FROM scenes WHERE id IN ($1, $2) AND user_id = $3',
-          [fromSceneId, toSceneId, socket.userId]
-        );
-
-        if (scenesCheck.rows.length !== 2) {
-          socket.emit('error', { message: 'Одна из сцен не найдена или нет доступа' });
-          return;
-        }
-
-        // Проверяем, нет ли уже такой связи
-        const existingCheck = await pool.query(
-          `SELECT id FROM scene_connections 
-           WHERE from_scene_id = $1 AND to_scene_id = $2 AND user_id = $3`,
-          [fromSceneId, toSceneId, socket.userId]
-        );
-
-        if (existingCheck.rows.length > 0) {
-          socket.emit('error', { message: 'Связь уже существует' });
-          return;
-        }
-
-        const connectionId = `scene-conn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-        // Создаем связь
-        const result = await pool.query(
-          `INSERT INTO scene_connections 
-           (id, from_scene_id, to_scene_id, type, bidirectional, label, color, user_id, created_by) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
-           RETURNING id, from_scene_id, to_scene_id, type, bidirectional, label, color, created_at`,
-          [connectionId, fromSceneId, toSceneId, type, bidirectional, label || null, color, socket.userId, socket.userId]
-        );
-
-        const newConnection = {
-          id: result.rows[0].id,
-          from: result.rows[0].from_scene_id,
-          to: result.rows[0].to_scene_id,
-          type: result.rows[0].type,
-          bidirectional: result.rows[0].bidirectional,
-          label: result.rows[0].label || '',
-          color: result.rows[0].color,
-          createdAt: result.rows[0].created_at?.getTime() || Date.now()
-        };
-
-        // Синхронизируем со всеми клиентами
-        io.emit('scene-connection:created', newConnection);
-
-        socket.emit('scene-connection:created', newConnection);
-        console.log(`🔗 Связь между сценами создана: ${fromSceneId} -> ${toSceneId}`);
-      } catch (error) {
-        console.error('Ошибка создания связи между сценами:', error);
-        socket.emit('error', { message: 'Ошибка создания связи между сценами' });
-      }
-    });
-
-    // Удаление связи между сценами
-    socket.on('scene-connection:delete', async (connectionId) => {
-      if (!socket.userId) {
-        socket.emit('error', { message: 'Требуется авторизация' });
-        return;
-      }
-
-      try {
-        if (!connectionId) {
-          socket.emit('error', { message: 'ID связи обязателен' });
-          return;
-        }
-
-        // Проверяем права доступа
-        const connectionCheck = await pool.query(
-          'SELECT id FROM scene_connections WHERE id = $1 AND user_id = $2',
-          [connectionId, socket.userId]
-        );
-
-        if (connectionCheck.rows.length === 0) {
-          socket.emit('error', { message: 'Связь не найдена или нет доступа' });
-          return;
-        }
-
-        // Удаляем связь
-        await pool.query(
-          'DELETE FROM scene_connections WHERE id = $1',
-          [connectionId]
-        );
-
-        // Синхронизируем со всеми клиентами
-        io.emit('scene-connection:deleted', { id: connectionId });
-
-        console.log(`🗑️ Связь между сценами удалена: ${connectionId}`);
-      } catch (error) {
-        console.error('Ошибка удаления связи между сценами:', error);
-        socket.emit('error', { message: 'Ошибка удаления связи между сценами' });
-      }
-    });
 
     // Получение всех сцен с их связями
     socket.on('scene:list-with-connections', async () => {
@@ -1597,34 +1614,39 @@ export function setupSceneHandlers(io, sessionStore) {
       }
 
       try {
-        // Получаем все сцены
+        // Получаем все сцены (элементы с element_type='scene')
         const scenesResult = await pool.query(
-          `SELECT id, name, description, parent_id, position_2d, size_2d, created_at, updated_at 
-           FROM scenes 
-           WHERE user_id = $1 
+          `SELECT id, name, description, parent_id, position_2d, size_2d, background, show_grid, created_at, updated_at 
+           FROM elements 
+           WHERE user_id = $1 AND element_type = 'scene'
            ORDER BY updated_at DESC`,
           [socket.userId]
         );
 
         const scenes = scenesResult.rows.map(row => ({
           ...row,
-          position_2d: row.position_2d || [0, 0],
-          size_2d: row.size_2d || [200, 150],
-          parent_id: row.parent_id || null
+          position_2d: row.position_2d ? (typeof row.position_2d === 'string' ? JSON.parse(row.position_2d) : row.position_2d) : [0, 0],
+          size_2d: row.size_2d ? (typeof row.size_2d === 'string' ? JSON.parse(row.size_2d) : row.size_2d) : [200, 150],
+          parent_id: row.parent_id || null,
+          background: row.background || '#000000',
+          showGrid: row.show_grid !== undefined ? row.show_grid : true
         }));
 
-        // Получаем все связи между сценами
-        const connectionsResult = await pool.query(
-          `SELECT id, from_scene_id, to_scene_id, type, bidirectional, label, color, created_at 
-           FROM scene_connections 
-           WHERE user_id = $1`,
+        // Получаем все связи между сценами (элементами с element_type='scene')
+        // Теперь это часть общих connections, но возвращаем для обратной совместимости
+        const sceneConnectionsResult = await pool.query(
+          `SELECT c.id, c.from_element_id, c.to_element_id, c.type, c.bidirectional, c.label, c.color, c.created_at 
+           FROM elements_connections c
+           INNER JOIN elements e1 ON e1.id = c.from_element_id AND e1.element_type = 'scene'
+           INNER JOIN elements e2 ON e2.id = c.to_element_id AND e2.element_type = 'scene'
+           WHERE c.user_id = $1`,
           [socket.userId]
         );
 
-        const connections = connectionsResult.rows.map(row => ({
+        const sceneConnections = sceneConnectionsResult.rows.map(row => ({
           id: row.id,
-          from: row.from_scene_id,
-          to: row.to_scene_id,
+          from: row.from_element_id,
+          to: row.to_element_id,
           type: row.type,
           bidirectional: row.bidirectional,
           label: row.label || '',
@@ -1632,33 +1654,39 @@ export function setupSceneHandlers(io, sessionStore) {
           createdAt: row.created_at?.getTime() || Date.now()
         }));
 
-        // Загружаем все сущности пользователя (для отображения в ScenesView)
-        const allEntitiesResult = await pool.query(
-          `SELECT id, name, description, type, color, position, size, scene_id, created_at, updated_at, created_by
-           FROM entities 
+        // Загружаем все элементы пользователя (для отображения в ScenesView)
+        const allElementsResult = await pool.query(
+          `SELECT id, name, description, element_type, type, parent_id, position_2d, position, size_2d, size, color, emissive, background, show_grid, created_at, updated_at, created_by
+           FROM elements 
            WHERE user_id = $1 
            ORDER BY created_at`,
           [socket.userId]
         );
 
-        const allEntities = allEntitiesResult.rows.map(row => ({
+        const allElements = allElementsResult.rows.map(row => ({
           id: row.id,
           name: row.name,
           description: row.description || '',
-          type: row.type,
-          color: row.color,
-          position: typeof row.position === 'string' ? JSON.parse(row.position) : row.position,
-          size: typeof row.size === 'string' ? JSON.parse(row.size) : row.size,
-          scene_id: row.scene_id || null,
+          elementType: row.element_type,
+          type: row.type || null,
+          parent_id: row.parent_id || null,
+          position_2d: row.position_2d ? (typeof row.position_2d === 'string' ? JSON.parse(row.position_2d) : row.position_2d) : null,
+          position: row.position ? (typeof row.position === 'string' ? JSON.parse(row.position) : row.position) : null,
+          size_2d: row.size_2d ? (typeof row.size_2d === 'string' ? JSON.parse(row.size_2d) : row.size_2d) : null,
+          size: row.size ? (typeof row.size === 'string' ? JSON.parse(row.size) : row.size) : null,
+          color: row.color || null,
+          emissive: row.emissive || null,
+          background: row.background || null,
+          showGrid: row.show_grid !== undefined ? row.show_grid : null,
           createdAt: row.created_at?.getTime() || Date.now(),
           updatedAt: row.updated_at?.getTime() || Date.now(),
           createdBy: row.created_by
         }));
 
-        // Загружаем все связи между сущностями
+        // Загружаем все связи между элементами
         const allConnectionsResult = await pool.query(
-          `SELECT id, from_entity_id, to_entity_id, type, bidirectional, label, color, created_at, updated_at, created_by
-           FROM connections 
+          `SELECT id, from_element_id, to_element_id, type, bidirectional, label, color, created_at, updated_at, created_by
+           FROM elements_connections 
            WHERE user_id = $1 
            ORDER BY created_at`,
           [socket.userId]
@@ -1666,8 +1694,8 @@ export function setupSceneHandlers(io, sessionStore) {
 
         const allConnections = allConnectionsResult.rows.map(row => ({
           id: row.id,
-          from: row.from_entity_id,
-          to: row.to_entity_id,
+          from: row.from_element_id,
+          to: row.to_element_id,
           type: row.type,
           bidirectional: row.bidirectional,
           label: row.label || '',
@@ -1679,9 +1707,9 @@ export function setupSceneHandlers(io, sessionStore) {
 
         socket.emit('scene:list-with-connections', {
           scenes,
-          connections,
-          entities: allEntities,
-          entityConnections: allConnections
+          connections: sceneConnections, // Связи между сценами (для обратной совместимости)
+          elements: allElements,
+          elementConnections: allConnections // Все связи между элементами
         });
       } catch (error) {
         console.error('Ошибка получения списка сцен с связями:', error);

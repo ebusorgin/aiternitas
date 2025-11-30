@@ -5,6 +5,7 @@ import * as THREE from 'three';
 function AnimatedSphere({ 
   radius, 
   color, 
+  emissive,
   hasConnections, 
   onClick, 
   onPointerOver, 
@@ -48,8 +49,8 @@ function AnimatedSphere({
         opacity={hasConnections ? 0.2 : 0.3}
         wireframe={false}
         side={THREE.DoubleSide}
-        emissive={hasConnections ? 0x000000 : '#ff6600'}
-        emissiveIntensity={hasConnections ? 0 : 0.3} // Свечение для пульсирующих
+        emissive={hasConnections ? (emissive || 0x000000) : '#ff6600'}
+        emissiveIntensity={hasConnections ? (emissive ? 0.3 : 0) : 0.3} // Свечение для пульсирующих или из element
       />
     </mesh>
   );

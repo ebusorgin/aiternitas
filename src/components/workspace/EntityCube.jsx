@@ -7,29 +7,37 @@ import EntityShape from './EntityShape';
 import AnimatedSphere from './AnimatedSphere';
 import * as THREE from 'three';
 
-function EntityCube({ entity }) {
+function EntityCube({ element }) {
   const meshRef = useRef();
-  const selectEntity = useSceneStore((state) => state.selectEntity);
-  const selectedEntityId = useSceneStore((state) => state.selectedEntityId);
-  const updateEntity = useSceneStore((state) => state.updateEntity);
+  const selectElement = useSceneStore((state) => state.selectElement);
+  const selectedElementId = useSceneStore((state) => state.selectedElementId);
+  const updateElement = useSceneStore((state) => state.updateElement);
   const connectMode = useSceneStore((state) => state.connectMode);
   const createConnection = useSceneStore((state) => state.createConnection);
   const connectingFrom = useSceneStore((state) => state.connectingFrom);
   const setConnectingFrom = useSceneStore((state) => state.setConnectingFrom);
   
-  const isSelected = selectedEntityId === entity.id;
-  const isConnecting = connectMode && connectingFrom === entity.id;
+  const isSelected = selectedElementId === element.id;
+  const isConnecting = connectMode && connectingFrom === element.id;
   const connections = useSceneStore((state) => state.connections);
   
-  // Проверяем, имеет ли сущность соединения
+  // Проверяем, имеет ли элемент соединения
   const hasConnections = connections.some(
-    (conn) => conn.from === entity.id || conn.to === entity.id
+    (conn) => conn.from === element.id || conn.to === element.id
   );
 
   // Цвет куба
   const color = useMemo(() => {
-    return new THREE.Color(entity.color || '#3b82f6');
-  }, [entity.color]);
+    return new THREE.Color(element.color || '#3b82f6');
+  }, [element.color]);
+
+  // Цвет сферы из element (для воркеров)
+  const sphereEmissiveColor = useMemo(() => {
+    if (element.emissive) {
+      return new THREE.Color(element.emissive);
+    }
+    return null;
+  }, [element.emissive]);
 
   // Подсветка при выборе или соединении
   const emissiveColor = useMemo(() => {
@@ -49,11 +57,11 @@ function EntityCube({ entity }) {
     if (connectMode) {
       // Режим соединения
       if (connectingFrom) {
-        if (connectingFrom !== entity.id) {
+        if (connectingFrom !== element.id) {
           // Создаем связь
           createConnection({
             from: connectingFrom,
-            to: entity.id
+            to: element.id
           });
           setConnectingFrom(null);
         } else {
@@ -62,11 +70,11 @@ function EntityCube({ entity }) {
         }
       } else {
         // Начинаем соединение
-        setConnectingFrom(entity.id);
+        setConnectingFrom(element.id);
       }
     } else {
       // Обычный режим - выделение
-      selectEntity(entity.id);
+      selectElement(element.id);
     }
   };
 
@@ -74,41 +82,41 @@ function EntityCube({ entity }) {
   const handleObjectChange = () => {
     if (meshRef.current) {
       const position = meshRef.current.position;
-      updateEntity(entity.id, {
+      updateElement(element.id, {
         position: [position.x, position.y, position.z]
       });
     }
   };
 
-  const [sx, sy, sz] = entity.size || [1, 1, 1];
-  const entityType = entity.type || 'box';
+  const [sx, sy, sz] = element.size || [1, 1, 1];
+  const elementType = element.type || 'box';
   
   // Вычисляем размер сферы: персонаж должен быть внутри, но не касаться краев
   // Для персонажей используем более точный расчет, учитывая что они обычно выше чем шире
   const maxDimension = Math.max(sx, sy, sz);
   // Сфера должна быть достаточно большой, чтобы персонаж был внутри с небольшим отступом
   const sphereRadius = maxDimension * 0.7; // Размер сферы
-  const hasSphere = entityType !== 'box';
+  const hasSphere = elementType !== 'box';
 
   // Анимация позиции - локальное состояние для плавного перемещения
-  const [x, y, z] = entity.position || [0, 0, 0];
+  const [x, y, z] = element.position || [0, 0, 0];
   const animatedPosition = useRef(new THREE.Vector3(x, y, z));
   const groupRef = useRef();
 
   // Инициализируем позицию при первом рендере
   useEffect(() => {
-    const [posX, posY, posZ] = entity.position || [0, 0, 0];
+    const [posX, posY, posZ] = element.position || [0, 0, 0];
     animatedPosition.current.set(posX, posY, posZ);
     if (groupRef.current) {
       groupRef.current.position.set(posX, posY, posZ);
     }
-  }, [entity.id]); // Только при создании новой сущности
+  }, [element.id]); // Только при создании нового элемента
 
   // Плавная интерполяция позиции в каждом кадре
   useFrame(() => {
     if (!groupRef.current) return;
     
-    const [targetX, targetY, targetZ] = entity.position || [0, 0, 0];
+    const [targetX, targetY, targetZ] = element.position || [0, 0, 0];
     const target = new THREE.Vector3(targetX, targetY, targetZ);
     
     // Используем lerp для плавной интерполяции (скорость 0.2 - быстрее, но все еще плавно)
@@ -131,6 +139,7 @@ function EntityCube({ entity }) {
         <AnimatedSphere
           radius={sphereRadius}
           color={color}
+          emissive={sphereEmissiveColor}
           hasConnections={hasConnections}
           onClick={handleClick}
           onPointerOver={(e) => {
@@ -140,15 +149,15 @@ function EntityCube({ entity }) {
           onPointerOut={() => {
             document.body.style.cursor = 'default';
           }}
-          userData={{ isEntity: true, entityId: entity.id }}
+          userData={{ isElement: true, elementId: element.id }}
         />
       )}
       
-      {/* Форма сущности в зависимости от типа */}
-      <group ref={meshRef} userData={{ isEntity: true, entityId: entity.id }}>
+      {/* Форма элемента в зависимости от типа */}
+      <group ref={meshRef} userData={{ isElement: true, elementId: element.id }}>
         <EntityShape
-          key={`${entity.id}-${entityType}`}
-          type={entityType}
+          key={`${element.id}-${elementType}`}
+          type={elementType}
           size={[sx, sy, sz]}
           color={color}
           emissive={emissiveColor}
@@ -161,12 +170,12 @@ function EntityCube({ entity }) {
           onPointerOut={() => {
             document.body.style.cursor = 'default';
           }}
-          userData={{ isEntity: true, entityId: entity.id }}
+          userData={{ isElement: true, elementId: element.id }}
         />
       </group>
 
       {/* Текст с именем над кубом - улучшенная читаемость */}
-      {entity.name && (
+      {element.name && (
         <Text
           position={[0, sy / 2 + 0.6, 0]}
           fontSize={0.25}
@@ -179,14 +188,14 @@ function EntityCube({ entity }) {
           renderOrder={1000}
         >
           {/* Показываем только первые 20 символов для читаемости */}
-          {entity.name.length > 20 ? entity.name.substring(0, 20) + '...' : entity.name}
+          {element.name.length > 20 ? element.name.substring(0, 20) + '...' : element.name}
         </Text>
       )}
 
       {/* Стрелки для перемещения по осям - внутри группы куба, чтобы следовать за ним */}
       {isSelected && (
         <MoveArrows
-          entity={entity}
+          element={element}
           size={[sx, sy, sz]}
           sphereRadius={hasSphere ? sphereRadius : null}
         />

@@ -8,7 +8,7 @@ function InteractionLayer() {
   const { camera, raycaster, pointer } = useThree();
   const connectMode = useSceneStore((state) => state.connectMode);
   const connectingFrom = useSceneStore((state) => state.connectingFrom);
-  const entities = useSceneStore((state) => state.entities);
+  const elements = useSceneStore((state) => state.elements);
   const [dragPosition, setDragPosition] = useState(null);
 
   useFrame(() => {
@@ -28,15 +28,15 @@ function InteractionLayer() {
   const tempLinePoints = useMemo(() => {
     if (!connectingFrom || !dragPosition) return null;
 
-    const fromEntity = entities.find((e) => e.id === connectingFrom);
-    if (!fromEntity) return null;
+    const fromElement = elements.find((e) => e.id === connectingFrom);
+    if (!fromElement) return null;
 
-    const [x1, y1, z1] = fromEntity.position;
+    const [x1, y1, z1] = fromElement.position;
     const start = new THREE.Vector3(x1, y1, z1);
     const end = dragPosition.clone();
 
     return [start, end];
-  }, [connectingFrom, dragPosition, entities]);
+  }, [connectingFrom, dragPosition, elements]);
 
   return (
     <>

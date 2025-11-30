@@ -2,20 +2,21 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 import { ENTITY_TYPES } from './EntityShape';
 import EntityTypeModal from './EntityTypeModal';
+import { ElementFactory } from '../../models/Elements';
 import './PropertiesPanel.css';
 
 function PropertiesPanel() {
-  const selectedEntityId = useSceneStore((state) => state.selectedEntityId);
+  const selectedElementId = useSceneStore((state) => state.selectedElementId);
   const selectedConnectionId = useSceneStore((state) => state.selectedConnectionId);
-  const entities = useSceneStore((state) => state.entities);
+  const elements = useSceneStore((state) => state.elements);
   const connections = useSceneStore((state) => state.connections);
-  const updateEntity = useSceneStore((state) => state.updateEntity);
+  const updateElement = useSceneStore((state) => state.updateElement);
   const updateConnection = useSceneStore((state) => state.updateConnection);
 
   // Используем useMemo чтобы избежать лишних пересчетов
-  const selectedEntity = useMemo(() => 
-    selectedEntityId ? entities.find((e) => e.id === selectedEntityId) : null,
-    [selectedEntityId, entities]
+  const selectedElement = useMemo(() => 
+    selectedElementId ? elements.find((e) => e.id === selectedElementId) : null,
+    [selectedElementId, elements]
   );
   
   const selectedConnection = useMemo(() => 
@@ -23,10 +24,17 @@ function PropertiesPanel() {
     [selectedConnectionId, connections]
   );
 
+  // Определяем тип элемента
+  const elementType = useMemo(() => {
+    if (!selectedElement) return null;
+    return ElementFactory.getElementType(selectedElement);
+  }, [selectedElement]);
+
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState('#3b82f6');
   const [type, setType] = useState('box');
+  const [emissive, setEmissive] = useState('#000000');
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
   const isInitializingRef = useRef(false); // Флаг для предотвращения сохранения при инициализации
 
@@ -35,28 +43,31 @@ function PropertiesPanel() {
   useEffect(() => {
     isInitializingRef.current = true; // Устанавливаем флаг инициализации
     
-    if (selectedEntity) {
-      setName(selectedEntity.name || '');
-      setDescription(selectedEntity.description || '');
-      setColor(selectedEntity.color || '#3b82f6');
-      setType(selectedEntity.type || 'box');
+    if (selectedElement) {
+      setName(selectedElement.name || '');
+      setDescription(selectedElement.description || '');
+      setColor(selectedElement.color || '#3b82f6');
+      setType(selectedElement.type || 'box');
+      setEmissive(selectedElement.emissive || '#000000');
     } else if (selectedConnection) {
       setName(selectedConnection.label || '');
       setDescription('');
       setColor(selectedConnection.color || '#ffffff');
       setType('box');
+      setEmissive('#000000');
     } else {
       setName('');
       setDescription('');
       setColor('#3b82f6');
       setType('box');
+      setEmissive('#000000');
     }
     
     // Снимаем флаг инициализации после небольшой задержки
     setTimeout(() => {
       isInitializingRef.current = false;
     }, 100);
-  }, [selectedEntity, selectedConnection]); // Используем мемоизированные объекты
+  }, [selectedElement, selectedConnection]); // Используем мемоизированные объекты
 
   const handleSave = () => {
     // Не сохраняем во время инициализации формы
@@ -64,24 +75,36 @@ function PropertiesPanel() {
       return;
     }
     
-    if (selectedEntity && selectedEntityId) {
+    if (selectedElement && selectedElementId) {
       const newName = name.trim();
       const newDescription = description.trim();
       
-      // Если ничего не изменилось, не отправляем запрос
-      if (newName === (selectedEntity.name || '') && 
-          newDescription === (selectedEntity.description || '') &&
-          color === (selectedEntity.color || '#3b82f6') &&
-          type === (selectedEntity.type || 'box')) {
-        return;
-      }
-      
-      updateEntity(selectedEntityId, {
+      // Подготавливаем данные для обновления в зависимости от типа элемента
+      const updateData = {
         name: newName,
         description: newDescription,
         color,
         type
-      });
+      };
+
+      // Для воркера добавляем emissive
+      if (elementType === 'worker') {
+        updateData.emissive = emissive;
+      }
+      
+      // Если ничего не изменилось, не отправляем запрос
+      const hasChanges = 
+        newName !== (selectedElement.name || '') || 
+        newDescription !== (selectedElement.description || '') ||
+        color !== (selectedElement.color || '#3b82f6') ||
+        type !== (selectedElement.type || 'box') ||
+        (elementType === 'worker' && emissive !== (selectedElement.emissive || '#000000'));
+      
+      if (!hasChanges) {
+        return;
+      }
+      
+      updateElement(selectedElementId, updateData);
     } else if (selectedConnection && selectedConnectionId) {
       const newLabel = name.trim();
       
@@ -103,19 +126,25 @@ function PropertiesPanel() {
     <div className="properties-panel">
       <div className="properties-panel-header">
         <h3>
-          {selectedEntity ? 'Сущность Properties' : selectedConnection ? 'Connection Properties' : 'Properties'}
+          {selectedElement 
+            ? (elementType === 'worker' ? 'Воркер Properties' : 
+               elementType === 'block' ? 'Блок Properties' : 
+               'Элемент Properties')
+            : selectedConnection 
+            ? 'Connection Properties' 
+            : 'Properties'}
         </h3>
       </div>
       <div className="properties-panel-content">
-        {!selectedEntity && !selectedConnection ? (
+        {!selectedElement && !selectedConnection ? (
           <div className="properties-empty">
-            Выберите сущность или соединение для просмотра свойств
+            Выберите элемент или соединение для просмотра свойств
           </div>
         ) : (
           <>
             <div className="property-group">
               <label htmlFor="prop-name">
-                {selectedEntity ? 'Name' : 'Label'}
+                {selectedElement ? 'Name' : 'Label'}
               </label>
               <input
                 id="prop-name"
@@ -123,47 +152,12 @@ function PropertiesPanel() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onBlur={handleSave}
-                placeholder={selectedEntity ? 'Entity name' : 'Connection label'}
+                placeholder={selectedElement ? 'Element name' : 'Connection label'}
               />
             </div>
 
-        {selectedEntity && (
+        {selectedElement && (
           <>
-            <div className="property-group">
-              <label htmlFor="prop-type">Type</label>
-              <button
-                id="prop-type"
-                type="button"
-                onClick={() => setIsTypeModalOpen(true)}
-                className="type-select-button"
-                title="Click to change type"
-              >
-                <span className="type-select-icon">
-                  {ENTITY_TYPES[type]?.icon || '📦'}
-                </span>
-                <span className="type-select-label">
-                  {ENTITY_TYPES[type]?.label || type}
-                </span>
-                <span className="type-select-arrow">▼</span>
-              </button>
-              <EntityTypeModal
-                isOpen={isTypeModalOpen}
-                onClose={() => setIsTypeModalOpen(false)}
-                onSelectType={(newType) => {
-                  setType(newType);
-                  // Обновляем сущность сразу с новым типом
-                  if (selectedEntity && selectedEntityId) {
-                    updateEntity(selectedEntityId, {
-                      name,
-                      description,
-                      color,
-                      type: newType
-                    });
-                  }
-                }}
-              />
-            </div>
-
             <div className="property-group">
               <label htmlFor="prop-description">Description</label>
               <textarea
@@ -171,12 +165,49 @@ function PropertiesPanel() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 onBlur={handleSave}
-                placeholder="Entity description"
+                placeholder="Element description"
                 rows={4}
               />
             </div>
-          </>
-        )}
+
+            {/* Тип персонажа только для воркера */}
+            {elementType === 'worker' && (
+              <div className="property-group">
+                <label htmlFor="prop-type">Тип персонажа</label>
+                <button
+                  id="prop-type"
+                  type="button"
+                  onClick={() => setIsTypeModalOpen(true)}
+                  className="type-select-button"
+                  title="Click to change type"
+                >
+                  <span className="type-select-icon">
+                    {ENTITY_TYPES[type]?.icon || '📦'}
+                  </span>
+                  <span className="type-select-label">
+                    {ENTITY_TYPES[type]?.label || type}
+                  </span>
+                  <span className="type-select-arrow">▼</span>
+                </button>
+                <EntityTypeModal
+                  isOpen={isTypeModalOpen}
+                  onClose={() => setIsTypeModalOpen(false)}
+                  onSelectType={(newType) => {
+                    setType(newType);
+                    // Обновляем элемент сразу с новым типом
+                    if (selectedElement && selectedElementId) {
+                      updateElement(selectedElementId, {
+                        name,
+                        description,
+                        color,
+                        type: newType,
+                        emissive: elementType === 'worker' ? emissive : undefined
+                      });
+                    }
+                  }}
+                />
+              </div>
+            )}
 
         <div className="property-group">
           <label htmlFor="prop-color">Color</label>
@@ -201,13 +232,41 @@ function PropertiesPanel() {
           </div>
         </div>
 
-        {selectedEntity && (
+        {/* Цвет сферы только для воркера */}
+        {elementType === 'worker' && (
+          <div className="property-group">
+            <label htmlFor="prop-emissive">Цвет сферы</label>
+            <div className="color-input-group">
+              <input
+                id="prop-emissive"
+                type="color"
+                value={emissive}
+                onChange={(e) => {
+                  setEmissive(e.target.value);
+                }}
+                onBlur={handleSave}
+              />
+              <input
+                type="text"
+                value={emissive}
+                onChange={(e) => setEmissive(e.target.value)}
+                onBlur={handleSave}
+                placeholder="#000000"
+                className="color-text-input"
+              />
+            </div>
+          </div>
+        )}
+          </>
+        )}
+
+        {selectedElement && (
           <div className="property-group">
             <label>Position</label>
             <div className="position-display">
-              <span>X: {selectedEntity.position[0].toFixed(2)}</span>
-              <span>Y: {selectedEntity.position[1].toFixed(2)}</span>
-              <span>Z: {selectedEntity.position[2].toFixed(2)}</span>
+              <span>X: {selectedElement.position[0].toFixed(2)}</span>
+              <span>Y: {selectedElement.position[1].toFixed(2)}</span>
+              <span>Z: {selectedElement.position[2].toFixed(2)}</span>
             </div>
           </div>
         )}

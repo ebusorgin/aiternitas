@@ -32,7 +32,7 @@ const ENTITY_SIZE = 0.15;
 const ENTITY_RADIUS_FACTOR = 0.7;
 const GRID_MULTIPLIER = 2;
 
-function SceneSphere({ scene, position, radius = 1.5, isSelected, isConnecting, onClick, onDoubleClick, allScenes, hasChildren = false, isChild = false, entitiesCount = 0 }) {
+function SceneSphere({ scene, position, radius = 1.5, isSelected, isConnecting, onClick, onDoubleClick, allScenes, hasChildren = false, isChild = false, entitiesCount = 0, hasConnections = false }) {
   const meshRef = useRef();
   const [x, y, z] = position;
   
@@ -124,20 +124,20 @@ function SceneSphere({ scene, position, radius = 1.5, isSelected, isConnecting, 
         />
       </mesh>
       
-      {/* Отображение entities внутри сцены (маленькие кубики) */}
+      {/* Отображение elements внутри сцены (маленькие кубики) */}
       {entitiesCount > 0 && (
         <group>
           {Array.from({ length: Math.min(entitiesCount, MAX_VISIBLE_ENTITIES) }).map((_, i) => {
             const totalVisible = Math.min(entitiesCount, MAX_VISIBLE_ENTITIES);
             const angle = (i / totalVisible) * Math.PI * 2;
             const verticalAngle = (i % 3) * 0.5 - 0.5;
-            const entityRadius = radius * ENTITY_RADIUS_FACTOR;
-            const entityX = Math.cos(angle) * entityRadius * Math.cos(verticalAngle);
-            const entityY = Math.sin(verticalAngle) * entityRadius;
-            const entityZ = Math.sin(angle) * entityRadius * Math.cos(verticalAngle);
+            const elementRadius = radius * ENTITY_RADIUS_FACTOR;
+            const elementX = Math.cos(angle) * elementRadius * Math.cos(verticalAngle);
+            const elementY = Math.sin(verticalAngle) * elementRadius;
+            const elementZ = Math.sin(angle) * elementRadius * Math.cos(verticalAngle);
             
             return (
-              <mesh key={i} position={[entityX, entityY, entityZ]}>
+              <mesh key={i} position={[elementX, elementY, elementZ]}>
                 <boxGeometry args={[ENTITY_SIZE, ENTITY_SIZE, ENTITY_SIZE]} />
                 <meshStandardMaterial
                   color={new THREE.Color(COLORS.entity)}
@@ -165,7 +165,7 @@ function SceneSphere({ scene, position, radius = 1.5, isSelected, isConnecting, 
         </group>
       )}
       
-      {/* Координатная сетка внутри сцены (только для сцен с entities или дочерними) */}
+      {/* Координатная сетка внутри сцены (только для сцен с elements или дочерними) */}
       {(entitiesCount > 0 || hasChildren) && (
         <Grid
           args={[radius * GRID_MULTIPLIER, radius * GRID_MULTIPLIER]}
@@ -197,7 +197,7 @@ function SceneSphere({ scene, position, radius = 1.5, isSelected, isConnecting, 
         {scene.name || `Scene ${scene.id}`}
       </Text>
       
-      {/* Индикатор количества entities - еще выше */}
+      {/* Индикатор количества elements - еще выше */}
       {entitiesCount > 0 && (
         <Text
           position={[0, radius + 0.5, 0]}
@@ -209,8 +209,34 @@ function SceneSphere({ scene, position, radius = 1.5, isSelected, isConnecting, 
           outlineColor="#000000"
           renderOrder={1000}
         >
-          {entitiesCount} {entitiesCount === 1 ? 'entity' : 'entities'}
+          {entitiesCount} {entitiesCount === 1 ? 'element' : 'elements'}
         </Text>
+      )}
+      
+      {/* Зеленая точка для сцен с связями */}
+      {hasConnections && (
+        <mesh position={[radius * 0.7, radius * 0.7, radius * 0.7]} renderOrder={1001}>
+          <sphereGeometry args={[0.08, 16, 16]} />
+          <meshStandardMaterial
+            color={new THREE.Color(0x00ff00)}
+            emissive={new THREE.Color(0x00ff00)}
+            emissiveIntensity={0.8}
+            transparent={true}
+            opacity={1}
+          />
+          {/* Эффект свечения вокруг точки */}
+          <mesh>
+            <sphereGeometry args={[0.12, 16, 16]} />
+            <meshStandardMaterial
+              color={new THREE.Color(0x00ff00)}
+              emissive={new THREE.Color(0x00ff00)}
+              emissiveIntensity={0.5}
+              transparent={true}
+              opacity={0.4}
+              depthWrite={false}
+            />
+          </mesh>
+        </mesh>
       )}
     </group>
   );

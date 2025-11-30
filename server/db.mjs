@@ -199,84 +199,65 @@ export async function initDatabase() {
 
     console.log('✅ Таблица emails создана/проверена');
 
-    // Создаем таблицу для хранения сцен (теперь только метаданные)
+    // Создаем единую таблицу для всех элементов (scenes, workers, blocks)
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS scenes (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        name VARCHAR(255) NOT NULL,
-        description TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Добавляем колонку description если её нет
-    await pool.query(`
-      DO $$ 
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns 
-          WHERE table_name = 'scenes' AND column_name = 'description'
-        ) THEN
-          ALTER TABLE scenes ADD COLUMN description TEXT;
-        END IF;
-      END $$;
-    `);
-
-    // Добавляем колонки для иерархии и позиции в 2D
-    await pool.query(`
-      DO $$ 
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns 
-          WHERE table_name = 'scenes' AND column_name = 'parent_id'
-        ) THEN
-          ALTER TABLE scenes ADD COLUMN parent_id INTEGER REFERENCES scenes(id) ON DELETE SET NULL;
-        END IF;
-        
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns 
-          WHERE table_name = 'scenes' AND column_name = 'position_2d'
-        ) THEN
-          ALTER TABLE scenes ADD COLUMN position_2d JSONB DEFAULT '[0, 0]'::jsonb;
-        END IF;
-        
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns 
-          WHERE table_name = 'scenes' AND column_name = 'size_2d'
-        ) THEN
-          ALTER TABLE scenes ADD COLUMN size_2d JSONB DEFAULT '[200, 150]'::jsonb;
-        END IF;
-      END $$;
-    `);
-
-    // Создаем таблицу для хранения сущностей
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS entities (
+      CREATE TABLE IF NOT EXISTS elements (
         id VARCHAR(255) PRIMARY KEY,
-        scene_id INTEGER REFERENCES scenes(id) ON DELETE SET NULL,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
         description TEXT,
-        type VARCHAR(50) NOT NULL DEFAULT 'box',
-        color VARCHAR(50) NOT NULL DEFAULT '#3b82f6',
-        position JSONB NOT NULL DEFAULT '[0, 0, 0]',
-        size JSONB NOT NULL DEFAULT '[1, 1, 1]',
+        element_type VARCHAR(50) NOT NULL CHECK (element_type IN ('scene', 'worker', 'block')),
+        type VARCHAR(50),
+        parent_id VARCHAR(255) REFERENCES elements(id) ON DELETE SET NULL,
+        position_2d JSONB,
+        position JSONB,
+        size_2d JSONB,
+        size JSONB,
+        color VARCHAR(50),
+        emissive VARCHAR(50),
+        background VARCHAR(50),
+        show_grid BOOLEAN,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
       )
     `);
 
-    // Создаем таблицу для хранения связей между сущностями
+    // Индексы для elements
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS connections (
+      CREATE INDEX IF NOT EXISTS idx_elements_user_id ON elements(user_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_elements_parent_id ON elements(parent_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_elements_element_type ON elements(element_type)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_elements_created_at ON elements(created_at)
+    `).catch(() => {});
+
+    // Триггер для автоматического обновления updated_at
+    await pool.query(`
+      DROP TRIGGER IF EXISTS update_elements_updated_at ON elements;
+      CREATE TRIGGER update_elements_updated_at
+          BEFORE UPDATE ON elements
+          FOR EACH ROW
+          EXECUTE FUNCTION update_updated_at_column();
+    `).catch(() => {});
+
+    console.log('✅ Таблица elements создана/проверена');
+
+    // Создаем таблицу для хранения связей между элементами
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS elements_connections (
         id VARCHAR(255) PRIMARY KEY,
-        scene_id INTEGER REFERENCES scenes(id) ON DELETE CASCADE,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        from_entity_id VARCHAR(255) NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
-        to_entity_id VARCHAR(255) NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+        from_element_id VARCHAR(255) NOT NULL REFERENCES elements(id) ON DELETE CASCADE,
+        to_element_id VARCHAR(255) NOT NULL REFERENCES elements(id) ON DELETE CASCADE,
         type VARCHAR(50) NOT NULL DEFAULT 'one-way',
         bidirectional BOOLEAN NOT NULL DEFAULT false,
         label VARCHAR(255),
@@ -287,100 +268,29 @@ export async function initDatabase() {
       )
     `);
 
-    // Индексы для быстрого поиска
+    // Индексы для elements_connections
     await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_scenes_user_id ON scenes(user_id)
+      CREATE INDEX IF NOT EXISTS idx_elements_connections_user_id ON elements_connections(user_id)
     `).catch(() => {});
 
     await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_scenes_created_at ON scenes(created_at)
+      CREATE INDEX IF NOT EXISTS idx_elements_connections_from_element ON elements_connections(from_element_id)
     `).catch(() => {});
 
     await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_entities_scene_id ON entities(scene_id)
+      CREATE INDEX IF NOT EXISTS idx_elements_connections_to_element ON elements_connections(to_element_id)
     `).catch(() => {});
 
+    // Триггер для автоматического обновления updated_at
     await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_entities_user_id ON entities(user_id)
-    `).catch(() => {});
-
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_connections_scene_id ON connections(scene_id)
-    `).catch(() => {});
-
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_connections_user_id ON connections(user_id)
-    `).catch(() => {});
-
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_connections_from_entity ON connections(from_entity_id)
-    `).catch(() => {});
-
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_connections_to_entity ON connections(to_entity_id)
-    `).catch(() => {});
-
-    // Создаем таблицу для связей между сценами
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS scene_connections (
-        id VARCHAR(255) PRIMARY KEY,
-        from_scene_id INTEGER NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
-        to_scene_id INTEGER NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
-        type VARCHAR(50) NOT NULL DEFAULT 'one-way',
-        bidirectional BOOLEAN NOT NULL DEFAULT false,
-        label VARCHAR(255),
-        color VARCHAR(50) NOT NULL DEFAULT '#ffffff',
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
-      )
-    `);
-
-    // Индексы для scene_connections
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_scene_connections_from_scene ON scene_connections(from_scene_id)
-    `).catch(() => {});
-
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_scene_connections_to_scene ON scene_connections(to_scene_id)
-    `).catch(() => {});
-
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_scene_connections_user_id ON scene_connections(user_id)
-    `).catch(() => {});
-
-    // Индексы для иерархии сцен
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_scenes_parent_id ON scenes(parent_id)
-    `).catch(() => {});
-
-    // Триггеры для автоматического обновления updated_at
-    await pool.query(`
-      DROP TRIGGER IF EXISTS update_scenes_updated_at ON scenes;
-      CREATE TRIGGER update_scenes_updated_at
-          BEFORE UPDATE ON scenes
+      DROP TRIGGER IF EXISTS update_elements_connections_updated_at ON elements_connections;
+      CREATE TRIGGER update_elements_connections_updated_at
+          BEFORE UPDATE ON elements_connections
           FOR EACH ROW
           EXECUTE FUNCTION update_updated_at_column();
     `).catch(() => {});
 
-    await pool.query(`
-      DROP TRIGGER IF EXISTS update_entities_updated_at ON entities;
-      CREATE TRIGGER update_entities_updated_at
-          BEFORE UPDATE ON entities
-          FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
-    `).catch(() => {});
-
-    await pool.query(`
-      DROP TRIGGER IF EXISTS update_connections_updated_at ON connections;
-      CREATE TRIGGER update_connections_updated_at
-          BEFORE UPDATE ON connections
-          FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
-    `).catch(() => {});
-
-    console.log('✅ Таблицы scenes, entities и connections созданы/проверены');
+    console.log('✅ Таблица elements_connections создана/проверена');
     return true;
   } catch (error) {
     console.error('❌ Ошибка инициализации БД:', error);

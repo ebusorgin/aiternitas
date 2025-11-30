@@ -8,11 +8,11 @@ import { getEntityRadius } from '../../utils/collisionUtils';
 function NestedScene3D({ scene, position, radius, parentRadius, isSelected, onClick, childrenCount = 0 }) {
   const [x, y, z] = position;
   const socket = useSceneStore((state) => state.socket);
-  const [sceneEntities, setSceneEntities] = useState([]);
+  const [sceneElements, setSceneElements] = useState([]);
   const [sceneConnections, setSceneConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Загружаем entities и connections для этой сцены
+  // Загружаем elements и connections для этой сцены
   useEffect(() => {
     if (!socket || !socket.connected || !scene.id) {
       return;
@@ -25,125 +25,125 @@ function NestedScene3D({ scene, position, radius, parentRadius, isSelected, onCl
     
     const handleSceneState = (data) => {
       if (data.sceneId === scene.id) {
-        setSceneEntities(data.entities || []);
+        setSceneElements(data.elements || []);
         setSceneConnections(data.connections || []);
         setLoading(false);
       }
     };
     
-    const handleEntityCreated = (entity) => {
-      // Проверяем, относится ли entity к этой сцене
+    const handleElementCreated = (element) => {
+      // Проверяем, относится ли element к этой сцене
       // Для этого нужно проверить через текущее состояние
-      setSceneEntities(prev => {
-        // Если entity уже есть, не добавляем
-        if (prev.find(e => e.id === entity.id)) return prev;
-        return [...prev, entity];
+      setSceneElements(prev => {
+        // Если element уже есть, не добавляем
+        if (prev.find(e => e.id === element.id)) return prev;
+        return [...prev, element];
       });
     };
     
-    const handleEntityUpdated = (entity) => {
-      setSceneEntities(prev => prev.map(e => e.id === entity.id ? entity : e));
+    const handleElementUpdated = (element) => {
+      setSceneElements(prev => prev.map(e => e.id === element.id ? element : e));
     };
     
-    const handleEntityDeleted = ({ id }) => {
-      setSceneEntities(prev => prev.filter(e => e.id !== id));
+    const handleElementDeleted = ({ id }) => {
+      setSceneElements(prev => prev.filter(e => e.id !== id));
       setSceneConnections(prev => prev.filter(c => c.from !== id && c.to !== id));
     };
     
     const handleConnectionsUpdated = (connections) => {
-      // Обновляем connections для entities этой сцены
+      // Обновляем connections для elements этой сцены
       setSceneConnections(prev => {
-        const entityIds = new Set(sceneEntities.map(e => e.id));
-        return connections.filter(c => entityIds.has(c.from) || entityIds.has(c.to));
+        const elementIds = new Set(sceneElements.map(e => e.id));
+        return connections.filter(c => elementIds.has(c.from) || elementIds.has(c.to));
       });
     };
     
     socket.on('scene:state', handleSceneState);
-    socket.on('entity:created', handleEntityCreated);
-    socket.on('entity:updated', handleEntityUpdated);
-    socket.on('entity:deleted', handleEntityDeleted);
+    socket.on('element:created', handleElementCreated);
+    socket.on('element:updated', handleElementUpdated);
+    socket.on('element:deleted', handleElementDeleted);
     socket.on('connections:updated', handleConnectionsUpdated);
     
     return () => {
       socket.off('scene:state', handleSceneState);
-      socket.off('entity:created', handleEntityCreated);
-      socket.off('entity:updated', handleEntityUpdated);
-      socket.off('entity:deleted', handleEntityDeleted);
+      socket.off('element:created', handleElementCreated);
+      socket.off('element:updated', handleElementUpdated);
+      socket.off('element:deleted', handleElementDeleted);
       socket.off('connections:updated', handleConnectionsUpdated);
     };
   }, [socket, scene.id]);
   
-  // Константы для размещения entities в верхней части сферы
+  // Константы для размещения elements в верхней части сферы
   const MIN_SCALE = 0.05;
   const MAX_SCALE = 1.0;
-  const MIN_ENTITY_RADIUS = 0.2;
+  const MIN_ELEMENT_RADIUS = 0.2;
   const UPPER_PART_RADIUS_FACTOR = 0.55; // Используем 55% радиуса для верхней части
   
   // childrenCount передается через props
   
-  // ВАЖНО: entities должны быть в ВЕРХНЕЙ части, дочерние сцены в НИЖНЕЙ
+  // ВАЖНО: elements должны быть в ВЕРХНЕЙ части, дочерние сцены в НИЖНЕЙ
   
-  // Масштабирование entities с учетом количества дочерних сцен
+  // Масштабирование elements с учетом количества дочерних сцен
   const scale = useMemo(() => {
-    if (sceneEntities.length === 0) {
+    if (sceneElements.length === 0) {
       return MIN_SCALE;
     }
     
-    const entitiesCount = sceneEntities.length;
+    const elementsCount = sceneElements.length;
     
-    // Находим максимальный радиус сущности
-    let maxEntityRadius = MIN_ENTITY_RADIUS;
-    for (let i = 0; i < sceneEntities.length; i++) {
-      const entityRadius = getEntityRadius(sceneEntities[i]);
-      if (entityRadius > maxEntityRadius) {
-        maxEntityRadius = entityRadius;
+    // Находим максимальный радиус элемента
+    let maxElementRadius = MIN_ELEMENT_RADIUS;
+    for (let i = 0; i < sceneElements.length; i++) {
+      const elementRadius = getEntityRadius(sceneElements[i]);
+      if (elementRadius > maxElementRadius) {
+        maxElementRadius = elementRadius;
       }
     }
     
-    // Размер сущности зависит от количества entities и дочерних сцен
-    let entitySizeFactor = 0.12; // Базовый фактор
+    // Размер элемента зависит от количества elements и дочерних сцен
+    let elementSizeFactor = 0.12; // Базовый фактор
     
-    // Если есть и сущности и дочерние сцены
+    // Если есть и elements и дочерние сцены
     if (childrenCount > 0) {
-      // Если 1 сущность и 1 сцена - одинаковый размер
-      if (entitiesCount === 1 && childrenCount === 1) {
-        entitySizeFactor = 0.15;
+      // Если 1 element и 1 сцена - одинаковый размер
+      if (elementsCount === 1 && childrenCount === 1) {
+        elementSizeFactor = 0.15;
       }
-      // Если 1 сущность и 2+ сцены - сущность больше
-      else if (entitiesCount === 1 && childrenCount >= 2) {
-        entitySizeFactor = 0.2;
+      // Если 1 element и 2+ сцены - element больше
+      else if (elementsCount === 1 && childrenCount >= 2) {
+        elementSizeFactor = 0.2;
       }
       // В остальных случаях пропорционально
       else {
-        entitySizeFactor = 0.12 + (entitiesCount * 0.02);
+        elementSizeFactor = 0.12 + (elementsCount * 0.02);
       }
     } else {
-      // Только сущности
-      entitySizeFactor = 0.12 + (entitiesCount * 0.02);
+      // Только elements
+      elementSizeFactor = 0.12 + (elementsCount * 0.02);
     }
     
     // Рассчитываем масштаб для размещения в верхней части
     const availableRadius = radius * UPPER_PART_RADIUS_FACTOR;
-    const calculatedScale = (availableRadius * entitySizeFactor) / Math.max(maxEntityRadius, MIN_ENTITY_RADIUS);
+    const calculatedScale = (availableRadius * elementSizeFactor) / Math.max(maxElementRadius, MIN_ELEMENT_RADIUS);
     
     return Math.max(MIN_SCALE, Math.min(MAX_SCALE, calculatedScale));
-  }, [radius, sceneEntities, childrenCount]);
+  }, [radius, sceneElements, childrenCount]);
   
-  // Размещаем entities в ВЕРХНЕЙ части сферы с проверкой коллизий
-  const constrainedEntities = useMemo(() => {
-    const entitiesCount = sceneEntities.length;
+  // Размещаем elements в ВЕРХНЕЙ части сферы с проверкой коллизий
+  const constrainedElements = useMemo(() => {
+    const elementsCount = sceneElements.length;
     const upperPartRadius = radius * UPPER_PART_RADIUS_FACTOR;
     const verticalOffset = radius * 0.45; // Смещение вверх (45% от радиуса) - четко в верхней части
-    const COLLISION_MARGIN = 0.08; // Увеличенный зазор между entities
+    const COLLISION_MARGIN = 0.08; // Увеличенный зазор между elements
     
-    const placedEntities = [];
+    const placedElements = [];
     
-    return sceneEntities.map((entity, index) => {
-      const [sx, sy, sz] = entity.size || [1, 1, 1];
+    return sceneElements.map((element, index) => {
+      const [sx, sy, sz] = element.size || [1, 1, 1];
       
-      // Масштабируем размеры сущности
+      // Масштабируем размеры элемента
       const scaledSize = [sx * scale, sy * scale, sz * scale];
-      const entityRadius = getEntityRadius({ ...entity, size: scaledSize });
+      const elementRadius = getEntityRadius({ ...element, size: scaledSize });
       
       // Размещаем в ВЕРХНЕЙ части сферы по кругу с проверкой коллизий
       let finalX, finalY, finalZ;
@@ -153,31 +153,31 @@ function NestedScene3D({ scene, position, radius, parentRadius, isSelected, onCl
       
       while (!foundPosition && attempts < maxAttempts) {
         // Базовый угол для равномерного распределения
-        const baseAngle = (index / Math.max(entitiesCount, 1)) * Math.PI * 2;
+        const baseAngle = (index / Math.max(elementsCount, 1)) * Math.PI * 2;
         const angle = baseAngle + attempts * 0.15; // Смещение при попытках
         const tryRadius = upperPartRadius * 0.75 * (1 - attempts * 0.008); // Уменьшаем радиус при попытках
         
-        // ВАЖНО: entities в ВЕРХНЕЙ части (положительный Y)
+        // ВАЖНО: elements в ВЕРХНЕЙ части (положительный Y)
         finalX = Math.cos(angle) * tryRadius;
         finalY = verticalOffset + Math.abs(Math.sin(attempts * 0.2)) * 0.1; // В верхней части, немного выше
         finalZ = Math.sin(angle) * tryRadius;
         
-        // Проверяем, что сущность не выходит за границы верхней части
+        // Проверяем, что элемент не выходит за границы верхней части
         const distanceFromCenter = Math.sqrt(finalX ** 2 + (finalY - verticalOffset) ** 2 + finalZ ** 2);
-        if (distanceFromCenter + entityRadius + COLLISION_MARGIN > upperPartRadius) {
+        if (distanceFromCenter + elementRadius + COLLISION_MARGIN > upperPartRadius) {
           attempts++;
           continue;
         }
         
-        // Проверяем коллизии с уже размещенными entities
+        // Проверяем коллизии с уже размещенными elements
         let hasCollision = false;
-        for (const placed of placedEntities) {
+        for (const placed of placedElements) {
           const [px, py, pz] = placed.position;
           const pr = placed.radius;
           const distance = Math.sqrt(
             (finalX - px) ** 2 + (finalY - py) ** 2 + (finalZ - pz) ** 2
           );
-          if (distance < entityRadius + pr + COLLISION_MARGIN) {
+          if (distance < elementRadius + pr + COLLISION_MARGIN) {
             hasCollision = true;
             break;
           }
@@ -192,24 +192,24 @@ function NestedScene3D({ scene, position, radius, parentRadius, isSelected, onCl
       
       // Fallback: равномерное распределение по кругу в ВЕРХНЕЙ части
       if (!foundPosition) {
-        const angle = (index / Math.max(entitiesCount, 1)) * Math.PI * 2;
-        const safeRadius = Math.min(upperPartRadius * 0.65, upperPartRadius - entityRadius - COLLISION_MARGIN);
+        const angle = (index / Math.max(elementsCount, 1)) * Math.PI * 2;
+        const safeRadius = Math.min(upperPartRadius * 0.65, upperPartRadius - elementRadius - COLLISION_MARGIN);
         finalX = Math.cos(angle) * safeRadius;
         finalY = verticalOffset + 0.05; // В верхней части
         finalZ = Math.sin(angle) * safeRadius;
       }
       
       const result = {
-        ...entity,
+        ...element,
         position: [finalX, finalY, finalZ],
         size: scaledSize,
-        radius: entityRadius
+        radius: elementRadius
       };
       
-      placedEntities.push(result);
+      placedElements.push(result);
       return result;
     });
-  }, [sceneEntities, scale, radius]);
+  }, [sceneElements, scale, radius]);
   
   if (loading) {
     return null; // Не показываем ничего пока загружается
@@ -230,18 +230,18 @@ function NestedScene3D({ scene, position, radius, parentRadius, isSelected, onCl
         infiniteGrid={false}
       />
       
-      {/* Entities внутри сцены */}
-      {constrainedEntities.map((entity) => (
+      {/* Elements внутри сцены */}
+      {constrainedElements.map((element) => (
         <EntityCube
-          key={entity.id}
-          entity={{
-            ...entity,
-            position: entity.position
+          key={element.id}
+          element={{
+            ...element,
+            position: element.position
           }}
         />
       ))}
       
-      {/* Connections между entities */}
+      {/* Connections между elements */}
       {sceneConnections.map((connection) => {
         const fromEntity = constrainedEntities.find(e => e.id === connection.from);
         const toEntity = constrainedEntities.find(e => e.id === connection.to);

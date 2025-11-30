@@ -5,8 +5,8 @@ import { useSceneStore } from '../../store/sceneStore';
 
 function CameraController() {
   const { camera, gl } = useThree();
-  const selectedEntityId = useSceneStore((state) => state.selectedEntityId);
-  const entities = useSceneStore((state) => state.entities);
+  const selectedElementId = useSceneStore((state) => state.selectedElementId);
+  const elements = useSceneStore((state) => state.elements);
   const setOrbitControls = useSceneStore((state) => state.setOrbitControls);
   const controlsRef = useRef();
 
@@ -19,11 +19,11 @@ function CameraController() {
         camera.lookAt(0, 0, 0);
       }
       
-      // F - фокус на выбранной сущности
-      if ((event.key === 'f' || event.key === 'F') && selectedEntityId) {
-        const entity = entities.find((e) => e.id === selectedEntityId);
-        if (entity) {
-          const [x, y, z] = entity.position;
+      // F - фокус на выбранном элементе
+      if ((event.key === 'f' || event.key === 'F') && selectedElementId) {
+        const element = elements.find((e) => e.id === selectedElementId);
+        if (element) {
+          const [x, y, z] = element.position;
           camera.position.set(x + 3, y + 3, z + 3);
           camera.lookAt(x, y, z);
         }
@@ -32,7 +32,7 @@ function CameraController() {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [camera, selectedEntityId, entities]);
+  }, [camera, selectedElementId, elements]);
 
   return (
     <OrbitControls

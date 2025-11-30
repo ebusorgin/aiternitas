@@ -5,10 +5,10 @@ import MoveArrow from './MoveArrow';
 import { checkPositionCollision } from '../../utils/collisionUtils';
 import * as THREE from 'three';
 
-function MoveArrows({ entity, size, sphereRadius }) {
+function MoveArrows({ element, size, sphereRadius }) {
   const { camera, raycaster } = useThree();
-  const updateEntity = useSceneStore((state) => state.updateEntity);
-  const entities = useSceneStore((state) => state.entities);
+  const updateElement = useSceneStore((state) => state.updateElement);
+  const elements = useSceneStore((state) => state.elements);
   const orbitControls = useSceneStore((state) => state.orbitControls);
   const [sx, sy, sz] = size || [1, 1, 1];
   const [hoveredDirection, setHoveredDirection] = useState(null);
@@ -18,7 +18,7 @@ function MoveArrows({ entity, size, sphereRadius }) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragDirection, setDragDirection] = useState(null);
   const dragStartPositionRef = useRef(null);
-  const dragStartEntityPositionRef = useRef(null);
+  const dragStartElementPositionRef = useRef(null);
   
   // Состояние видимости стрелок (обновляется в каждом кадре)
   const [visibleArrows, setVisibleArrows] = useState({
@@ -47,10 +47,10 @@ function MoveArrows({ entity, size, sphereRadius }) {
     setIsDragging(true);
     setDragDirection(direction);
     
-    // Сохраняем начальную позицию мыши и сущности
+    // Сохраняем начальную позицию мыши и элемента
     const [x, y] = [e.clientX, e.clientY];
     dragStartPositionRef.current = { x, y };
-    dragStartEntityPositionRef.current = [...entity.position];
+    dragStartElementPositionRef.current = [...element.position];
     
     // Блокируем камеру
     if (orbitControls) {
@@ -67,7 +67,7 @@ function MoveArrows({ entity, size, sphereRadius }) {
     if (!isDragging || !dragDirection) return;
     
     const handleMouseMove = (e) => {
-      if (!dragStartPositionRef.current || !dragStartEntityPositionRef.current || !groupRef.current) return;
+      if (!dragStartPositionRef.current || !dragStartElementPositionRef.current || !groupRef.current) return;
       
       // Вычисляем направление стрелки в локальных координатах
       let directionLocal = new THREE.Vector3();
@@ -102,8 +102,8 @@ function MoveArrows({ entity, size, sphereRadius }) {
       directionWorld.applyMatrix4(matrix);
       directionWorld.normalize();
       
-      // Получаем позицию сущности в мировых координатах
-      const entityWorldPosition = new THREE.Vector3(...dragStartEntityPositionRef.current);
+      // Получаем позицию элемента в мировых координатах
+      const elementWorldPosition = new THREE.Vector3(...dragStartElementPositionRef.current);
       
       // Вычисляем смещение мыши в экранных координатах
       const deltaX = e.clientX - dragStartPositionRef.current.x;
@@ -124,12 +124,12 @@ function MoveArrows({ entity, size, sphereRadius }) {
       raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), camera);
       const currentRay = raycaster.ray.clone();
       
-      // Находим точку пересечения начального луча с плоскостью, проходящей через сущность
+      // Находим точку пересечения начального луча с плоскостью, проходящей через элемент
       // Плоскость перпендикулярна направлению камеры
       const cameraDirection = new THREE.Vector3();
       camera.getWorldDirection(cameraDirection);
       const plane = new THREE.Plane();
-      plane.setFromNormalAndCoplanarPoint(cameraDirection, entityWorldPosition);
+      plane.setFromNormalAndCoplanarPoint(cameraDirection, elementWorldPosition);
       
       const startIntersect = new THREE.Vector3();
       const currentIntersect = new THREE.Vector3();
@@ -146,21 +146,21 @@ function MoveArrows({ entity, size, sphereRadius }) {
         
         // Вычисляем новую позицию вдоль прямой линии
         const moveVector = directionWorld.clone().multiplyScalar(moveAmount);
-        const newPosition = new THREE.Vector3(...dragStartEntityPositionRef.current)
+        const newPosition = new THREE.Vector3(...dragStartElementPositionRef.current)
           .add(moveVector);
         
         // Проверяем коллизии
         const hasCollision = checkPositionCollision(
           [newPosition.x, newPosition.y, newPosition.z],
-          entity.size || [1, 1, 1],
-          entity.type || 'box',
-          entities,
-          entity.id
+          element.size || [1, 1, 1],
+          element.type || 'box',
+          elements,
+          element.id
         );
         
         // Обновляем позицию, если нет коллизии
         if (!hasCollision) {
-          updateEntity(entity.id, { 
+          updateElement(element.id, { 
             position: [newPosition.x, newPosition.y, newPosition.z] 
           });
         }
@@ -181,7 +181,7 @@ function MoveArrows({ entity, size, sphereRadius }) {
       setIsDragging(false);
       setDragDirection(null);
       dragStartPositionRef.current = null;
-      dragStartEntityPositionRef.current = null;
+      dragStartElementPositionRef.current = null;
     };
     
     window.addEventListener('mousemove', handleMouseMove);
@@ -191,7 +191,7 @@ function MoveArrows({ entity, size, sphereRadius }) {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragDirection, entity, camera, raycaster, updateEntity, entities, orbitControls]);
+  }, [isDragging, dragDirection, element, camera, raycaster, updateElement, elements, orbitControls]);
 
   const handleHover = (direction) => {
     setHoveredDirection(direction);
@@ -222,12 +222,12 @@ function MoveArrows({ entity, size, sphereRadius }) {
     const cameraWorldPosition = new THREE.Vector3();
     camera.getWorldPosition(cameraWorldPosition);
     
-    // Получаем мировую позицию центра сущности (группа MoveArrows находится в центре сущности)
-    const entityWorldPosition = new THREE.Vector3();
-    groupRef.current.getWorldPosition(entityWorldPosition);
+    // Получаем мировую позицию центра элемента (группа MoveArrows находится в центре элемента)
+    const elementWorldPosition = new THREE.Vector3();
+    groupRef.current.getWorldPosition(elementWorldPosition);
     
-    // Направление от центра сущности к камере (в мировых координатах)
-    const toCamera = new THREE.Vector3().subVectors(cameraWorldPosition, entityWorldPosition).normalize();
+    // Направление от центра элемента к камере (в мировых координатах)
+    const toCamera = new THREE.Vector3().subVectors(cameraWorldPosition, elementWorldPosition).normalize();
     
     // Вычисляем видимость каждой стрелки
     const newVisibleArrows = {};
@@ -239,8 +239,8 @@ function MoveArrows({ entity, size, sphereRadius }) {
       const arrowWorldPos = new THREE.Vector3().fromArray(arrowLocalPos);
       groupRef.current.localToWorld(arrowWorldPos);
       
-      // Направление от центра сущности к стрелке (в мировых координатах)
-      const toArrow = new THREE.Vector3().subVectors(arrowWorldPos, entityWorldPosition).normalize();
+      // Направление от центра элемента к стрелке (в мировых координатах)
+      const toArrow = new THREE.Vector3().subVectors(arrowWorldPos, elementWorldPosition).normalize();
       
       // Если скалярное произведение положительное, стрелка видна
       const dotProduct = toCamera.dot(toArrow);

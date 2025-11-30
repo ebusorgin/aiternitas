@@ -234,7 +234,7 @@ function ScenesCanvas3D({
     return distance < minDistance;
   };
 
-  // Вычисляем позиции и размеры для всех сцен с учетом вложенности и количества entities
+  // Вычисляем позиции и размеры для всех сцен с учетом вложенности и количества elements
   // Дочерние сцены размещаются ВНУТРИ родительской сферы
   // Размеры уже рассчитаны снизу вверх
   const scenePositions = useMemo(() => {
@@ -491,6 +491,11 @@ function ScenesCanvas3D({
           const parentScene = isChild ? scenesMap.get(scene.parent_id) : null;
           const parentRadius = parentScene ? (scenePositions.sceneRadii[parentScene.id] || MIN_SCENE_RADIUS) : 0;
           
+          // Проверяем, есть ли у сцены связи
+          const hasConnections = sceneConnections.some(
+            conn => conn.from === scene.id || conn.to === scene.id
+          );
+          
           return (
             <group key={scene.id}>
               {/* Сфера сцены */}
@@ -504,6 +509,7 @@ function ScenesCanvas3D({
                 hasChildren={hasChildren}
                 isChild={isChild}
                 entitiesCount={scenesEntitiesCount[scene.id] || 0}
+                hasConnections={hasConnections}
                 onClick={() => {
                   if (connectMode) {
                     if (connectingFrom) {
@@ -528,7 +534,7 @@ function ScenesCanvas3D({
                 }}
               />
               
-              {/* Отображаем содержимое сцены (entities) для всех сцен - и корневых, и дочерних */}
+              {/* Отображаем содержимое сцены (elements) для всех сцен - и корневых, и дочерних */}
               <NestedScene3D
                 scene={scene}
                 position={position}

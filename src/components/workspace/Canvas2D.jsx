@@ -6,15 +6,15 @@ import './Canvas2D.css';
 function Canvas2D() {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
-  const entities = useSceneStore((state) => state.entities);
+  const elements = useSceneStore((state) => state.elements);
   const connections = useSceneStore((state) => state.connections);
-  const selectedEntityId = useSceneStore((state) => state.selectedEntityId);
+  const selectedElementId = useSceneStore((state) => state.selectedElementId);
   const selectedConnectionId = useSceneStore((state) => state.selectedConnectionId);
-  const selectEntity = useSceneStore((state) => state.selectEntity);
+  const selectElement = useSceneStore((state) => state.selectElement);
   const selectConnection = useSceneStore((state) => state.selectConnection);
-  const updateEntity = useSceneStore((state) => state.updateEntity);
-  const updateEntityPosition2D = useSceneStore((state) => state.updateEntityPosition2D);
-  const getEntityPosition2D = useSceneStore((state) => state.getEntityPosition2D);
+  const updateElement = useSceneStore((state) => state.updateElement);
+  const updateElementPosition2D = useSceneStore((state) => state.updateElementPosition2D);
+  const getElementPosition2D = useSceneStore((state) => state.getElementPosition2D);
   const initialize2DPositions = useSceneStore((state) => state.initialize2DPositions);
   const connectMode = useSceneStore((state) => state.connectMode);
   const createConnection = useSceneStore((state) => state.createConnection);
@@ -27,16 +27,16 @@ function Canvas2D() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, z: 0 });
   const dragStartRef = useRef({ x: 0, z: 0 }); // Ref для актуального значения dragStart в замыканиях
-  const [draggingEntityId, setDraggingEntityId] = useState(null);
+  const [draggingElementId, setDraggingElementId] = useState(null);
   const [clickStart, setClickStart] = useState(null);
-  const [hoveredEntityId, setHoveredEntityId] = useState(null);
+  const [hoveredElementId, setHoveredElementId] = useState(null);
   const [hoveredConnectionId, setHoveredConnectionId] = useState(null);
   const [tooltip, setTooltip] = useState(null);
   const [localPositions2D, setLocalPositions2D] = useState({}); // Локальные позиции для плавного перетаскивания
   const draggingUpdateTimeoutRef = useRef(null);
   const lastMousePositionRef = useRef(null); // Сохраняем последнюю позицию мыши для непрерывного обновления
   const [animationTime, setAnimationTime] = useState(0); // Время для анимации мигания
-  const lastDraggedEntityIdRef = useRef(null); // Сохраняем ID последнего перетаскиваемого блока для сохранения выделения
+  const lastDraggedElementIdRef = useRef(null); // Сохраняем ID последнего перетаскиваемого блока для сохранения выделения
 
   // Получаем размеры canvas
   const getCanvasSize = () => {
@@ -107,28 +107,28 @@ function Canvas2D() {
     ctx.stroke();
   };
 
-  // Отрисовка сущности в виде блока блок-схемы
-  const drawEntity = (ctx, entity) => {
+  // Отрисовка элемента в виде блока блок-схемы
+  const drawElement = (ctx, element) => {
     // КРИТИЧЕСКИ ВАЖНО: Если блок перетаскивается, он должен рисоваться ТОЛЬКО по локальной позиции
     // Эта функция НЕ должна вызываться для перетаскиваемого блока в основном цикле
     // (он пропускается там и рисуется отдельно)
     
     // Защита: если блок перетаскивается, но нет локальной позиции - не рисуем
     let position2D;
-    if (draggingEntityId === entity.id) {
-      if (!localPositions2D[entity.id]) {
+    if (draggingElementId === element.id) {
+      if (!localPositions2D[element.id]) {
         return;
       }
       // Используем ТОЛЬКО локальную позицию
-      position2D = localPositions2D[entity.id];
+      position2D = localPositions2D[element.id];
     } else {
       // Для не перетаскиваемых блоков используем позицию из store
-      position2D = getEntityPosition2D(entity);
+      position2D = getElementPosition2D(element);
     }
     
     const { x, y } = worldToScreen(position2D[0], position2D[1]);
-    const isSelected = selectedEntityId === entity.id;
-    const entityType = ENTITY_TYPES[entity.type] || ENTITY_TYPES.box;
+    const isSelected = selectedElementId === element.id;
+    const elementType = ENTITY_TYPES[element.type] || ENTITY_TYPES.box;
     
     // Размеры блока
     const blockWidth = 120 * zoom;
@@ -141,7 +141,7 @@ function Canvas2D() {
     const blockY = y - blockHeight / 2;
     
     // Базовый цвет
-    const baseColor = entity.color || '#3b82f6';
+    const baseColor = element.color || '#3b82f6';
     
     // Рисуем прямоугольный блок с закругленными углами
     ctx.beginPath();
@@ -179,17 +179,17 @@ function Canvas2D() {
     }
     
     // Иконка типа (эмодзи) в верхней части блока
-    if (entityType.icon && zoom > 0.2) {
+    if (elementType.icon && zoom > 0.2) {
       const iconSize = Math.max(20, Math.min(blockHeight * 0.35, 32));
       ctx.font = `${iconSize}px Arial`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(entityType.icon, x, blockY + padding + iconSize / 2);
+      ctx.fillText(elementType.icon, x, blockY + padding + iconSize / 2);
     }
     
-    // Имя сущности в нижней части блока
-    if (entity.name && zoom > 0.2) {
+    // Имя элемента в нижней части блока
+    if (element.name && zoom > 0.2) {
       const fontSize = Math.max(10, Math.min(blockHeight * 0.2, 14));
       ctx.font = `bold ${fontSize}px Arial`;
       ctx.fillStyle = '#ffffff';
@@ -200,7 +200,7 @@ function Canvas2D() {
       
       // Обрезаем текст, если он слишком длинный
       const maxWidth = blockWidth - padding * 2;
-      let displayName = entity.name;
+      let displayName = element.name;
       const metrics = ctx.measureText(displayName);
       if (metrics.width > maxWidth) {
         // Сокращаем текст с многоточием
@@ -215,7 +215,7 @@ function Canvas2D() {
     }
     
     // Индикатор подключений
-    const hasConnections = connections.some(c => c.from === entity.id || c.to === entity.id);
+    const hasConnections = connections.some(c => c.from === element.id || c.to === element.id);
     if (hasConnections && zoom > 0.3) {
       ctx.beginPath();
       ctx.moveTo(blockX - 3, blockY);
@@ -257,8 +257,8 @@ function Canvas2D() {
       ctx.stroke();
     }
     
-    // Подсветка при наведении (НЕ показываем для перетаскиваемой сущности)
-    if (hoveredEntityId === entity.id && draggingEntityId !== entity.id) {
+    // Подсветка при наведении (НЕ показываем для перетаскиваемого элемента)
+    if (hoveredElementId === element.id && draggingElementId !== element.id) {
       ctx.beginPath();
       ctx.moveTo(blockX - 6, blockY);
       ctx.lineTo(blockX - 6, blockY + blockHeight);
@@ -271,7 +271,7 @@ function Canvas2D() {
     }
     
     // Индикатор режима подключения
-    if (connectMode && connectingFrom === entity.id) {
+    if (connectMode && connectingFrom === element.id) {
       ctx.beginPath();
       ctx.moveTo(blockX - 8, blockY);
       ctx.lineTo(blockX - 8, blockY + blockHeight);
@@ -291,21 +291,21 @@ function Canvas2D() {
 
   // Отрисовка соединения между блоками
   const drawConnection = (ctx, connection) => {
-    const fromEntity = entities.find(e => e.id === connection.from);
-    const toEntity = entities.find(e => e.id === connection.to);
+    const fromElement = elements.find(e => e.id === connection.from);
+    const toElement = elements.find(e => e.id === connection.to);
     
-    if (!fromEntity || !toEntity) return;
+    if (!fromElement || !toElement) return;
     
     const blockWidth = 120 * zoom;
     const blockHeight = 80 * zoom;
     
     // Для перетаскиваемых блоков ВСЕГДА используем локальную позицию, иначе из store
-    const fromPos2D = (draggingEntityId === fromEntity.id && localPositions2D[fromEntity.id])
-      ? localPositions2D[fromEntity.id]
-      : (localPositions2D[fromEntity.id] || getEntityPosition2D(fromEntity));
-    const toPos2D = (draggingEntityId === toEntity.id && localPositions2D[toEntity.id])
-      ? localPositions2D[toEntity.id]
-      : (localPositions2D[toEntity.id] || getEntityPosition2D(toEntity));
+    const fromPos2D = (draggingElementId === fromElement.id && localPositions2D[fromElement.id])
+      ? localPositions2D[fromElement.id]
+      : (localPositions2D[fromElement.id] || getElementPosition2D(fromElement));
+    const toPos2D = (draggingElementId === toElement.id && localPositions2D[toElement.id])
+      ? localPositions2D[toElement.id]
+      : (localPositions2D[toElement.id] || getElementPosition2D(toElement));
     const fromPos = worldToScreen(fromPos2D[0], fromPos2D[1]);
     const toPos = worldToScreen(toPos2D[0], toPos2D[1]);
     
@@ -367,9 +367,117 @@ function Canvas2D() {
     if (isSelected) strokeColor = '#ffff00';
     else if (isHovered) strokeColor = '#88ccff';
     
+    // Эффект свечения для выбранных и hovered связей
+    if (isSelected || isHovered) {
+      ctx.shadowColor = isSelected ? 'rgba(255, 255, 0, 0.6)' : 'rgba(136, 204, 255, 0.5)';
+      ctx.shadowBlur = 8;
+    }
+    
     ctx.strokeStyle = strokeColor;
     ctx.lineWidth = isSelected ? 4 : (isHovered ? 3 : 2);
     ctx.stroke();
+    
+    // Сбрасываем тень
+    ctx.shadowBlur = 0;
+    
+    // Рисуем стрелку на конце связи
+    // Получаем направление кривой в конечной точке для правильной ориентации стрелки
+    const curveEndX = toX;
+    const curveEndY = toY;
+    const curveControlX = midX;
+    const curveControlY = midY;
+    
+    // Вычисляем направление стрелки на конце связи
+    // Для квадратичной кривой: P(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
+    // Производная в t=1: P'(1) = 2(P2 - P1) = 2(to - mid)
+    const arrowEndDx = 2 * (curveEndX - curveControlX);
+    const arrowEndDy = 2 * (curveEndY - curveControlY);
+    const arrowEndAngle = Math.atan2(arrowEndDy, arrowEndDx);
+    
+    // Вычисляем направление стрелки на начале связи (для bidirectional)
+    // Производная в t=0: P'(0) = 2(P1 - P0) = 2(mid - from)
+    const arrowStartDx = 2 * (curveControlX - fromX);
+    const arrowStartDy = 2 * (curveControlY - fromY);
+    const arrowStartAngle = Math.atan2(arrowStartDy, arrowStartDx) + Math.PI;
+    
+    const arrowLength = 12 * zoom;
+    
+    // Рисуем стрелку на конце связи
+    ctx.beginPath();
+    ctx.moveTo(curveEndX, curveEndY);
+    ctx.lineTo(
+      curveEndX - arrowLength * Math.cos(arrowEndAngle - Math.PI / 6),
+      curveEndY - arrowLength * Math.sin(arrowEndAngle - Math.PI / 6)
+    );
+    ctx.moveTo(curveEndX, curveEndY);
+    ctx.lineTo(
+      curveEndX - arrowLength * Math.cos(arrowEndAngle + Math.PI / 6),
+      curveEndY - arrowLength * Math.sin(arrowEndAngle + Math.PI / 6)
+    );
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = isSelected ? 4 : (isHovered ? 3 : 2);
+    
+    // Эффект свечения для стрелки
+    if (isSelected || isHovered) {
+      ctx.shadowColor = isSelected ? 'rgba(255, 255, 0, 0.6)' : 'rgba(136, 204, 255, 0.5)';
+      ctx.shadowBlur = 8;
+    }
+    
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    
+    // Рисуем стрелку на начале связи (если bidirectional)
+    if (connection.bidirectional) {
+      ctx.beginPath();
+      ctx.moveTo(fromX, fromY);
+      ctx.lineTo(
+        fromX - arrowLength * Math.cos(arrowStartAngle - Math.PI / 6),
+        fromY - arrowLength * Math.sin(arrowStartAngle - Math.PI / 6)
+      );
+      ctx.moveTo(fromX, fromY);
+      ctx.lineTo(
+        fromX - arrowLength * Math.cos(arrowStartAngle + Math.PI / 6),
+        fromY - arrowLength * Math.sin(arrowStartAngle + Math.PI / 6)
+      );
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = isSelected ? 4 : (isHovered ? 3 : 2);
+      
+      // Эффект свечения для стрелки
+      if (isSelected || isHovered) {
+        ctx.shadowColor = isSelected ? 'rgba(255, 255, 0, 0.6)' : 'rgba(136, 204, 255, 0.5)';
+        ctx.shadowBlur = 8;
+      }
+      
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    
+    // Рисуем метку (label) если она есть
+    if (connection.label) {
+      const labelX = curveControlX;
+      const labelY = curveControlY - 20;
+      
+      // Фон для текста
+      ctx.font = `${12 * zoom}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const textMetrics = ctx.measureText(connection.label);
+      const textWidth = textMetrics.width;
+      const textHeight = 16 * zoom;
+      const padding = 4 * zoom;
+      
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(
+        labelX - textWidth / 2 - padding,
+        labelY - textHeight / 2 - padding,
+        textWidth + padding * 2,
+        textHeight + padding * 2
+      );
+      
+      // Текст
+      ctx.fillStyle = strokeColor;
+      ctx.fillText(connection.label, labelX, labelY);
+    }
   };
 
   // Основная отрисовка
@@ -397,44 +505,44 @@ function Canvas2D() {
     });
     
     // Сущности - ВАЖНО: пропускаем перетаскиваемую сущность, чтобы она не рисовалась дважды
-    entities.forEach(entity => {
+    elements.forEach(element => {
       // КРИТИЧЕСКИ ВАЖНО: ВО ВРЕМЯ ПЕРЕТАСКИВАНИЯ полностью пропускаем перетаскиваемую сущность
       // Это гарантирует, что блок НИКОГДА не рисуется по старой позиции из store
-      if (draggingEntityId === entity.id) {
+      if (draggingElementId === element.id) {
         return; // НЕ рисуем в основном цикле - только отдельно с локальной позицией
       }
       // Остальные сущности рисуем нормально
-      drawEntity(ctx, entity);
+      drawElement(ctx, element);
     });
     
     // Перетаскиваемая сущность рисуется последней (поверх всего) ТОЛЬКО с локальной позицией
     // КРИТИЧЕСКИ ВАЖНО: блок должен рисоваться ТОЛЬКО если есть локальная позиция
-    if (draggingEntityId) {
-      const draggedEntity = entities.find(e => e.id === draggingEntityId);
+    if (draggingElementId) {
+      const draggedElement = elements.find(e => e.id === draggingElementId);
       if (draggedEntity) {
         // Если нет локальной позиции, используем позицию из store как fallback
         // Это гарантирует, что блок всегда будет нарисован
-        if (!localPositions2D[draggingEntityId]) {
+        if (!localPositions2D[draggingElementId]) {
           // Это не должно происходить, но на всякий случай используем позицию из store
           const position2D = getEntityPosition2D(draggedEntity);
           // Создаем локальную позицию из store, чтобы блок был виден
           setLocalPositions2D(prev => ({
             ...prev,
-            [draggingEntityId]: [...position2D]
+            [draggingElementId]: [...position2D]
           }));
         }
         // Рисуем блок ТОЛЬКО по локальной позиции
         drawEntity(ctx, draggedEntity);
       }
     }
-  }, [entities, connections, selectedEntityId, selectedConnectionId, pan, zoom, hoveredEntityId, hoveredConnectionId, connectMode, connectingFrom, localPositions2D, draggingEntityId, getEntityPosition2D]);
+  }, [elements, connections, selectedElementId, selectedConnectionId, pan, zoom, hoveredElementId, hoveredConnectionId, connectMode, connectingFrom, localPositions2D, draggingElementId, getElementPosition2D]);
 
   // Инициализация 2D позиций и распределение блоков при переключении в 2D
   const lastViewModeRef = useRef(null);
   const distributionTimeoutRef = useRef(null);
   
   useEffect(() => {
-    if (viewMode !== '2d' || entities.length === 0) {
+    if (viewMode !== '2d' || elements.length === 0) {
       if (viewMode !== '2d') {
         lastViewModeRef.current = null; // Сбрасываем при переключении из 2D
       }
@@ -490,18 +598,18 @@ function Canvas2D() {
         // Если все блоки на одной позиции или есть перекрытия, распределяем их в сетку
         if (hasOverlapping || allSamePosition) {
           const blockSpacing = 160; // Расстояние между блоками
-          const cols = Math.ceil(Math.sqrt(entities.length));
-          const rows = Math.ceil(entities.length / cols);
+          const cols = Math.ceil(Math.sqrt(elements.length));
+          const rows = Math.ceil(elements.length / cols);
           
           // Распределяем блоки в сетку
-          entities.forEach((entity, index) => {
+          elements.forEach((element, index) => {
             const row = Math.floor(index / cols);
             const col = index % cols;
             const newX = (col - (cols - 1) / 2) * blockSpacing;
             const newZ = (row - (rows - 1) / 2) * blockSpacing;
             
             // Обновляем только 2D позицию
-            updateEntityPosition2D(entity.id, [newX, newZ]);
+            updateElementPosition2D(element.id, [newX, newZ]);
           });
           
           // Принудительно перерисовываем после распределения
@@ -530,7 +638,7 @@ function Canvas2D() {
         clearTimeout(distributionTimeoutRef.current);
       }
     };
-  }, [viewMode, entities.length]); // При переключении вида или изменении количества
+  }, [viewMode, elements.length]); // При переключении вида или изменении количества
 
   // Анимация мигания для блоков без соединений
   useEffect(() => {
@@ -574,16 +682,16 @@ function Canvas2D() {
   const animationFrameRef = useRef(null);
   
   useEffect(() => {
-    isDraggingRef.current = isDragging && !!draggingEntityId;
-  }, [isDragging, draggingEntityId]);
+    isDraggingRef.current = isDragging && !!draggingElementId;
+  }, [isDragging, draggingElementId]);
   
   useEffect(() => {
-    if (isDragging && draggingEntityId) {
+    if (isDragging && draggingElementId) {
       const animate = () => {
         // Во время перетаскивания продолжаем обновлять позицию на основе последней известной позиции мыши
-        if (lastMousePositionRef.current && draggingEntityId) {
-          const entity = entities.find(e => e.id === draggingEntityId);
-          if (entity) {
+        if (lastMousePositionRef.current && draggingElementId) {
+          const element = elements.find(e => e.id === draggingElementId);
+          if (element) {
             const { worldPos } = lastMousePositionRef.current;
             // Используем ref для получения актуального значения dragStart
             const currentDragStart = dragStartRef.current;
@@ -595,7 +703,7 @@ function Canvas2D() {
             // Обновляем локальную позицию, чтобы блок оставался на месте даже когда мышь не двигается
             setLocalPositions2D(prev => {
               const updated = { ...prev };
-              updated[draggingEntityId] = [...newPosition2D];
+              updated[draggingElementId] = [...newPosition2D];
               return updated;
             });
           }
@@ -622,7 +730,7 @@ function Canvas2D() {
         animationFrameRef.current = null;
       }
     };
-  }, [isDragging, draggingEntityId, entities, dragStart]);
+  }, [isDragging, draggingElementId, elements, dragStart]);
   
   // Обработка изменения размера окна с debounce
   useEffect(() => {
@@ -639,7 +747,7 @@ function Canvas2D() {
       window.removeEventListener('resize', handleResize);
       clearTimeout(resizeTimeout);
     };
-  }, [entities, connections, selectedEntityId, selectedConnectionId, pan, zoom, hoveredEntityId, hoveredConnectionId, connectMode, connectingFrom]);
+  }, [elements, connections, selectedElementId, selectedConnectionId, pan, zoom, hoveredElementId, hoveredConnectionId, connectMode, connectingFrom]);
 
   // Обработка клика на canvas - ЕДИНСТВЕННОЕ место для управления выделением
   const handleCanvasClick = (e) => {
@@ -657,8 +765,8 @@ function Canvas2D() {
     // Если было перетаскивание, сохраняем выделение блока, который перетаскивался
     if (moveDistance > 5) {
       // При перетаскивании сохраняем выделение блока, который был перетаскан
-      if (lastDraggedEntityIdRef.current) {
-        selectEntity(lastDraggedEntityIdRef.current);
+      if (lastDraggedElementIdRef.current) {
+        selectElement(lastDraggedElementIdRef.current);
       }
       setClickStart(null);
       return;
@@ -666,49 +774,49 @@ function Canvas2D() {
     
     const worldPos = screenToWorld(x, y);
     
-    // Проверяем клик по сущности
-    let clickedEntity = null;
-    for (let i = entities.length - 1; i >= 0; i--) {
-      const entity = entities[i];
-      const position2D = getEntityPosition2D(entity);
+    // Проверяем клик по элементу
+    let clickedElement = null;
+    for (let i = elements.length - 1; i >= 0; i--) {
+      const element = elements[i];
+      const position2D = getElementPosition2D(element);
       const { x: sx, y: sy } = worldToScreen(position2D[0], position2D[1]);
       
       if (isPointInBlock(x, y, sx, sy)) {
-        clickedEntity = entity;
+        clickedElement = element;
         break;
       }
     }
     
     
     if (connectMode) {
-      if (clickedEntity) {
+      if (clickedElement) {
         if (connectingFrom) {
-          if (connectingFrom !== clickedEntity.id) {
+          if (connectingFrom !== clickedElement.id) {
             createConnection({
               from: connectingFrom,
-              to: clickedEntity.id
+              to: clickedElement.id
             });
             setConnectingFrom(null);
           } else {
             setConnectingFrom(null);
           }
         } else {
-          setConnectingFrom(clickedEntity.id);
+          setConnectingFrom(clickedElement.id);
         }
       }
     } else {
-      // Проверяем клик по соединению (только если не кликнули по сущности)
-      if (!clickedEntity) {
+      // Проверяем клик по соединению (только если не кликнули по элементу)
+      if (!clickedElement) {
         let clickedConnection = null;
         
         for (const connection of connections) {
-          const fromEntity = entities.find(e => e.id === connection.from);
-          const toEntity = entities.find(e => e.id === connection.to);
-          if (!fromEntity || !toEntity) continue;
+          const fromElement = elements.find(e => e.id === connection.from);
+          const toElement = elements.find(e => e.id === connection.to);
+          if (!fromElement || !toElement) continue;
           
           const blockSize = getBlockSize();
-          const fromPos2D = getEntityPosition2D(fromEntity);
-          const toPos2D = getEntityPosition2D(toEntity);
+          const fromPos2D = getElementPosition2D(fromElement);
+          const toPos2D = getElementPosition2D(toElement);
           const fromPos = worldToScreen(fromPos2D[0], fromPos2D[1]);
           const toPos = worldToScreen(toPos2D[0], toPos2D[1]);
           
@@ -758,35 +866,35 @@ function Canvas2D() {
         
         if (clickedConnection) {
           selectConnection(clickedConnection.id);
-          selectEntity(null);
-          // Очищаем lastDraggedEntityIdRef при клике на соединение
-          lastDraggedEntityIdRef.current = null;
+          selectElement(null);
+          // Очищаем lastDraggedElementIdRef при клике на соединение
+          lastDraggedElementIdRef.current = null;
         } else {
           // Клик на пустое место - всегда сбрасываем выделение
-          selectEntity(null);
+          selectElement(null);
           selectConnection(null);
-          // Очищаем lastDraggedEntityIdRef при клике на пустое место
-          lastDraggedEntityIdRef.current = null;
+          // Очищаем lastDraggedElementIdRef при клике на пустое место
+          lastDraggedElementIdRef.current = null;
         }
-      } else if (clickedEntity) {
+      } else if (clickedElement) {
         // КЛИК НА БЛОК - устанавливаем выделение
-        console.log('🎯 Clicked on entity:', {
-          entityId: clickedEntity.id,
-          entityName: clickedEntity.name,
-          currentSelected: selectedEntityId,
-          willSelect: selectedEntityId !== clickedEntity.id
+        console.log('🎯 Clicked on element:', {
+          elementId: clickedElement.id,
+          elementName: clickedElement.name,
+          currentSelected: selectedElementId,
+          willSelect: selectedElementId !== clickedElement.id
         });
         // ВСЕГДА устанавливаем выделение при клике, чтобы панель обновилась
-        selectEntity(clickedEntity.id);
+        selectElement(clickedElement.id);
         selectConnection(null);
         // Сохраняем ID для возможного перетаскивания
-        lastDraggedEntityIdRef.current = clickedEntity.id;
+        lastDraggedElementIdRef.current = clickedElement.id;
       }
     }
     
     setClickStart(null);
-    // Очищаем draggingEntityId после обработки клика
-    setDraggingEntityId(null);
+    // Очищаем draggingElementId после обработки клика
+    setDraggingElementId(null);
   };
 
   // Обработка перетаскивания
@@ -800,32 +908,32 @@ function Canvas2D() {
     // Сохраняем начальную позицию для определения клика vs перетаскивания
     setClickStart({ x, y });
     
-    // Проверяем клик по блоку сущности
-    let clickedEntity = null;
-    for (let i = entities.length - 1; i >= 0; i--) {
-      const entity = entities[i];
-      const position2D = getEntityPosition2D(entity);
+    // Проверяем клик по блоку элемента
+    let clickedElement = null;
+    for (let i = elements.length - 1; i >= 0; i--) {
+      const element = elements[i];
+      const position2D = getElementPosition2D(element);
       const { x: sx, y: sy } = worldToScreen(position2D[0], position2D[1]);
       
       if (isPointInBlock(x, y, sx, sy)) {
-        clickedEntity = entity;
+        clickedElement = element;
         break;
       }
     }
     
-    if (clickedEntity && !connectMode) {
-      setDraggingEntityId(clickedEntity.id);
-      lastDraggedEntityIdRef.current = clickedEntity.id; // Сохраняем для использования в handleCanvasClick
+    if (clickedElement && !connectMode) {
+      setDraggingElementId(clickedElement.id);
+      lastDraggedElementIdRef.current = clickedElement.id; // Сохраняем для использования в handleCanvasClick
       setIsDragging(true);
       // НЕ устанавливаем выделение здесь - оно будет установлено в handleCanvasClick, если это не перетаскивание
       
       // Очищаем hover эффект для перетаскиваемой сущности, чтобы избежать подсветки на старом месте
-      if (hoveredEntityId === clickedEntity.id) {
+      if (hoveredElementId === clickedElement.id) {
         setHoveredEntityId(null);
       }
       
       // Сохраняем смещение для плавного перетаскивания (используем 2D позицию)
-      const position2D = getEntityPosition2D(clickedEntity);
+      const position2D = getElementPosition2D(clickedElement);
       const dragOffset = { 
         x: worldPos.x - position2D[0], 
         z: worldPos.z - position2D[1] 
@@ -840,7 +948,7 @@ function Canvas2D() {
       // Начальная локальная позиция должна быть текущей позицией блока
       setLocalPositions2D(prev => ({
         ...prev,
-        [clickedEntity.id]: [...position2D] // Копируем массив, чтобы не было ссылки
+        [clickedElement.id]: [...position2D] // Копируем массив, чтобы не было ссылки
       }));
       
       // Принудительно перерисовываем сразу после установки локальной позиции
@@ -875,27 +983,27 @@ function Canvas2D() {
     // Проверяем наведение на блоки сущностей
     // ВАЖНО: Пропускаем проверку для перетаскиваемой сущности, чтобы избежать подсветки на старом месте
     for (let i = entities.length - 1; i >= 0; i--) {
-      const entity = entities[i];
+      const element = elements[i];
       
       // Пропускаем перетаскиваемую сущность - она не должна иметь hover эффект во время перетаскивания
-      if (draggingEntityId === entity.id) {
+      if (draggingElementId === element.id) {
         continue;
       }
       
       // Используем позицию из store (перетаскиваемая сущность уже пропущена выше)
-      const position2D = getEntityPosition2D(entity);
+      const position2D = getElementPosition2D(element);
       const { x: sx, y: sy } = worldToScreen(position2D[0], position2D[1]);
       
       if (isPointInBlock(x, y, sx, sy)) {
-        newHoveredEntityId = entity.id;
+        newHoveredElementId = element.id;
         cursorStyle = connectMode ? 'crosshair' : 'grab';
         
         // Подсказка при наведении
-        const entityType = ENTITY_TYPES[entity.type] || ENTITY_TYPES.box;
+        const elementType = ENTITY_TYPES[element.type] || ENTITY_TYPES.box;
         setTooltip({
           x: e.clientX,
           y: e.clientY,
-          text: `${entity.name || 'Без имени'} (${entityType.label})`,
+          text: `${element.name || 'Без имени'} (${elementType.label})`,
           type: entityType.label
         });
         break;
@@ -907,15 +1015,15 @@ function Canvas2D() {
     }
     
     // Проверяем наведение на соединения (только если не на сущности)
-    if (!newHoveredEntityId && !isDragging) {
+    if (!newHoveredElementId && !isDragging) {
       for (const connection of connections) {
-        const fromEntity = entities.find(e => e.id === connection.from);
-        const toEntity = entities.find(e => e.id === connection.to);
-        if (!fromEntity || !toEntity) continue;
+        const fromElement = elements.find(e => e.id === connection.from);
+        const toElement = elements.find(e => e.id === connection.to);
+        if (!fromElement || !toElement) continue;
         
         const blockSize = getBlockSize();
-        const fromPos2D = getEntityPosition2D(fromEntity);
-        const toPos2D = getEntityPosition2D(toEntity);
+        const fromPos2D = getElementPosition2D(fromElement);
+        const toPos2D = getElementPosition2D(toElement);
         const fromPos = worldToScreen(fromPos2D[0], fromPos2D[1]);
         const toPos = worldToScreen(toPos2D[0], toPos2D[1]);
         
@@ -967,11 +1075,11 @@ function Canvas2D() {
           // Подсказка для соединения
           const fromEntity = entities.find(e => e.id === connection.from);
           const toEntity = entities.find(e => e.id === connection.to);
-          if (fromEntity && toEntity) {
+          if (fromElement && toElement) {
             setTooltip({
               x: e.clientX,
               y: e.clientY,
-              text: `Соединение: ${fromEntity.name || 'Сущность 1'} → ${toEntity.name || 'Сущность 2'}`,
+              text: `Соединение: ${fromElement.name || 'Элемент 1'} → ${toElement.name || 'Элемент 2'}`,
               type: 'connection'
             });
           }
@@ -989,15 +1097,15 @@ function Canvas2D() {
     setHoveredConnectionId(newHoveredConnectionId);
     
     // Сохраняем позицию мыши для использования во время перетаскивания
-    if (isDragging && draggingEntityId) {
+    if (isDragging && draggingElementId) {
       lastMousePositionRef.current = { x, y, worldPos };
     }
     
     if (!isDragging) return;
     
-    if (draggingEntityId) {
-      const entity = entities.find(e => e.id === draggingEntityId);
-      if (entity) {
+    if (draggingElementId) {
+      const element = elements.find(e => e.id === draggingElementId);
+      if (element) {
         // Вычисляем новую позицию на основе текущей позиции мыши
         const newPosition2D = [
           worldPos.x - dragStart.x,
@@ -1009,7 +1117,7 @@ function Canvas2D() {
         setLocalPositions2D(prev => {
           // Убеждаемся, что мы создаем новый объект для React
           const updated = { ...prev };
-          updated[entity.id] = [...newPosition2D]; // Создаем новый массив
+          updated[element.id] = [...newPosition2D]; // Создаем новый массив
           return updated;
         });
       }
@@ -1023,23 +1131,23 @@ function Canvas2D() {
 
   const handleMouseUp = (e) => {
     // Сохраняем ID блока для сохранения выделения
-    // ВАЖНО: Сохраняем выделение только если было перетаскивание (draggingEntityId установлен)
+    // ВАЖНО: Сохраняем выделение только если было перетаскивание (draggingElementId установлен)
     // Если был просто клик, выделение будет обработано в handleCanvasClick
-    const entityIdToSelect = draggingEntityId;
+    const elementIdToSelect = draggingElementId;
     
     // Обновляем позицию при перетаскивании
-    if (draggingEntityId) {
-      const entity = entities.find(e => e.id === draggingEntityId);
-      if (entity) {
+    if (draggingElementId) {
+      const element = elements.find(e => e.id === draggingElementId);
+      if (element) {
         // Если было перетаскивание - обновляем позицию
-        if (localPositions2D[entity.id]) {
-          const finalPosition = localPositions2D[entity.id];
-          updateEntityPosition2D(entity.id, finalPosition);
+        if (localPositions2D[element.id]) {
+          const finalPosition = localPositions2D[element.id];
+          updateElementPosition2D(element.id, finalPosition);
           
           // Очищаем локальную позицию
           setLocalPositions2D(prev => {
             const newPositions = { ...prev };
-            delete newPositions[draggingEntityId];
+            delete newPositions[draggingElementId];
             return newPositions;
           });
         }
@@ -1053,7 +1161,7 @@ function Canvas2D() {
     // Для простого клика выделение обрабатывается в handleCanvasClick
     if (entityIdToSelect) {
       requestAnimationFrame(() => {
-        selectEntity(entityIdToSelect);
+        selectElement(elementIdToSelect);
       });
     }
     

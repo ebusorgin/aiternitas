@@ -8,8 +8,10 @@ import Canvas3D from '../components/workspace/Canvas3D';
 import Toolbar from '../components/workspace/Toolbar';
 import PropertiesPanel from '../components/workspace/PropertiesPanel';
 import ScenesView from '../components/workspace/ScenesView';
+import ElementTypeModal from '../components/workspace/ElementTypeModal';
 import CreateSceneModal from '../components/workspace/CreateSceneModal';
-import EntityTypeModal from '../components/workspace/EntityTypeModal';
+import CreateWorkerModal from '../components/workspace/CreateWorkerModal';
+import CreateBlockModal from '../components/workspace/CreateBlockModal';
 import './Home.css';
 import './Auth.css';
 
@@ -28,12 +30,14 @@ function Home() {
   const [success, setSuccess] = useState('');
   const [formLoading, setFormLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [isElementTypeModalOpen, setIsElementTypeModalOpen] = useState(false);
   const [isSceneModalOpen, setIsSceneModalOpen] = useState(false);
-  const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
+  const [isWorkerModalOpen, setIsWorkerModalOpen] = useState(false);
+  const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
 
   const initSocket = useSceneStore((state) => state.initSocket);
   const disconnectSocket = useSceneStore((state) => state.disconnectSocket);
-  const createEntity = useSceneStore((state) => state.createEntity);
+  const createElement = useSceneStore((state) => state.createElement);
   const createScene = useSceneStore((state) => state.createScene);
   const getCanvasCenter = useSceneStore((state) => state.getCanvasCenter);
   const loadScene = useSceneStore((state) => state.loadScene);
@@ -251,29 +255,18 @@ function Home() {
       <div className="home-main-page">
         <div className="home-welcome">
           <h1>Добро пожаловать в Aiternitas</h1>
-          <p>Создайте свою первую сцену или сущность, чтобы начать работу</p>
+          <p>Создайте свой первый элемент (сцену, воркера или блок), чтобы начать работу</p>
         </div>
         
         <div className="home-actions">
           <button
-            className="home-action-btn create-scene-btn"
-            onClick={() => setIsSceneModalOpen(true)}
+            className="home-action-btn create-element-btn"
+            onClick={() => setIsElementTypeModalOpen(true)}
           >
-            <div className="btn-icon">🎬</div>
+            <div className="btn-icon">➕</div>
             <div className="btn-content">
-              <div className="btn-title">Создать сцену</div>
-              <div className="btn-description">Создайте новую сцену для организации ваших сущностей</div>
-            </div>
-          </button>
-          
-          <button
-            className="home-action-btn create-entity-btn"
-            onClick={() => setIsEntityModalOpen(true)}
-          >
-            <div className="btn-icon">👤</div>
-            <div className="btn-content">
-              <div className="btn-title">Создать сущность</div>
-              <div className="btn-description">Добавьте новую сущность (персонаж, объект и т.д.)</div>
+              <div className="btn-title">Создать элемент</div>
+              <div className="btn-description">Создайте новый элемент: сцену, воркера или блок</div>
             </div>
           </button>
         </div>
@@ -307,22 +300,69 @@ function Home() {
           }}
         />
 
-        <EntityTypeModal
-          isOpen={isEntityModalOpen}
-          onClose={() => setIsEntityModalOpen(false)}
-          onSelectType={(type) => {
-            // Создаем сущность в центре (0, 1, 0)
-            // Если нет активной сцены, сущность будет создана без scene_id
-            createEntity({
-              position: null, // null означает использование центра canvas (если доступен) или [0, 1, 0]
-              size: [1, 1, 1],
-              name: `Entity ${Date.now()}`,
-              description: '',
-              color: '#3b82f6',
-              type: type || 'box'
-            });
-            
-            setIsEntityModalOpen(false);
+        <ElementTypeModal
+          isOpen={isElementTypeModalOpen}
+          onClose={() => setIsElementTypeModalOpen(false)}
+          onSelectType={(elementType) => {
+            setIsElementTypeModalOpen(false);
+            switch (elementType) {
+              case 'scene':
+                setIsSceneModalOpen(true);
+                break;
+              case 'worker':
+                setIsWorkerModalOpen(true);
+                break;
+              case 'block':
+                setIsBlockModalOpen(true);
+                break;
+              default:
+                console.error('Unknown element type:', elementType);
+            }
+          }}
+        />
+
+        <CreateWorkerModal
+          isOpen={isWorkerModalOpen}
+          onClose={() => setIsWorkerModalOpen(false)}
+          onCreate={async (workerData) => {
+            try {
+              createElement({
+                position: null,
+                size: [1, 1, 1],
+                name: workerData.name,
+                description: workerData.description || '',
+                color: workerData.color || '#3b82f6',
+                emissive: workerData.emissive || '#000000',
+                type: workerData.type || 'worker',
+                elementType: 'worker'
+              });
+              setIsWorkerModalOpen(false);
+            } catch (error) {
+              console.error('Ошибка создания воркера:', error);
+              throw error;
+            }
+          }}
+        />
+
+        <CreateBlockModal
+          isOpen={isBlockModalOpen}
+          onClose={() => setIsBlockModalOpen(false)}
+          onCreate={async (blockData) => {
+            try {
+              createElement({
+                position: null,
+                size: [1, 1, 1],
+                name: blockData.name,
+                description: blockData.description || '',
+                color: blockData.color || '#3b82f6',
+                type: 'block',
+                elementType: 'block'
+              });
+              setIsBlockModalOpen(false);
+            } catch (error) {
+              console.error('Ошибка создания блока:', error);
+              throw error;
+            }
           }}
         />
       </div>

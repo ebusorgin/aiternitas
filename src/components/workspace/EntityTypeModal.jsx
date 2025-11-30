@@ -29,7 +29,7 @@ function EntityTypeModal({ isOpen, onClose, onSelectType }) {
     <div className="entity-type-modal-overlay" onClick={onClose}>
       <div className="entity-type-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Select Entity Type</h2>
+          <h2>Select Element Type</h2>
           <button className="close-btn" onClick={onClose}>×</button>
         </div>
 

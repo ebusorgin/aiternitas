@@ -1,27 +1,32 @@
 /**
- * Вычисляет радиус сферы для сущности
+ * Вычисляет радиус сферы для элемента
  */
-export function getEntityRadius(entity) {
-  const [sx, sy, sz] = entity.size || [1, 1, 1];
+export function getEntityRadius(element) {
+  const [sx, sy, sz] = element.size || [1, 1, 1];
   const maxDimension = Math.max(sx, sy, sz);
-  const entityType = entity.type || 'box';
+  const elementType = element.type || 'box';
   
   // Для персонажей используем сферу, для других - максимальный размер
-  if (entityType !== 'box') {
+  if (elementType !== 'box') {
     return maxDimension * 0.7;
   }
   return maxDimension / 2;
 }
 
 /**
- * Проверяет, пересекаются ли две сущности
+ * Проверяет, пересекаются ли два элемента
  */
-export function checkCollision(entity1, entity2) {
-  const [x1, y1, z1] = entity1.position;
-  const [x2, y2, z2] = entity2.position;
+export function checkCollision(element1, element2) {
+  // Проверяем, что у обоих элементов есть position
+  if (!element1.position || !element2.position) {
+    return false;
+  }
   
-  const radius1 = getEntityRadius(entity1);
-  const radius2 = getEntityRadius(entity2);
+  const [x1, y1, z1] = element1.position;
+  const [x2, y2, z2] = element2.position;
+  
+  const radius1 = getEntityRadius(element1);
+  const radius2 = getEntityRadius(element2);
   
   // Вычисляем расстояние между центрами
   const distance = Math.sqrt(
@@ -37,56 +42,66 @@ export function checkCollision(entity1, entity2) {
 }
 
 /**
- * Проверяет, пересекается ли сущность в заданной позиции с другими сущностями
+ * Проверяет, пересекается ли элемент в заданной позиции с другими элементами
  */
-export function checkPositionCollision(position, size, type, entities, excludeId = null) {
-  const testEntity = {
+export function checkPositionCollision(position, size, type, elements, excludeId = null) {
+  // Убеждаемся, что elements - это массив
+  if (!Array.isArray(elements) || elements.length === 0) {
+    return false;
+  }
+  
+  const testElement = {
     position,
     size,
     type,
     id: excludeId || 'temp'
   };
   
-  return entities.some(entity => {
-    if (entity.id === excludeId) return false;
-    return checkCollision(testEntity, entity);
+  return elements.some(element => {
+    if (element.id === excludeId) return false;
+    // Проверяем, что у element есть position
+    if (!element.position) return false;
+    return checkCollision(testElement, element);
   });
 }
 
 /**
- * Находит свободную позицию для новой сущности
+ * Находит свободную позицию для нового элемента
  */
-export function findFreePosition(size, type, entities, startPosition = [0, 1, 0]) {
+export function findFreePosition(size, type, elements, startPosition = [0, 1, 0]) {
+  // Убеждаемся, что elements - это массив
+  const elementsArray = Array.isArray(elements) ? elements : [];
+  
   const radius = getEntityRadius({ size, type });
   const spacing = radius * 2.5; // Расстояние между объектами
   
   // Если стартовая позиция свободна, используем её
-  if (!checkPositionCollision(startPosition, size, type, entities)) {
+  if (!checkPositionCollision(startPosition, size, type, elementsArray)) {
     return startPosition;
   }
   
   // Поиск свободной позиции по спирали (расширяющиеся круги)
   for (let layer = 1; layer < 15; layer++) {
     const layerRadius = spacing * layer;
-    const entitiesPerLayer = Math.max(8, layer * 6); // Количество точек на слое увеличивается
+    const elementsPerLayer = Math.max(8, layer * 6); // Количество точек на слое увеличивается
     
     // Пробуем разные углы
-    for (let i = 0; i < entitiesPerLayer; i++) {
-      const angle = (i / entitiesPerLayer) * Math.PI * 2;
+    for (let i = 0; i < elementsPerLayer; i++) {
+      const angle = (i / elementsPerLayer) * Math.PI * 2;
       const x = startPosition[0] + Math.cos(angle) * layerRadius;
       const z = startPosition[2] + Math.sin(angle) * layerRadius;
       const y = startPosition[1]; // Сохраняем Y координату
       
       const testPosition = [x, y, z];
       
-      if (!checkPositionCollision(testPosition, size, type, entities)) {
+      if (!checkPositionCollision(testPosition, size, type, elementsArray)) {
         return testPosition;
       }
     }
     
     // Также пробуем позиции выше и ниже на этом слое
-    for (let i = 0; i < entitiesPerLayer; i++) {
-      const angle = (i / entitiesPerLayer) * Math.PI * 2;
+    for (let i = 0; i < elementsPerLayer; i++) {
+      const angle = (i / elementsPerLayer) * Math.PI * 2;
       const x = startPosition[0] + Math.cos(angle) * layerRadius;
       const z = startPosition[2] + Math.sin(angle) * layerRadius;
       
@@ -94,7 +109,7 @@ export function findFreePosition(size, type, entities, startPosition = [0, 1, 0]
       const yUp = startPosition[1] + spacing * 1.5;
       const testPositionUp = [x, yUp, z];
       
-      if (!checkPositionCollision(testPositionUp, size, type, entities)) {
+      if (!checkPositionCollision(testPositionUp, size, type, elementsArray)) {
         return testPositionUp;
       }
       
@@ -102,7 +117,7 @@ export function findFreePosition(size, type, entities, startPosition = [0, 1, 0]
       const yDown = Math.max(0.5, startPosition[1] - spacing * 1.5);
       const testPositionDown = [x, yDown, z];
       
-      if (!checkPositionCollision(testPositionDown, size, type, entities)) {
+      if (!checkPositionCollision(testPositionDown, size, type, elementsArray)) {
         return testPositionDown;
       }
     }
