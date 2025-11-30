@@ -138,36 +138,6 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Неверный email или пароль' });
     }
 
-    // Проверка верификации email (только для пользователей с паролем, не через Google)
-    if (!user.google_id && !user.email_verified) {
-      // Генерируем новый токен если старый истек
-      let verificationToken = user.email_verification_token;
-      let verificationExpires = user.email_verification_expires;
-      
-      if (!verificationToken || !verificationExpires || new Date(verificationExpires) < new Date()) {
-        verificationToken = generateVerificationToken();
-        verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        
-        await pool.query(
-          'UPDATE users SET email_verification_token = $1, email_verification_expires = $2 WHERE id = $3',
-          [verificationToken, verificationExpires, user.id]
-        );
-      }
-      
-      // Отправляем новое письмо с токеном
-      const clientIp = getClientIp(req);
-      console.log(`📧 Отправка письма для верификации email пользователю ${user.email}...`);
-      const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken, clientIp);
-      if (!emailResult.success) {
-        console.error(`❌ Не удалось отправить письмо: ${emailResult.error}`);
-      }
-      
-      return res.status(403).json({ 
-        error: 'Email не подтвержден. Пожалуйста, проверьте вашу почту и подтвердите email. Если письмо не пришло, используйте функцию повторной отправки.',
-        emailVerificationRequired: true
-      });
-    }
-
     // Создание сессии
     req.session.userId = user.id;
     req.session.userName = user.name;

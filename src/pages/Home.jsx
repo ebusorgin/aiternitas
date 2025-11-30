@@ -1,26 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useSceneStore } from '../store/sceneStore';
-import { useScenesNavigation } from '../context/ScenesNavigationContext';
-import Canvas2D from '../components/workspace/Canvas2D';
-import Canvas3D from '../components/workspace/Canvas3D';
-import Toolbar from '../components/workspace/Toolbar';
-import PropertiesPanel from '../components/workspace/PropertiesPanel';
-import ScenesView from '../components/workspace/ScenesView';
-import ElementTypeModal from '../components/workspace/ElementTypeModal';
-import CreateSceneModal from '../components/workspace/CreateSceneModal';
-import CreateWorkerModal from '../components/workspace/CreateWorkerModal';
-import CreateBlockModal from '../components/workspace/CreateBlockModal';
 import './Home.css';
 import './Auth.css';
 
 function Home() {
   const { user, loading, login, register, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
-  const [stats, setStats] = useState(null);
-  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
-  const { showScenesList, hideScenes } = useScenesNavigation();
+  const [authMode, setAuthMode] = useState('login');
   
   // Form states
   const [name, setName] = useState('');
@@ -30,63 +17,24 @@ function Home() {
   const [success, setSuccess] = useState('');
   const [formLoading, setFormLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [isElementTypeModalOpen, setIsElementTypeModalOpen] = useState(false);
-  const [isSceneModalOpen, setIsSceneModalOpen] = useState(false);
-  const [isWorkerModalOpen, setIsWorkerModalOpen] = useState(false);
-  const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
-
-  const initSocket = useSceneStore((state) => state.initSocket);
-  const disconnectSocket = useSceneStore((state) => state.disconnectSocket);
-  const createElement = useSceneStore((state) => state.createElement);
-  const createScene = useSceneStore((state) => state.createScene);
-  const getCanvasCenter = useSceneStore((state) => state.getCanvasCenter);
-  const loadScene = useSceneStore((state) => state.loadScene);
 
   useEffect(() => {
-    if (user) {
-      loadStats();
-      // Инициализируем Socket.IO для авторизованных пользователей
-      initSocket();
-    }
-    
     // Проверяем параметры URL для уведомлений
     const urlParams = new URLSearchParams(window.location.search);
     const emailVerified = urlParams.get('email_verified');
-    const error = urlParams.get('error');
+    const errorParam = urlParams.get('error');
     
     if (emailVerified === 'true') {
       setSuccess('Email успешно подтвержден!');
-      // Очищаем URL параметр
       window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (error === 'invalid_token') {
+    } else if (errorParam === 'invalid_token') {
       setError('Неверная ссылка подтверждения');
-    } else if (error === 'token_expired') {
+    } else if (errorParam === 'token_expired') {
       setError('Ссылка подтверждения истекла. Пожалуйста, запросите новую.');
-    } else if (error === 'verification_failed') {
+    } else if (errorParam === 'verification_failed') {
       setError('Ошибка подтверждения email. Попробуйте позже.');
     }
-
-    // Очистка при размонтировании
-    return () => {
-      if (user) {
-        disconnectSocket();
-      }
-    };
-  }, [user, initSocket, disconnectSocket]);
-
-  const loadStats = async () => {
-    try {
-      const response = await fetch('/api/stats');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.stats) {
-          setStats(data.stats);
-        }
-      }
-    } catch (error) {
-      console.error('Ошибка загрузки статистики:', error);
-    }
-  };
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -102,10 +50,8 @@ function Home() {
     const result = await login(email, password);
 
     if (result.success) {
-      // Остаемся на главной странице после входа
       window.location.reload();
     } else {
-      // Проверяем, требуется ли верификация email
       if (result.emailVerificationRequired) {
         setError(result.error || 'Email не подтвержден');
         if (result.verificationUrl) {
@@ -141,11 +87,10 @@ function Home() {
 
     if (result.success) {
       if (result.emailVerificationRequired) {
-        setSuccess('Регистрация успешна! Пожалуйста, проверьте вашу почту и подтвердите email. Ссылка также доступна в консоли браузера.');
+        setSuccess('Регистрация успешна! Пожалуйста, проверьте вашу почту и подтвердите email.');
         if (result.verificationUrl) {
           console.log('Email verification URL:', result.verificationUrl);
         }
-        // Перезагружаем страницу чтобы показать предупреждение о верификации
         setTimeout(() => {
           window.location.reload();
         }, 2000);
@@ -167,10 +112,7 @@ function Home() {
     
     try {
       const result = await loginWithGoogle();
-      if (result.success) {
-        // Редирект произойдет через Google OAuth callback
-        // Не нужно делать navigate здесь
-      } else {
+      if (!result.success) {
         setError(result.error || 'Ошибка входа через Google');
         setGoogleLoading(false);
       }
@@ -180,191 +122,48 @@ function Home() {
     }
   };
 
-  const handleResendVerification = async () => {
-    setError('');
-    setFormLoading(true);
-    
-    try {
-      const response = await fetch('/api/auth/resend-verification', {
-        method: 'POST',
-        credentials: 'include',
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        setSuccess('Письмо для подтверждения email отправлено. Проверьте вашу почту.');
-        if (data.verificationUrl) {
-          console.log('Verification URL:', data.verificationUrl);
-        }
-      } else {
-        setError(data.error || 'Ошибка отправки письма');
-      }
-    } catch (error) {
-      setError('Ошибка подключения к серверу');
-    } finally {
-      setFormLoading(false);
-    }
-  };
-
-  const viewMode = useSceneStore((state) => state.viewMode);
-  const currentSceneId = useSceneStore((state) => state.currentSceneId);
-
-  // Если пользователь авторизован
+  // Если пользователь авторизован, показываем главную страницу
   if (user && !loading) {
-    // Если явно запрошен список сцен (через меню), показываем ScenesView
-    if (showScenesList) {
-      return (
-        <ScenesView 
-          onSceneSelect={(sceneId) => {
-            hideScenes();
-          }}
-        />
-      );
-    }
-
-    // По умолчанию показываем workspace (2D или 3D) только если есть активная сцена
-    if (currentSceneId) {
-      return (
-        <div className="workspace-container">
-          <Toolbar />
-          <PropertiesPanel />
-          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-            {viewMode === '2d' ? <Canvas2D /> : <Canvas3D />}
-          </div>
-          
-          {/* Предупреждение о неподтвержденном email */}
-          {!user.email_verified && !user.google_id && (
-            <div className="email-verification-banner">
-              <p>⚠️ Ваш email не подтвержден. Пожалуйста, проверьте почту и подтвердите email.</p>
-              <button 
-                onClick={handleResendVerification}
-                className="btn-resend-verification"
-                disabled={formLoading}
-              >
-                Отправить письмо повторно
-              </button>
-            </div>
-          )}
-        </div>
-      );
-    }
-    
-    // Если нет активной сцены, показываем главную страницу с кнопками создания
     return (
-      <div className="home-main-page">
-        <div className="home-welcome">
-          <h1>Добро пожаловать в Aiternitas</h1>
-          <p>Создайте свой первый элемент (сцену, воркера или блок), чтобы начать работу</p>
+      <div className="home-dashboard">
+        <div className="dashboard-welcome">
+          <h1>Добро пожаловать, {user.name}!</h1>
+          <p>Выберите раздел в меню слева для начала работы</p>
         </div>
-        
-        <div className="home-actions">
-          <button
-            className="home-action-btn create-element-btn"
-            onClick={() => setIsElementTypeModalOpen(true)}
-          >
-            <div className="btn-icon">➕</div>
-            <div className="btn-content">
-              <div className="btn-title">Создать элемент</div>
-              <div className="btn-description">Создайте новый элемент: сцену, воркера или блок</div>
+
+        <div className="dashboard-cards">
+          <div className="dashboard-card" onClick={() => navigate('/messages')}>
+            <div className="card-icon">💬</div>
+            <div className="card-content">
+              <h3>Сообщения</h3>
+              <p>Просмотр и отправка сообщений</p>
             </div>
-          </button>
+          </div>
+
+          <div className="dashboard-card" onClick={() => navigate('/calls')}>
+            <div className="card-icon">📞</div>
+            <div className="card-content">
+              <h3>Звонки</h3>
+              <p>История звонков и видеозвонки</p>
+            </div>
+          </div>
+
+          <div className="dashboard-card" onClick={() => navigate('/companies')}>
+            <div className="card-icon">🏢</div>
+            <div className="card-content">
+              <h3>Мои компании</h3>
+              <p>Управление компаниями</p>
+            </div>
+          </div>
+
+          <div className="dashboard-card" onClick={() => navigate('/profile')}>
+            <div className="card-icon">👤</div>
+            <div className="card-content">
+              <h3>Личный кабинет</h3>
+              <p>Настройки профиля</p>
+            </div>
+          </div>
         </div>
-
-        <CreateSceneModal
-          isOpen={isSceneModalOpen}
-          onClose={() => setIsSceneModalOpen(false)}
-          onCreate={async (sceneData) => {
-            try {
-              // Для главной страницы создаем сцену в центре (0, 0)
-              // Позиция будет установлена при первом отображении в ScenesView
-              const sceneDataWithPosition = {
-                ...sceneData,
-                parent_id: null,
-                position_2d: [0, 0] // Центр по умолчанию
-              };
-              
-              const newScene = await createScene(sceneDataWithPosition);
-              setIsSceneModalOpen(false);
-              
-              // После создания сцены загружаем её
-              if (newScene && newScene.id) {
-                loadScene(newScene.id);
-              }
-              
-              return newScene;
-            } catch (error) {
-              console.error('Ошибка создания сцены:', error);
-              throw error;
-            }
-          }}
-        />
-
-        <ElementTypeModal
-          isOpen={isElementTypeModalOpen}
-          onClose={() => setIsElementTypeModalOpen(false)}
-          onSelectType={(elementType) => {
-            setIsElementTypeModalOpen(false);
-            switch (elementType) {
-              case 'scene':
-                setIsSceneModalOpen(true);
-                break;
-              case 'worker':
-                setIsWorkerModalOpen(true);
-                break;
-              case 'block':
-                setIsBlockModalOpen(true);
-                break;
-              default:
-                console.error('Unknown element type:', elementType);
-            }
-          }}
-        />
-
-        <CreateWorkerModal
-          isOpen={isWorkerModalOpen}
-          onClose={() => setIsWorkerModalOpen(false)}
-          onCreate={async (workerData) => {
-            try {
-              createElement({
-                position: null,
-                size: [1, 1, 1],
-                name: workerData.name,
-                description: workerData.description || '',
-                color: workerData.color || '#3b82f6',
-                emissive: workerData.emissive || '#000000',
-                type: workerData.type || 'worker',
-                elementType: 'worker'
-              });
-              setIsWorkerModalOpen(false);
-            } catch (error) {
-              console.error('Ошибка создания воркера:', error);
-              throw error;
-            }
-          }}
-        />
-
-        <CreateBlockModal
-          isOpen={isBlockModalOpen}
-          onClose={() => setIsBlockModalOpen(false)}
-          onCreate={async (blockData) => {
-            try {
-              createElement({
-                position: null,
-                size: [1, 1, 1],
-                name: blockData.name,
-                description: blockData.description || '',
-                color: blockData.color || '#3b82f6',
-                type: 'block',
-                elementType: 'block'
-              });
-              setIsBlockModalOpen(false);
-            } catch (error) {
-              console.error('Ошибка создания блока:', error);
-              throw error;
-            }
-          }}
-        />
       </div>
     );
   }
@@ -427,6 +226,7 @@ function Home() {
               </div>
 
               {error && <div className="error-message">{error}</div>}
+              {success && <div className="success-message">{success}</div>}
 
               <button type="submit" className="btn-primary" disabled={formLoading}>
                 {formLoading ? 'Вход...' : 'Войти'}
@@ -532,4 +332,3 @@ function Home() {
 }
 
 export default Home;
-
