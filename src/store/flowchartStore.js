@@ -1,0 +1,846 @@
+import { create } from 'zustand';
+import socketService from '../services/socket';
+
+// 4 типа элементов блок-схемы
+export const ELEMENT_TYPES = {
+  department: {
+    id: 'department',
+    name: 'Департамент',
+    icon: '🏢',
+    color: '#3b82f6',
+    description: 'Отдел или подразделение компании',
+    canContain: true, // Только департамент может иметь дочерние элементы
+    properties: {
+      head: { label: 'Руководитель', type: 'text', default: '' },
+      location: { label: 'Расположение', type: 'text', default: '' },
+      budget: { label: 'Бюджет', type: 'number', default: 0 }
+    }
+  },
+  worker: {
+    id: 'worker',
+    name: 'Работник',
+    icon: '👤',
+    color: '#22c55e',
+    description: 'Сотрудник компании',
+    canContain: false,
+    properties: {
+      position: { label: 'Должность', type: 'text', default: '' },
+      email: { label: 'Email', type: 'text', default: '' },
+      phone: { label: 'Телефон', type: 'text', default: '' }
+    }
+  },
+  service: {
+    id: 'service',
+    name: 'Сервис',
+    icon: '⚙️',
+    color: '#f59e0b',
+    description: 'Внутренний сервис или система',
+    canContain: false,
+    properties: {
+      type: { label: 'Тип сервиса', type: 'text', default: '' },
+      status: { label: 'Статус', type: 'text', default: 'Активен' },
+      url: { label: 'URL', type: 'text', default: '' }
+    }
+  },
+  offering: {
+    id: 'offering',
+    name: 'Услуга',
+    icon: '💼',
+    color: '#8b5cf6',
+    description: 'Услуга для клиентов',
+    canContain: false,
+    properties: {
+      price: { label: 'Цена', type: 'number', default: 0 },
+      duration: { label: 'Длительность', type: 'text', default: '' },
+      category: { label: 'Категория', type: 'text', default: '' }
+    }
+  }
+};
+
+// Типы направления связей
+export const CONNECTION_DIRECTIONS = {
+  outgoing: { id: 'outgoing', name: 'Исходящая', icon: '→' },
+  incoming: { id: 'incoming', name: 'Входящая', icon: '←' },
+  bidirectional: { id: 'bidirectional', name: 'Двунаправленная', icon: '↔' }
+};
+
+// Базовый размер элемента
+const BASE_SIZE = 100;
+// Коэффициент уменьшения для дочерних элементов
+const CHILD_SCALE = 0.4;
+// Отступ между элементами внутри родителя
+const PADDING = 10;
+
+// Debounce timer for auto-save
+let saveDebounceTimer = null;
+const SAVE_DEBOUNCE_MS = 2000;
+
+export const useFlowchartStore = create((set, get) => ({
+  // Состояние элементов и связей
+  elements: [],
+  connections: [],
+  selectedElementId: null,
+  selectedConnectionId: null,
+  
+  // Viewport состояние
+  pan: { x: 0, y: 0 },
+  zoom: 1,
+  
+  // Режимы
+  isConnecting: false,
+  connectingFrom: null,
+  dropTargetId: null,
+
+  // Навигация по иерархии
+  currentViewId: null, // ID элемента, внутрь которого мы "провалились" (null = корень)
+  viewHistory: [], // История навигации для возврата
+
+  // Socket.IO состояние
+  socketInitialized: false,
+  isSaving: false,
+  isLoading: false,
+  lastSaved: null,
+  hasUnsavedChanges: false,
+
+  // Вычислить размер элемента на основе его детей
+  calculateElementSize: (elementId) => {
+    const { elements } = get();
+    const element = elements.find(e => e.id === elementId);
+    if (!element) return BASE_SIZE;
+
+    const children = elements.filter(e => e.parentId === elementId);
+    
+    if (children.length === 0) {
+      return BASE_SIZE;
+    }
+
+    // Вычисляем размеры всех детей рекурсивно
+    const childSizes = children.map(child => get().calculateElementSize(child.id) * CHILD_SCALE);
+    
+    // Располагаем детей в сетке
+    const cols = Math.ceil(Math.sqrt(children.length));
+    const rows = Math.ceil(children.length / cols);
+    
+    const maxChildSize = Math.max(...childSizes);
+    const totalWidth = cols * maxChildSize + (cols + 1) * PADDING;
+    const totalHeight = rows * maxChildSize + (rows + 1) * PADDING + 30;
+    
+    return Math.max(BASE_SIZE, Math.max(totalWidth, totalHeight));
+  },
+
+  // Initialize Socket.IO event listeners
+  initSocketListeners: () => {
+    if (get().socketInitialized) return;
+
+    // Element events from other clients
+    socketService.on('flowchart:element:created', ({ element }) => {
+      set((state) => {
+        // Only add if not already exists
+        if (state.elements.find(e => e.id === element.id)) return state;
+        return { elements: [...state.elements, element] };
+      });
+    });
+
+    socketService.on('flowchart:element:updated', ({ id, updates }) => {
+      set((state) => ({
+        elements: state.elements.map(el => 
+          el.id === id ? { ...el, ...updates } : el
+        )
+      }));
+    });
+
+    socketService.on('flowchart:element:moved', ({ id, position }) => {
+      set((state) => ({
+        elements: state.elements.map(el => 
+          el.id === id ? { ...el, position } : el
+        )
+      }));
+    });
+
+    socketService.on('flowchart:element:deleted', ({ id }) => {
+      const { elements } = get();
+      const collectChildren = (elementId) => {
+        const children = elements.filter(e => e.parentId === elementId);
+        return [elementId, ...children.flatMap(c => collectChildren(c.id))];
+      };
+      const idsToDelete = collectChildren(id);
+
+      set((state) => ({
+        elements: state.elements.filter(el => !idsToDelete.includes(el.id)),
+        connections: state.connections.filter(
+          conn => !idsToDelete.includes(conn.from) && !idsToDelete.includes(conn.to)
+        ),
+        selectedElementId: idsToDelete.includes(state.selectedElementId) ? null : state.selectedElementId
+      }));
+    });
+
+    socketService.on('flowchart:element:nested', ({ childId, parentId }) => {
+      const { elements } = get();
+      const parent = elements.find(el => el.id === parentId);
+      if (!parent) return;
+
+      set((state) => ({
+        elements: state.elements.map(el => {
+          if (el.id === childId) {
+            return { ...el, parentId, depth: (parent.depth || 0) + 1 };
+          }
+          return el;
+        })
+      }));
+    });
+
+    socketService.on('flowchart:element:unnested', ({ id, newPosition }) => {
+      const { elements, currentViewId } = get();
+      const element = elements.find(el => el.id === id);
+      if (!element || !element.parentId) return;
+
+      const parent = elements.find(el => el.id === element.parentId);
+      const newParentId = parent?.parentId || null;
+      const newParent = newParentId ? elements.find(e => e.id === newParentId) : null;
+      const newDepth = newParent ? (newParent.depth || 0) + 1 : 0;
+
+      set((state) => ({
+        elements: state.elements.map(el => {
+          if (el.id === id) {
+            return {
+              ...el,
+              parentId: newParentId,
+              depth: newDepth,
+              position: newPosition || el.position
+            };
+          }
+          return el;
+        })
+      }));
+    });
+
+    // Connection events from other clients
+    socketService.on('flowchart:connection:created', ({ connection }) => {
+      set((state) => {
+        if (state.connections.find(c => c.id === connection.id)) return state;
+        return { connections: [...state.connections, connection] };
+      });
+    });
+
+    socketService.on('flowchart:connection:updated', ({ id, updates }) => {
+      set((state) => ({
+        connections: state.connections.map(conn => 
+          conn.id === id ? { ...conn, ...updates } : conn
+        )
+      }));
+    });
+
+    socketService.on('flowchart:connection:deleted', ({ id }) => {
+      set((state) => ({
+        connections: state.connections.filter(conn => conn.id !== id),
+        selectedConnectionId: state.selectedConnectionId === id ? null : state.selectedConnectionId
+      }));
+    });
+
+    // Navigation events
+    socketService.on('flowchart:navigated:into', ({ elementId }) => {
+      const { elements, currentViewId } = get();
+      const element = elements.find(e => e.id === elementId);
+      if (!element) return;
+
+      set((state) => ({
+        currentViewId: elementId,
+        viewHistory: currentViewId ? [...state.viewHistory, currentViewId] : [],
+        pan: { x: 0, y: 0 },
+        zoom: 1,
+        selectedElementId: null,
+        selectedConnectionId: null
+      }));
+    });
+
+    socketService.on('flowchart:navigated:up', () => {
+      const { currentViewId, elements } = get();
+      if (!currentViewId) return;
+
+      const currentElement = elements.find(e => e.id === currentViewId);
+      const parentId = currentElement?.parentId || null;
+
+      set((state) => ({
+        currentViewId: parentId,
+        viewHistory: parentId ? state.viewHistory.slice(0, -1) : [],
+        pan: { x: 0, y: 0 },
+        zoom: 1,
+        selectedElementId: null,
+        selectedConnectionId: null
+      }));
+    });
+
+    socketService.on('flowchart:navigated:root', () => {
+      set({
+        currentViewId: null,
+        viewHistory: [],
+        pan: { x: 0, y: 0 },
+        zoom: 1,
+        selectedElementId: null,
+        selectedConnectionId: null
+      });
+    });
+
+    // Save confirmation
+    socketService.on('flowchart:saved', ({ id, updatedAt }) => {
+      set({ lastSaved: new Date(updatedAt), hasUnsavedChanges: false, isSaving: false });
+    });
+
+    set({ socketInitialized: true });
+    console.log('🔌 Flowchart socket listeners initialized');
+  },
+
+  // Trigger debounced auto-save
+  triggerAutoSave: () => {
+    set({ hasUnsavedChanges: true });
+
+    if (saveDebounceTimer) {
+      clearTimeout(saveDebounceTimer);
+    }
+
+    saveDebounceTimer = setTimeout(() => {
+      get().saveFlowchart();
+    }, SAVE_DEBOUNCE_MS);
+  },
+
+  // Save immediately (call when drag ends, etc.)
+  saveNow: () => {
+    if (saveDebounceTimer) {
+      clearTimeout(saveDebounceTimer);
+      saveDebounceTimer = null;
+    }
+    
+    if (get().hasUnsavedChanges) {
+      get().saveFlowchart();
+    }
+  },
+
+  // === ДЕЙСТВИЯ С ЭЛЕМЕНТАМИ ===
+
+  addElement: (type, position, parentId = null) => {
+    const elementType = ELEMENT_TYPES[type];
+    if (!elementType) return;
+
+    const { elements } = get();
+
+    const newElement = {
+      id: `element_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      type: type,
+      name: elementType.name,
+      description: '',
+      position: position || { x: 0, y: 0 },
+      color: elementType.color,
+      parentId: parentId,
+      depth: 0,
+      properties: Object.fromEntries(
+        Object.entries(elementType.properties).map(([key, prop]) => [key, prop.default])
+      )
+    };
+
+    // Если есть родитель, обновляем глубину
+    if (parentId) {
+      const parent = elements.find(el => el.id === parentId);
+      if (parent) {
+        newElement.depth = (parent.depth || 0) + 1;
+      }
+    }
+
+    set((state) => ({
+      elements: [...state.elements, newElement],
+      selectedElementId: newElement.id
+    }));
+
+    // Send to server
+    socketService.createElement(newElement);
+    get().triggerAutoSave();
+
+    return newElement;
+  },
+
+  // Добавление дочернего элемента
+  addChildElement: (parentId, type) => {
+    const { elements } = get();
+    const parent = elements.find(el => el.id === parentId);
+    if (!parent) return null;
+
+    const elementType = ELEMENT_TYPES[type];
+    if (!elementType) return null;
+
+    const newElement = {
+      id: `element_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      type: type,
+      name: elementType.name,
+      description: '',
+      position: { x: 0, y: 0 },
+      color: elementType.color,
+      parentId: parentId,
+      depth: (parent.depth || 0) + 1,
+      properties: Object.fromEntries(
+        Object.entries(elementType.properties).map(([key, prop]) => [key, prop.default])
+      )
+    };
+
+    set((state) => ({
+      elements: [...state.elements, newElement],
+      selectedElementId: newElement.id
+    }));
+
+    // Send to server
+    socketService.createElement(newElement);
+    get().triggerAutoSave();
+
+    return newElement;
+  },
+
+  updateElement: (id, updates) => {
+    set((state) => ({
+      elements: state.elements.map((el) =>
+        el.id === id ? { ...el, ...updates } : el
+      )
+    }));
+
+    // Send to server
+    socketService.updateElement(id, updates);
+    get().triggerAutoSave();
+  },
+
+  deleteElement: (id) => {
+    const { elements } = get();
+    
+    // Собираем все дочерние элементы рекурсивно
+    const collectChildren = (elementId) => {
+      const children = elements.filter(e => e.parentId === elementId);
+      return [elementId, ...children.flatMap(c => collectChildren(c.id))];
+    };
+    
+    const idsToDelete = collectChildren(id);
+    
+    set((state) => ({
+      elements: state.elements.filter((el) => !idsToDelete.includes(el.id)),
+      connections: state.connections.filter(
+        (conn) => !idsToDelete.includes(conn.from) && !idsToDelete.includes(conn.to)
+      ),
+      selectedElementId: idsToDelete.includes(state.selectedElementId) ? null : state.selectedElementId
+    }));
+
+    // Send to server
+    socketService.deleteElement(id);
+    get().triggerAutoSave();
+  },
+
+  selectElement: (id) => {
+    set({ selectedElementId: id, selectedConnectionId: null });
+  },
+
+  // Вложение элемента в другой
+  nestElement: (childId, parentId) => {
+    const { elements } = get();
+    const child = elements.find(el => el.id === childId);
+    const parent = elements.find(el => el.id === parentId);
+    
+    if (!child || !parent) return;
+    if (childId === parentId) return;
+    
+    // Проверяем, что не пытаемся вложить элемент в своего потомка
+    const isDescendant = (elementId, ancestorId) => {
+      const el = elements.find(e => e.id === elementId);
+      if (!el) return false;
+      if (el.parentId === ancestorId) return true;
+      if (el.parentId) return isDescendant(el.parentId, ancestorId);
+      return false;
+    };
+    
+    if (isDescendant(parentId, childId)) return;
+
+    set((state) => ({
+      elements: state.elements.map(el => {
+        if (el.id === childId) {
+          return {
+            ...el,
+            parentId: parentId,
+            depth: (parent.depth || 0) + 1
+          };
+        }
+        return el;
+      })
+    }));
+    
+    // Обновляем глубину всех потомков
+    const updateChildDepths = (elementId, parentDepth) => {
+      const children = get().elements.filter(e => e.parentId === elementId);
+      children.forEach(c => {
+        set((state) => ({
+          elements: state.elements.map(el => 
+            el.id === c.id ? { ...el, depth: parentDepth + 1 } : el
+          )
+        }));
+        updateChildDepths(c.id, parentDepth + 1);
+      });
+    };
+    
+    updateChildDepths(childId, (parent.depth || 0) + 1);
+
+    // Send to server
+    socketService.nestElement(childId, parentId);
+    get().triggerAutoSave();
+  },
+
+  // Извлечение элемента из родителя
+  unnestElement: (elementId) => {
+    const { elements, currentViewId } = get();
+    const element = elements.find(el => el.id === elementId);
+    
+    if (!element || !element.parentId) return;
+    
+    const parent = elements.find(el => el.id === element.parentId);
+    
+    // Определяем новую позицию
+    let newPosition = { x: 0, y: 0 };
+    if (!currentViewId && parent) {
+      newPosition = {
+        x: (parent.position.x || 0) + 150,
+        y: parent.position.y || 0
+      };
+    }
+    
+    // Определяем нового родителя
+    const newParentId = parent?.parentId || null;
+    const newParent = newParentId ? elements.find(e => e.id === newParentId) : null;
+    const newDepth = newParent ? (newParent.depth || 0) + 1 : 0;
+    
+    set((state) => ({
+      elements: state.elements.map(el => {
+        if (el.id === elementId) {
+          return {
+            ...el,
+            parentId: newParentId,
+            depth: newDepth,
+            position: newPosition
+          };
+        }
+        return el;
+      })
+    }));
+    
+    // Обновляем глубину всех потомков
+    const updateChildDepths = (elId, parentDepth) => {
+      const children = get().elements.filter(e => e.parentId === elId);
+      children.forEach(c => {
+        set((state) => ({
+          elements: state.elements.map(el => 
+            el.id === c.id ? { ...el, depth: parentDepth + 1 } : el
+          )
+        }));
+        updateChildDepths(c.id, parentDepth + 1);
+      });
+    };
+    
+    updateChildDepths(elementId, newDepth);
+
+    // Send to server
+    socketService.unnestElement(elementId, newPosition);
+    get().triggerAutoSave();
+  },
+
+  // Получить дочерние элементы
+  getChildren: (parentId) => {
+    return get().elements.filter(el => el.parentId === parentId);
+  },
+  
+  // Получить корневые элементы
+  getRootElements: () => {
+    return get().elements.filter(el => !el.parentId);
+  },
+
+  // Получить все потомки рекурсивно
+  getAllDescendants: (elementId) => {
+    const { elements } = get();
+    const collectDescendants = (id) => {
+      const children = elements.filter(e => e.parentId === id);
+      return [...children, ...children.flatMap(c => collectDescendants(c.id))];
+    };
+    return collectDescendants(elementId);
+  },
+
+  // Получить путь к элементу (для breadcrumbs)
+  getElementPath: (elementId) => {
+    const { elements } = get();
+    const path = [];
+    let current = elements.find(e => e.id === elementId);
+    
+    while (current) {
+      path.unshift(current);
+      current = current.parentId ? elements.find(e => e.id === current.parentId) : null;
+    }
+    
+    return path;
+  },
+
+  setDropTarget: (elementId) => {
+    set({ dropTargetId: elementId });
+  },
+
+  // === НАВИГАЦИЯ ПО ИЕРАРХИИ ===
+
+  navigateInto: (elementId) => {
+    const { elements, currentViewId } = get();
+    const element = elements.find(e => e.id === elementId);
+    
+    if (!element) return;
+    
+    // Проверяем, есть ли у элемента дети
+    const children = elements.filter(e => e.parentId === elementId);
+    if (children.length === 0) return;
+    
+    set((state) => ({
+      currentViewId: elementId,
+      viewHistory: currentViewId 
+        ? [...state.viewHistory, currentViewId] 
+        : [],
+      pan: { x: 0, y: 0 },
+      zoom: 1,
+      selectedElementId: null,
+      selectedConnectionId: null
+    }));
+
+    // Send to server
+    socketService.navigateInto(elementId);
+  },
+
+  navigateUp: () => {
+    const { viewHistory, currentViewId, elements } = get();
+    
+    if (!currentViewId) return;
+    
+    const currentElement = elements.find(e => e.id === currentViewId);
+    const parentId = currentElement?.parentId || null;
+    
+    set((state) => ({
+      currentViewId: parentId,
+      viewHistory: parentId ? state.viewHistory.slice(0, -1) : [],
+      pan: { x: 0, y: 0 },
+      zoom: 1,
+      selectedElementId: null,
+      selectedConnectionId: null
+    }));
+
+    // Send to server
+    socketService.navigateUp();
+  },
+
+  navigateToRoot: () => {
+    set({
+      currentViewId: null,
+      viewHistory: [],
+      pan: { x: 0, y: 0 },
+      zoom: 1,
+      selectedElementId: null,
+      selectedConnectionId: null
+    });
+
+    // Send to server
+    socketService.navigateToRoot();
+  },
+
+  // Получить элементы текущего уровня просмотра
+  getVisibleElements: () => {
+    const { elements, currentViewId } = get();
+    
+    if (currentViewId === null) {
+      return elements.filter(e => !e.parentId);
+    } else {
+      return elements.filter(e => e.parentId === currentViewId);
+    }
+  },
+
+  // === ДЕЙСТВИЯ С СОЕДИНЕНИЯМИ ===
+
+  addConnection: (fromId, toId, direction = 'outgoing') => {
+    const { connections } = get();
+    
+    const exists = connections.some(
+      (c) => (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId)
+    );
+    
+    if (exists || fromId === toId) return null;
+
+    const newConnection = {
+      id: `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      from: fromId,
+      to: toId,
+      direction: direction,
+      description: '',
+      label: ''
+    };
+
+    set((state) => ({
+      connections: [...state.connections, newConnection],
+      selectedConnectionId: newConnection.id
+    }));
+
+    // Send to server
+    socketService.createConnection(newConnection);
+    get().triggerAutoSave();
+
+    return newConnection;
+  },
+
+  updateConnection: (id, updates) => {
+    set((state) => ({
+      connections: state.connections.map((conn) =>
+        conn.id === id ? { ...conn, ...updates } : conn
+      )
+    }));
+
+    // Send to server
+    socketService.updateConnection(id, updates);
+    get().triggerAutoSave();
+  },
+
+  deleteConnection: (id) => {
+    set((state) => ({
+      connections: state.connections.filter((conn) => conn.id !== id),
+      selectedConnectionId: state.selectedConnectionId === id ? null : state.selectedConnectionId
+    }));
+
+    // Send to server
+    socketService.deleteConnection(id);
+    get().triggerAutoSave();
+  },
+
+  selectConnection: (id) => {
+    set({ selectedConnectionId: id, selectedElementId: null });
+  },
+
+  // Получить все связи элемента
+  getElementConnections: (elementId) => {
+    const { connections, elements } = get();
+    
+    const incoming = connections.filter(c => c.to === elementId || (c.from === elementId && c.direction === 'incoming'));
+    const outgoing = connections.filter(c => c.from === elementId && c.direction === 'outgoing');
+    const bidirectional = connections.filter(c => 
+      (c.from === elementId || c.to === elementId) && c.direction === 'bidirectional'
+    );
+    
+    return { incoming, outgoing, bidirectional, all: connections.filter(c => c.from === elementId || c.to === elementId) };
+  },
+
+  startConnecting: (elementId) => {
+    set({ isConnecting: true, connectingFrom: elementId });
+  },
+
+  finishConnecting: (elementId, direction = 'outgoing') => {
+    const { connectingFrom } = get();
+    if (connectingFrom && elementId && connectingFrom !== elementId) {
+      get().addConnection(connectingFrom, elementId, direction);
+    }
+    set({ isConnecting: false, connectingFrom: null });
+  },
+
+  cancelConnecting: () => {
+    set({ isConnecting: false, connectingFrom: null });
+  },
+
+  // === VIEWPORT ===
+
+  setPan: (pan) => set({ pan }),
+  setZoom: (zoom) => set({ zoom: Math.max(0.25, Math.min(3, zoom)) }),
+
+  clearSelection: () => {
+    set({ selectedElementId: null, selectedConnectionId: null });
+  },
+
+  clearAll: () => {
+    set({
+      elements: [],
+      connections: [],
+      selectedElementId: null,
+      selectedConnectionId: null,
+      currentViewId: null,
+      viewHistory: [],
+      isSaving: false,
+      isLoading: false,
+      lastSaved: null,
+      hasUnsavedChanges: false
+    });
+  },
+
+  // === СОХРАНЕНИЕ / ЗАГРУЗКА через Socket.IO ===
+
+  // Пометить, что есть несохраненные изменения
+  markUnsaved: () => {
+    set({ hasUnsavedChanges: true });
+  },
+
+  // Сохранить блок-схему через Socket.IO
+  saveFlowchart: async () => {
+    const { elements, connections, currentViewId, viewHistory, pan, zoom } = get();
+    
+    set({ isSaving: true });
+    
+    try {
+      const result = await socketService.saveFlowchart({
+        elements,
+        connections,
+        viewState: {
+          currentViewId,
+          viewHistory,
+          pan,
+          zoom
+        }
+      });
+      
+      if (result.success) {
+        set({ 
+          isSaving: false, 
+          lastSaved: result.flowchart?.updatedAt ? new Date(result.flowchart.updatedAt) : new Date(),
+          hasUnsavedChanges: false
+        });
+        return { success: true };
+      } else {
+        set({ isSaving: false });
+        return { success: false, error: result.error };
+      }
+    } catch (error) {
+      console.error('Ошибка сохранения:', error);
+      set({ isSaving: false });
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Загрузить блок-схему через Socket.IO
+  loadFlowchart: async () => {
+    set({ isLoading: true });
+    
+    try {
+      const result = await socketService.loadFlowchart();
+      
+      if (result.success && result.hasData && result.flowchart) {
+        const { elements, connections, viewState, updatedAt } = result.flowchart;
+        
+        set({
+          elements: elements || [],
+          connections: connections || [],
+          currentViewId: viewState?.currentViewId || null,
+          viewHistory: viewState?.viewHistory || [],
+          pan: viewState?.pan || { x: 0, y: 0 },
+          zoom: viewState?.zoom || 1,
+          isLoading: false,
+          lastSaved: updatedAt ? new Date(updatedAt) : null,
+          hasUnsavedChanges: false,
+          selectedElementId: null,
+          selectedConnectionId: null
+        });
+        
+        return { success: true, hasData: true };
+      } else {
+        set({ isLoading: false });
+        return { success: true, hasData: false };
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки:', error);
+      set({ isLoading: false });
+      return { success: false, error: error.message };
+    }
+  }
+}));

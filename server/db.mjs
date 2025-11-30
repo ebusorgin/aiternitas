@@ -291,6 +291,37 @@ export async function initDatabase() {
     `).catch(() => {});
 
     console.log('✅ Таблица elements_connections создана/проверена');
+
+    // Создаем таблицу для хранения блок-схем (flowcharts)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS flowcharts (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL DEFAULT 'Моя схема',
+        elements JSONB NOT NULL DEFAULT '[]',
+        connections JSONB NOT NULL DEFAULT '[]',
+        view_state JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, name)
+      )
+    `);
+
+    // Индексы для flowcharts
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_flowcharts_user_id ON flowcharts(user_id)
+    `).catch(() => {});
+
+    // Триггер для автоматического обновления updated_at
+    await pool.query(`
+      DROP TRIGGER IF EXISTS update_flowcharts_updated_at ON flowcharts;
+      CREATE TRIGGER update_flowcharts_updated_at
+          BEFORE UPDATE ON flowcharts
+          FOR EACH ROW
+          EXECUTE FUNCTION update_updated_at_column();
+    `).catch(() => {});
+
+    console.log('✅ Таблица flowcharts создана/проверена');
     return true;
   } catch (error) {
     console.error('❌ Ошибка инициализации БД:', error);
