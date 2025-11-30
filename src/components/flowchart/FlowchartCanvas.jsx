@@ -47,6 +47,9 @@ function FlowchartCanvas() {
   const addChildElement = useFlowchartStore((state) => state.addChildElement);
   const getElementPath = useFlowchartStore((state) => state.getElementPath);
   const saveNow = useFlowchartStore((state) => state.saveNow);
+  const fitToView = useFlowchartStore((state) => state.fitToView);
+  const autoLayoutElements = useFlowchartStore((state) => state.autoLayoutElements);
+  const needsAutoLayout = useFlowchartStore((state) => state.needsAutoLayout);
 
   // Local state
   const [isDragging, setIsDragging] = useState(false);
@@ -110,42 +113,74 @@ function FlowchartCanvas() {
     const elementType = ELEMENT_TYPES[element.type];
     const isSelected = element.id === selectedElementId;
     const isDropTargetEl = element.id === dropTargetId && draggingElementId && draggingElementId !== element.id;
+    const isDepartment = elementType?.canContain;
+    const children = elements.filter(e => e.parentId === element.id);
     
     const { x, y } = worldToScreen(element.position.x, element.position.y);
-    const size = BASE_SIZE * zoom;
+    
+    // Департаменты с детьми отображаются крупнее
+    const hasChildren = children.length > 0;
+    const baseSize = isDepartment && hasChildren ? BASE_SIZE * 1.4 : BASE_SIZE;
+    const size = baseSize * zoom;
     const halfSize = size / 2;
+    const cornerRadius = 14 * zoom;
     
     ctx.save();
     
     // Тень
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    ctx.shadowBlur = 20;
-    ctx.shadowOffsetY = 6;
+    ctx.shadowColor = isDepartment ? 'rgba(59, 130, 246, 0.4)' : 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowBlur = isDepartment ? 30 : 20;
+    ctx.shadowOffsetY = isDepartment ? 8 : 6;
     
-    // Квадрат с закругленными углами
-    const cornerRadius = 12 * zoom;
-    ctx.beginPath();
-    ctx.moveTo(x - halfSize + cornerRadius, y - halfSize);
-    ctx.lineTo(x + halfSize - cornerRadius, y - halfSize);
-    ctx.quadraticCurveTo(x + halfSize, y - halfSize, x + halfSize, y - halfSize + cornerRadius);
-    ctx.lineTo(x + halfSize, y + halfSize - cornerRadius);
-    ctx.quadraticCurveTo(x + halfSize, y + halfSize, x + halfSize - cornerRadius, y + halfSize);
-    ctx.lineTo(x - halfSize + cornerRadius, y + halfSize);
-    ctx.quadraticCurveTo(x - halfSize, y + halfSize, x - halfSize, y + halfSize - cornerRadius);
-    ctx.lineTo(x - halfSize, y - halfSize + cornerRadius);
-    ctx.quadraticCurveTo(x - halfSize, y - halfSize, x - halfSize + cornerRadius, y - halfSize);
-    ctx.closePath();
+    // Фон элемента
+    const drawRoundedRect = (x, y, w, h, r) => {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    };
     
-    // Градиент
-    const gradient = ctx.createLinearGradient(x - halfSize, y - halfSize, x + halfSize, y + halfSize);
-    gradient.addColorStop(0, element.color + 'ff');
-    gradient.addColorStop(1, element.color + 'aa');
-    ctx.fillStyle = gradient;
-    ctx.fill();
+    drawRoundedRect(x - halfSize, y - halfSize, size, size, cornerRadius);
+    
+    if (isDepartment) {
+      // Градиент для департаментов - более объёмный
+      const gradient = ctx.createLinearGradient(x - halfSize, y - halfSize, x + halfSize, y + halfSize);
+      gradient.addColorStop(0, '#1e3a5f');
+      gradient.addColorStop(0.5, '#1e3a5f');
+      gradient.addColorStop(1, '#0f172a');
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Верхняя полоса-заголовок
+      ctx.save();
+      ctx.clip();
+      const headerHeight = 32 * zoom;
+      const headerGradient = ctx.createLinearGradient(x - halfSize, y - halfSize, x + halfSize, y - halfSize + headerHeight);
+      headerGradient.addColorStop(0, element.color + 'ee');
+      headerGradient.addColorStop(1, element.color + 'aa');
+      ctx.fillStyle = headerGradient;
+      ctx.fillRect(x - halfSize, y - halfSize, size, headerHeight);
+      ctx.restore();
+    } else {
+      // Градиент для обычных элементов
+      const gradient = ctx.createLinearGradient(x - halfSize, y - halfSize, x + halfSize, y + halfSize);
+      gradient.addColorStop(0, element.color + 'ff');
+      gradient.addColorStop(1, element.color + 'aa');
+      ctx.fillStyle = gradient;
+      ctx.fill();
+    }
     
     ctx.shadowBlur = 0;
     
     // Обводка
+    drawRoundedRect(x - halfSize, y - halfSize, size, size, cornerRadius);
     if (isDropTargetEl) {
       ctx.strokeStyle = '#22c55e';
       ctx.lineWidth = 4;
@@ -153,6 +188,9 @@ function FlowchartCanvas() {
     } else if (isSelected) {
       ctx.strokeStyle = '#fbbf24';
       ctx.lineWidth = 3;
+    } else if (isDepartment) {
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
+      ctx.lineWidth = 2;
     } else {
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
       ctx.lineWidth = 2;
@@ -162,45 +200,129 @@ function FlowchartCanvas() {
     
     ctx.restore();
     
-    // Иконка
-    const iconSize = 28 * zoom;
-    ctx.font = `${iconSize}px Arial`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(elementType?.icon || '❓', x, y - size * 0.15);
-    
-    // Название
-    ctx.font = `bold ${13 * zoom}px Arial`;
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    
-    const name = element.name || elementType?.name || 'Элемент';
-    const maxWidth = size * 0.85;
-    let displayName = name;
-    if (ctx.measureText(name).width > maxWidth) {
-      while (ctx.measureText(displayName + '...').width > maxWidth && displayName.length > 0) {
-        displayName = displayName.slice(0, -1);
+    if (isDepartment) {
+      // Иконка в заголовке
+      const iconSize = 18 * zoom;
+      ctx.font = `${iconSize}px Arial`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(elementType?.icon || '🏢', x - halfSize + 10 * zoom, y - halfSize + 16 * zoom);
+      
+      // Название в заголовке
+      ctx.font = `bold ${12 * zoom}px Arial`;
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'left';
+      const name = element.name || 'Департамент';
+      const maxWidth = size - 80 * zoom;
+      let displayName = name;
+      if (ctx.measureText(name).width > maxWidth) {
+        while (ctx.measureText(displayName + '...').width > maxWidth && displayName.length > 0) {
+          displayName = displayName.slice(0, -1);
+        }
+        displayName += '...';
       }
-      displayName += '...';
-    }
-    ctx.fillText(displayName, x, y + size * 0.2);
-    
-    // Индикатор дочерних элементов
-    const children = elements.filter(e => e.parentId === element.id);
-    if (children.length > 0) {
-      ctx.font = `${10 * zoom}px Arial`;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.fillText(displayName, x - halfSize + 32 * zoom, y - halfSize + 16 * zoom);
+      
+      // Счётчик дочерних элементов в углу заголовка
+      if (hasChildren) {
+        ctx.font = `bold ${10 * zoom}px Arial`;
+        ctx.textAlign = 'right';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.fillText(`${children.length}`, x + halfSize - 10 * zoom, y - halfSize + 16 * zoom);
+      }
+      
+      // Область для превью дочерних элементов
+      const contentTop = y - halfSize + 38 * zoom;
+      const contentHeight = size - 44 * zoom;
+      const contentWidth = size - 16 * zoom;
+      
+      if (hasChildren) {
+        // Отрисовка мини-превью дочерних элементов
+        const miniSize = Math.min(28 * zoom, (contentWidth - 10 * zoom) / Math.min(children.length, 4));
+        const cols = Math.floor((contentWidth - 4 * zoom) / (miniSize + 4 * zoom));
+        const rows = Math.floor((contentHeight - 4 * zoom) / (miniSize + 4 * zoom));
+        const maxVisible = cols * rows;
+        const visibleChildren = children.slice(0, maxVisible);
+        
+        visibleChildren.forEach((child, index) => {
+          const col = index % cols;
+          const row = Math.floor(index / cols);
+          const childType = ELEMENT_TYPES[child.type];
+          
+          const cx = x - halfSize + 12 * zoom + col * (miniSize + 4 * zoom) + miniSize / 2;
+          const cy = contentTop + 8 * zoom + row * (miniSize + 4 * zoom) + miniSize / 2;
+          
+          // Мини-карточка
+          ctx.beginPath();
+          ctx.arc(cx, cy, miniSize / 2, 0, Math.PI * 2);
+          ctx.fillStyle = child.color + 'dd';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          
+          // Мини-иконка
+          ctx.font = `${miniSize * 0.5}px Arial`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(childType?.icon || '❓', cx, cy);
+        });
+        
+        // Индикатор "и ещё N"
+        if (children.length > maxVisible) {
+          ctx.font = `${9 * zoom}px Arial`;
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(`+${children.length - maxVisible}`, x + halfSize - 8 * zoom, y + halfSize - 6 * zoom);
+        }
+      } else {
+        // Пустой департамент
+        ctx.font = `${11 * zoom}px Arial`;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Пусто', x, y + 10 * zoom);
+        ctx.font = `${9 * zoom}px Arial`;
+        ctx.fillText('2×клик для входа', x, y + 26 * zoom);
+      }
+    } else {
+      // Обычный элемент (не департамент)
+      // Иконка
+      const iconSize = 28 * zoom;
+      ctx.font = `${iconSize}px Arial`;
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText(`📂 ${children.length}`, x, y + halfSize - 6 * zoom);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(elementType?.icon || '❓', x, y - size * 0.12);
+      
+      // Название
+      ctx.font = `bold ${13 * zoom}px Arial`;
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      const name = element.name || elementType?.name || 'Элемент';
+      const maxWidth = size * 0.85;
+      let displayName = name;
+      if (ctx.measureText(name).width > maxWidth) {
+        while (ctx.measureText(displayName + '...').width > maxWidth && displayName.length > 0) {
+          displayName = displayName.slice(0, -1);
+        }
+        displayName += '...';
+      }
+      ctx.fillText(displayName, x, y + size * 0.22);
+      
+      // Тип элемента
+      ctx.font = `${9 * zoom}px Arial`;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.fillText(elementType?.name || '', x, y + size * 0.38);
     }
     
     // Индикатор соединения
     if (isConnecting && connectingFrom !== element.id) {
       ctx.beginPath();
-      ctx.arc(x, y, 8 * zoom, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(34, 197, 94, 0.5)';
+      ctx.arc(x, y, 10 * zoom, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(34, 197, 94, 0.4)';
       ctx.fill();
       ctx.strokeStyle = '#22c55e';
       ctx.lineWidth = 2;
@@ -420,6 +542,46 @@ function FlowchartCanvas() {
     return () => resizeObserver.disconnect();
   }, [draw]);
 
+  // Auto-fit when navigation changes (entering/leaving departments)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const rect = container.getBoundingClientRect();
+    
+    // Small delay to let the state settle
+    const timer = setTimeout(() => {
+      // Check if auto-layout is needed (overlapping elements or all at origin)
+      if (needsAutoLayout()) {
+        autoLayoutElements(rect.width, rect.height);
+      } else {
+        fitToView(rect.width, rect.height);
+      }
+    }, 50);
+    
+    return () => clearTimeout(timer);
+  }, [currentViewId, fitToView, autoLayoutElements, needsAutoLayout]);
+
+  // Auto-fit when elements are added or removed on current level
+  const visibleElementIds = getVisibleElements().map(e => e.id).join(',');
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const rect = container.getBoundingClientRect();
+    
+    // Small delay to let the state settle
+    const timer = setTimeout(() => {
+      if (needsAutoLayout()) {
+        autoLayoutElements(rect.width, rect.height);
+      } else {
+        fitToView(rect.width, rect.height);
+      }
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, [visibleElementIds, fitToView, autoLayoutElements, needsAutoLayout]);
+
   // Проверка попадания в элемент
   const hitTestElement = useCallback((worldX, worldY) => {
     const visibleElements = getVisibleElements();
@@ -592,21 +754,15 @@ function FlowchartCanvas() {
     if (element) {
       const elementType = ELEMENT_TYPES[element.type];
       
-      // Только департаменты поддерживают навигацию внутрь
+      // Только департаменты поддерживают навигацию внутрь (даже пустые)
       if (elementType?.canContain) {
-        const children = elements.filter(el => el.parentId === element.id);
-        if (children.length > 0) {
-          navigateInto(element.id);
-        } else {
-          // Департамент без детей - показываем информацию
-          setInfoModalElement(element);
-        }
+        navigateInto(element.id);
       } else {
         // Для других типов - показываем информационный диалог
         setInfoModalElement(element);
       }
     }
-  }, [screenToWorld, hitTestElement, elements, navigateInto]);
+  }, [screenToWorld, hitTestElement, navigateInto]);
 
   // Контекстное меню (правый клик)
   const handleContextMenu = useCallback((e) => {
@@ -757,6 +913,21 @@ function FlowchartCanvas() {
           <span>2×клик — инфо / внутрь 🏢</span>
           <span>Del — удалить</span>
         </div>
+        
+        {/* Кнопка авто-подгонки */}
+        <button 
+          className="fit-to-view-btn"
+          onClick={() => {
+            const container = containerRef.current;
+            if (container) {
+              const rect = container.getBoundingClientRect();
+              fitToView(rect.width, rect.height);
+            }
+          }}
+          title="Подогнать масштаб"
+        >
+          ⊞
+        </button>
         
         {isConnecting && (
           <div className="flowchart-connecting-hint">

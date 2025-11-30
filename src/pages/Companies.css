@@ -56,24 +56,38 @@
   letter-spacing: 0.5px;
 }
 
+/* Saving indicator - subtle fixed position */
 .saving-indicator {
-  background: rgba(34, 197, 94, 0.1);
-  border-color: rgba(34, 197, 94, 0.2);
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  border-radius: 6px;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.saving-indicator.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.saving-icon {
+  font-size: 12px;
   animation: pulse-saving 1s ease-in-out infinite;
 }
 
-.saving-indicator .stat-value {
-  animation: spin 1s linear infinite;
-  display: inline-block;
-}
-
-.saving-indicator .stat-label {
-  color: #22c55e;
-}
-
 @keyframes pulse-saving {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(0.95); }
 }
 
 .header-actions {

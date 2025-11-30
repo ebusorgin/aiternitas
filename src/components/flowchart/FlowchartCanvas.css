@@ -216,6 +216,34 @@
   backdrop-filter: blur(4px);
 }
 
+/* Кнопка авто-подгонки масштаба */
+.fit-to-view-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+  z-index: 10;
+  backdrop-filter: blur(4px);
+}
+
+.fit-to-view-btn:hover {
+  background: rgba(59, 130, 246, 0.3);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #ffffff;
+  transform: scale(1.05);
+}
+
 /* Индикатор пустого состояния */
 .flowchart-empty-state {
   position: absolute;

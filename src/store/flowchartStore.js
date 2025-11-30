@@ -71,6 +71,11 @@ const CHILD_SCALE = 0.4;
 // Отступ между элементами внутри родителя
 const PADDING = 10;
 
+// Auto-layout constants
+const ELEMENT_SIZE = 120; // Visual size of elements
+const ELEMENT_GAP = 40;   // Gap between elements
+const VIEW_PADDING = 60;  // Padding from viewport edges
+
 // Debounce timer for auto-save
 let saveDebounceTimer = null;
 const SAVE_DEBOUNCE_MS = 2000;
@@ -588,9 +593,9 @@ export const useFlowchartStore = create((set, get) => ({
     
     if (!element) return;
     
-    // Проверяем, есть ли у элемента дети
-    const children = elements.filter(e => e.parentId === elementId);
-    if (children.length === 0) return;
+    // Только элементы с canContain могут быть "открыты" (например, департаменты)
+    const elementType = ELEMENT_TYPES[element.type];
+    if (!elementType?.canContain) return;
     
     set((state) => ({
       currentViewId: elementId,
@@ -745,6 +750,152 @@ export const useFlowchartStore = create((set, get) => ({
 
   setPan: (pan) => set({ pan }),
   setZoom: (zoom) => set({ zoom: Math.max(0.25, Math.min(3, zoom)) }),
+
+  // Auto-fit all visible elements to viewport
+  fitToView: (viewportWidth, viewportHeight) => {
+    const { elements, currentViewId } = get();
+    
+    // Get visible elements for current level
+    const visibleElements = currentViewId === null
+      ? elements.filter(e => !e.parentId)
+      : elements.filter(e => e.parentId === currentViewId);
+    
+    if (visibleElements.length === 0) {
+      set({ pan: { x: 0, y: 0 }, zoom: 1 });
+      return;
+    }
+    
+    // Calculate bounding box
+    let minX = Infinity, minY = Infinity;
+    let maxX = -Infinity, maxY = -Infinity;
+    
+    visibleElements.forEach(el => {
+      const x = el.position?.x || 0;
+      const y = el.position?.y || 0;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + ELEMENT_SIZE);
+      maxY = Math.max(maxY, y + ELEMENT_SIZE);
+    });
+    
+    // Calculate bounds dimensions
+    const boundsWidth = maxX - minX;
+    const boundsHeight = maxY - minY;
+    
+    // Calculate center of bounds
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    
+    // Calculate zoom to fit with padding
+    const availableWidth = viewportWidth - VIEW_PADDING * 2;
+    const availableHeight = viewportHeight - VIEW_PADDING * 2;
+    
+    const scaleX = boundsWidth > 0 ? availableWidth / boundsWidth : 1;
+    const scaleY = boundsHeight > 0 ? availableHeight / boundsHeight : 1;
+    
+    // Use the smaller scale to fit everything, but cap between 0.3 and 1.5
+    const newZoom = Math.max(0.3, Math.min(1.5, Math.min(scaleX, scaleY)));
+    
+    // Pan to center the content
+    const newPan = {
+      x: -centerX,
+      y: -centerY
+    };
+    
+    set({ pan: newPan, zoom: newZoom });
+  },
+
+  // Auto-layout elements in a grid pattern to prevent overlaps
+  autoLayoutElements: (viewportWidth, viewportHeight) => {
+    const { elements, currentViewId, updateElement } = get();
+    
+    // Get visible elements for current level
+    const visibleElements = currentViewId === null
+      ? elements.filter(e => !e.parentId)
+      : elements.filter(e => e.parentId === currentViewId);
+    
+    if (visibleElements.length === 0) return;
+    
+    // Calculate grid layout
+    const count = visibleElements.length;
+    const cols = Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / cols);
+    
+    // Calculate cell size
+    const cellWidth = ELEMENT_SIZE + ELEMENT_GAP;
+    const cellHeight = ELEMENT_SIZE + ELEMENT_GAP;
+    
+    // Calculate total grid size
+    const gridWidth = cols * cellWidth - ELEMENT_GAP;
+    const gridHeight = rows * cellHeight - ELEMENT_GAP;
+    
+    // Starting position (centered around origin)
+    const startX = -gridWidth / 2;
+    const startY = -gridHeight / 2;
+    
+    // Position each element
+    visibleElements.forEach((el, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      
+      const newPosition = {
+        x: startX + col * cellWidth,
+        y: startY + row * cellHeight
+      };
+      
+      // Only update if position changed significantly
+      const dx = Math.abs((el.position?.x || 0) - newPosition.x);
+      const dy = Math.abs((el.position?.y || 0) - newPosition.y);
+      
+      if (dx > 5 || dy > 5) {
+        set((state) => ({
+          elements: state.elements.map(e =>
+            e.id === el.id ? { ...e, position: newPosition } : e
+          )
+        }));
+      }
+    });
+    
+    // Fit to view after layout
+    get().fitToView(viewportWidth, viewportHeight);
+    get().triggerAutoSave();
+  },
+
+  // Check if elements need auto-layout (overlapping or out of bounds)
+  needsAutoLayout: () => {
+    const { elements, currentViewId } = get();
+    
+    const visibleElements = currentViewId === null
+      ? elements.filter(e => !e.parentId)
+      : elements.filter(e => e.parentId === currentViewId);
+    
+    if (visibleElements.length <= 1) return false;
+    
+    // Check for overlaps
+    for (let i = 0; i < visibleElements.length; i++) {
+      for (let j = i + 1; j < visibleElements.length; j++) {
+        const el1 = visibleElements[i];
+        const el2 = visibleElements[j];
+        
+        const x1 = el1.position?.x || 0;
+        const y1 = el1.position?.y || 0;
+        const x2 = el2.position?.x || 0;
+        const y2 = el2.position?.y || 0;
+        
+        // Check if elements overlap
+        if (Math.abs(x1 - x2) < ELEMENT_SIZE && Math.abs(y1 - y2) < ELEMENT_SIZE) {
+          return true;
+        }
+      }
+    }
+    
+    // Check if all elements are at origin (new elements)
+    const allAtOrigin = visibleElements.every(el => 
+      (el.position?.x || 0) === 0 && (el.position?.y || 0) === 0
+    );
+    
+    return allAtOrigin && visibleElements.length > 1;
+  },
 
   clearSelection: () => {
     set({ selectedElementId: null, selectedConnectionId: null });

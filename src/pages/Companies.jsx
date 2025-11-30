@@ -54,12 +54,11 @@ function Companies() {
             <span className="stat-value">{totalConnections}</span>
             <span className="stat-label">Связей</span>
           </div>
-          {isSaving && (
-            <div className="stat-item saving-indicator">
-              <span className="stat-value">💾</span>
-              <span className="stat-label">Сохранение...</span>
-            </div>
-          )}
+        </div>
+        
+        {/* Subtle saving indicator - fixed position, no layout shift */}
+        <div className={`saving-indicator ${isSaving ? 'visible' : ''}`}>
+          <span className="saving-icon">💾</span>
         </div>
         
         <div className="header-actions">
