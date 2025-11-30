@@ -4,10 +4,12 @@ import { useSceneStore } from '../../store/sceneStore';
 import { getEntityRadius } from '../../utils/collisionUtils';
 import * as THREE from 'three';
 
-function Connection({ connection, fromPosition, toPosition, fromEntity, toEntity }) {
+function Connection({ connection, fromPosition, toPosition, fromElement, toElement }) {
   const selectConnection = useSceneStore((state) => state.selectConnection);
   const selectedConnectionId = useSceneStore((state) => state.selectedConnectionId);
+  const deletingConnectionId = useSceneStore((state) => state.deletingConnectionId);
   const isSelected = selectedConnectionId === connection.id;
+  const isDeleting = deletingConnectionId === connection.id;
   
   // Для hover состояния (можно добавить в store позже)
   const [isHovered, setIsHovered] = useState(false);
@@ -17,9 +19,9 @@ function Connection({ connection, fromPosition, toPosition, fromEntity, toEntity
     const [x1, y1, z1] = fromPosition;
     const [x2, y2, z2] = toPosition;
     
-    // Получаем радиусы сфер для обеих сущностей
-    const radius1 = fromEntity ? getEntityRadius(fromEntity) : 0.5;
-    const radius2 = toEntity ? getEntityRadius(toEntity) : 0.5;
+    // Получаем радиусы сфер для обеих элементов
+    const radius1 = fromElement ? getEntityRadius(fromElement) : 0.5;
+    const radius2 = toElement ? getEntityRadius(toElement) : 0.5;
     
     // Направление от первой сущности ко второй
     const direction = new THREE.Vector3(x2 - x1, y2 - y1, z2 - z1);
@@ -40,7 +42,7 @@ function Connection({ connection, fromPosition, toPosition, fromEntity, toEntity
     );
     
     return { startPoint: start, endPoint: end };
-  }, [fromPosition, toPosition, fromEntity, toEntity]);
+  }, [fromPosition, toPosition, fromElement, toElement]);
 
   // Создаем плавную кривую между двумя точками на поверхности
   const curve = useMemo(() => {
@@ -82,6 +84,9 @@ function Connection({ connection, fromPosition, toPosition, fromEntity, toEntity
 
   // Цвет связи
   const lineColor = useMemo(() => {
+    if (isDeleting) {
+      return '#ff0000'; // Красный при удалении
+    }
     if (isSelected) {
       return '#ffff00'; // Желтый для выбранной связи
     }
@@ -89,7 +94,7 @@ function Connection({ connection, fromPosition, toPosition, fromEntity, toEntity
       return '#88ccff'; // Голубой для hover
     }
     return connection.color || '#ffffff';
-  }, [isSelected, isHovered, connection.color]);
+  }, [isSelected, isHovered, isDeleting, connection.color]);
 
   // Вычисляем точки стрелки на конце связи
   const arrowPoints = useMemo(() => {

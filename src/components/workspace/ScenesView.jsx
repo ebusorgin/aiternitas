@@ -9,6 +9,17 @@ import ElementTypeModal from './ElementTypeModal';
 import CreateWorkerModal from './CreateWorkerModal';
 import CreateBlockModal from './CreateBlockModal';
 import { ENTITY_TYPES } from './EntityShape';
+import {
+  getElementType,
+  getElementSize,
+  getElementBounds,
+  getConnectionPoints,
+  getElementPosition,
+  getRectangleEdgeIntersection,
+  isPointOnConnection,
+  connectionExists,
+  validateConnectionBeforeCreate
+} from '../../utils/connectionUtils';
 import './ScenesView.css';
 
 function ScenesView({ onSceneSelect }) {
@@ -70,6 +81,9 @@ function ScenesView({ onSceneSelect }) {
   const selectElement = useSceneStore((state) => state.selectElement);
   const setElementScene = useSceneStore((state) => state.setElementScene);
   const createConnection = useSceneStore((state) => state.createConnection);
+  const selectedConnectionId = useSceneStore((state) => state.selectedConnectionId);
+  const deletingConnectionId = useSceneStore((state) => state.deletingConnectionId);
+  const [hoveredConnectionId, setHoveredConnectionId] = useState(null);
 
   // Загружаем все сцены с позициями при монтировании
   useEffect(() => {
@@ -460,192 +474,205 @@ function ScenesView({ onSceneSelect }) {
         ctx.stroke();
       };
       
-      // Функция для нахождения точки пересечения линии с краем прямоугольника
-      const getRectangleEdgeIntersection = (centerX, centerY, width, height, targetX, targetY) => {
-        // Границы прямоугольника
-        const left = centerX - width / 2;
-        const right = centerX + width / 2;
-        const top = centerY - height / 2;
-        const bottom = centerY + height / 2;
+      // Унифицированная функция для отрисовки связей между любыми типами элементов
+      const drawConnection2D = (ctx, connection, allElements, options = {}) => {
+        const {
+          selectedConnectionId = null,
+          hoveredConnectionId = null,
+          deletingConnectionId = null,
+          draggingSceneId = null,
+          draggingElementId = null,
+          localPositions = {},
+          localPositions2D = {},
+          getSceneAbsolutePositionWithLayout = null,
+          getElementPosition2D = null,
+          getSceneSize = null,
+          worldToScreen = null,
+          zoom = 1
+        } = options;
         
-        // Вектор направления от центра к цели
-        const dx = targetX - centerX;
-        const dy = targetY - centerY;
+        if (!worldToScreen) return;
         
-        // Находим точку пересечения с каждой стороной прямоугольника
-        let intersections = [];
+        // Находим элементы
+        const fromElement = allElements.find(e => e.id === connection.from);
+        const toElement = allElements.find(e => e.id === connection.to);
         
-        // Левая сторона (x = left)
-        if (dx < 0) {
-          const t = (left - centerX) / dx;
-          const y = centerY + dy * t;
-          if (y >= top && y <= bottom) {
-            intersections.push({ x: left, y: y });
+        if (!fromElement || !toElement) return;
+        
+        // Определяем типы элементов
+        const fromType = getElementType(fromElement);
+        const toType = getElementType(toElement);
+        
+        // Для сцен: проверяем, не является ли одна дочерней другой
+        if (fromType === 'scene' && toType === 'scene') {
+          const isToSceneChildOfFrom = toElement.parent_id === fromElement.id;
+          const isFromSceneChildOfTo = fromElement.parent_id === toElement.id;
+          
+          if (isToSceneChildOfFrom || isFromSceneChildOfTo) {
+            return; // Связь будет показана как пометка на дочерней сцене
           }
         }
         
-        // Правая сторона (x = right)
-        if (dx > 0) {
-          const t = (right - centerX) / dx;
-          const y = centerY + dy * t;
-          if (y >= top && y <= bottom) {
-            intersections.push({ x: right, y: y });
-          }
-        }
-        
-        // Верхняя сторона (y = top)
-        if (dy < 0) {
-          const t = (top - centerY) / dy;
-          const x = centerX + dx * t;
-          if (x >= left && x <= right) {
-            intersections.push({ x: x, y: top });
-          }
-        }
-        
-        // Нижняя сторона (y = bottom)
-        if (dy > 0) {
-          const t = (bottom - centerY) / dy;
-          const x = centerX + dx * t;
-          if (x >= left && x <= right) {
-            intersections.push({ x: x, y: bottom });
-          }
-        }
-        
-        // Выбираем ближайшую точку к цели
-        if (intersections.length === 0) {
-          // Если нет пересечений (не должно происходить), возвращаем центр
-          return { x: centerX, y: centerY };
-        }
-        
-        let closest = intersections[0];
-        let minDist = Math.sqrt(
-          Math.pow(closest.x - targetX, 2) + Math.pow(closest.y - targetY, 2)
+        // Получаем позиции элементов с учетом перетаскивания
+        const fromPos = getElementPosition(
+          fromElement,
+          fromType,
+          draggingSceneId,
+          draggingElementId,
+          localPositions,
+          localPositions2D,
+          getSceneAbsolutePositionWithLayout,
+          getElementPosition2D
         );
         
-        for (let i = 1; i < intersections.length; i++) {
-          const dist = Math.sqrt(
-            Math.pow(intersections[i].x - targetX, 2) + Math.pow(intersections[i].y - targetY, 2)
-          );
-          if (dist < minDist) {
-            minDist = dist;
-            closest = intersections[i];
-          }
-        }
+        const toPos = getElementPosition(
+          toElement,
+          toType,
+          draggingSceneId,
+          draggingElementId,
+          localPositions,
+          localPositions2D,
+          getSceneAbsolutePositionWithLayout,
+          getElementPosition2D
+        );
         
-        return closest;
-      };
-      
-      // Отрисовка связей
-      const drawConnection = (ctx, connection) => {
-        const fromScene = allScenes.find(s => s.id === connection.from);
-        const toScene = allScenes.find(s => s.id === connection.to);
-        
-        if (!fromScene || !toScene) return;
-        
-        // Проверяем, является ли одна из сцен дочерней другой в этой связи
-        // Если toScene является дочерней fromScene, не рисуем стрелку (будет пометка на дочерней сцене)
-        // Если fromScene является дочерней toScene, не рисуем стрелку (будет пометка на дочерней сцене)
-        const isToSceneChildOfFrom = toScene.parent_id === fromScene.id;
-        const isFromSceneChildOfTo = fromScene.parent_id === toScene.id;
-        
-        // Если одна из сцен является дочерней другой, не рисуем стрелку
-        // Пометка будет нарисована в drawScene
-        if (isToSceneChildOfFrom || isFromSceneChildOfTo) {
-          return; // Связь будет показана как пометка на дочерней сцене
-        }
-        
-        // Унифицированная логика получения позиций: используем локальные позиции при перетаскивании
-        // Для сцен используем getSceneAbsolutePositionWithLayout, который учитывает localPositions
-        let fromPos, toPos;
-        
-        // Если сцена перетаскивается, используем локальную позицию
-        if (draggingSceneId === fromScene.id && localPositions[fromScene.id]) {
-          fromPos = localPositions[fromScene.id];
-        } else {
-          const [fromX, fromZ] = getSceneAbsolutePositionWithLayout(fromScene);
-          fromPos = [fromX, fromZ];
-        }
-        
-        if (draggingSceneId === toScene.id && localPositions[toScene.id]) {
-          toPos = localPositions[toScene.id];
-        } else {
-          const [toX, toZ] = getSceneAbsolutePositionWithLayout(toScene);
-          toPos = [toX, toZ];
-        }
-        
+        // Преобразуем в экранные координаты
         const fromScreen = worldToScreen(fromPos[0], fromPos[1]);
         const toScreen = worldToScreen(toPos[0], toPos[1]);
         
-        // Получаем размеры сцен в экранных координатах
-        const [fromWorldWidth, fromWorldHeight] = getSceneSize(fromScene);
-        const [toWorldWidth, toWorldHeight] = getSceneSize(toScene);
-        const fromWidth = fromWorldWidth * zoom;
-        const fromHeight = fromWorldHeight * zoom;
-        const toWidth = toWorldWidth * zoom;
-        const toHeight = toWorldHeight * zoom;
-        
-        // Находим точки пересечения с краями прямоугольников
-        const fromEdge = getRectangleEdgeIntersection(
-          fromScreen.x, fromScreen.y, fromWidth, fromHeight,
-          toScreen.x, toScreen.y
-        );
-        const toEdge = getRectangleEdgeIntersection(
-          toScreen.x, toScreen.y, toWidth, toHeight,
-          fromScreen.x, fromScreen.y
+        // Получаем границы элементов
+        const fromBounds = getElementBounds(
+          fromElement,
+          zoom,
+          () => fromPos,
+          worldToScreen,
+          getSceneSize
         );
         
-        // Рисуем линию связи с более ярким цветом и большей толщиной для лучшей видимости
-        ctx.strokeStyle = connection.color || '#00ff00'; // Зеленый по умолчанию для лучшей видимости
-        ctx.lineWidth = Math.max(2, 3 * zoom); // Минимум 2px, увеличивается с зумом
-        ctx.shadowColor = 'rgba(0, 255, 0, 0.5)'; // Добавляем свечение для лучшей видимости
-        ctx.shadowBlur = 4;
+        const toBounds = getElementBounds(
+          toElement,
+          zoom,
+          () => toPos,
+          worldToScreen,
+          getSceneSize
+        );
+        
+        // Вычисляем точки подключения
+        const { fromPoint, toPoint } = getConnectionPoints(
+          fromElement,
+          toElement,
+          fromBounds,
+          toBounds
+        );
+        
+        // Определяем состояние связи
+        const isSelected = selectedConnectionId === connection.id;
+        const isHovered = hoveredConnectionId === connection.id;
+        const isDeleting = deletingConnectionId === connection.id;
+        
+        // Цвет связи
+        let strokeColor = connection.color || '#ffffff';
+        if (isDeleting) strokeColor = '#ff0000'; // Красный при удалении
+        else if (isSelected) strokeColor = '#ffff00';
+        else if (isHovered) strokeColor = '#88ccff';
+        
+        // Толщина линии
+        const lineWidth = isSelected ? Math.max(4, 5 * zoom) : (isHovered ? Math.max(3, 4 * zoom) : Math.max(2, 3 * zoom));
+        
+        // Эффект свечения для выбранных и hovered связей
+        if (isSelected || isHovered) {
+          ctx.shadowColor = isSelected ? 'rgba(255, 255, 0, 0.6)' : 'rgba(136, 204, 255, 0.5)';
+          ctx.shadowBlur = 8;
+        }
+        
+        // Вычисляем расстояние для определения кривизны
+        const dx = toPoint.x - fromPoint.x;
+        const dy = toPoint.y - fromPoint.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance === 0) return;
+        
+        // Рисуем плавную кривую (квадратичную)
+        const midX = (fromPoint.x + toPoint.x) / 2;
+        const midY = (fromPoint.y + toPoint.y) / 2 - Math.min(distance * 0.2, 30);
+        
         ctx.beginPath();
-        ctx.moveTo(fromEdge.x, fromEdge.y);
-        ctx.lineTo(toEdge.x, toEdge.y);
+        ctx.moveTo(fromPoint.x, fromPoint.y);
+        ctx.quadraticCurveTo(midX, midY, toPoint.x, toPoint.y);
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = lineWidth;
         ctx.stroke();
-        ctx.shadowBlur = 0; // Сбрасываем тень
         
-        // Стрелки на связи
-        const angle = Math.atan2(toEdge.y - fromEdge.y, toEdge.x - fromEdge.x);
-        const reverseAngle = angle + Math.PI;
+        // Сбрасываем тень
+        ctx.shadowBlur = 0;
+        
+        // Вычисляем направление стрелки на конце связи (для квадратичной кривой)
+        // Производная в конечной точке: P'(1) = 2(P2 - P1) = 2(to - mid)
+        const arrowEndDx = 2 * (toPoint.x - midX);
+        const arrowEndDy = 2 * (toPoint.y - midY);
+        const arrowEndAngle = Math.atan2(arrowEndDy, arrowEndDx);
+        
+        // Вычисляем направление стрелки на начале связи (для bidirectional)
+        const arrowStartDx = 2 * (midX - fromPoint.x);
+        const arrowStartDy = 2 * (midY - fromPoint.y);
+        const arrowStartAngle = Math.atan2(arrowStartDy, arrowStartDx) + Math.PI;
+        
         const arrowLength = Math.max(8, 12 * zoom);
-        ctx.strokeStyle = connection.color || '#00ff00';
-        ctx.lineWidth = Math.max(2, 3 * zoom);
         
-        // Стрелка на конце связи (всегда)
+        // Рисуем стрелку на конце связи
         ctx.beginPath();
-        ctx.moveTo(toEdge.x, toEdge.y);
+        ctx.moveTo(toPoint.x, toPoint.y);
         ctx.lineTo(
-          toEdge.x - arrowLength * Math.cos(angle - Math.PI / 6),
-          toEdge.y - arrowLength * Math.sin(angle - Math.PI / 6)
+          toPoint.x - arrowLength * Math.cos(arrowEndAngle - Math.PI / 6),
+          toPoint.y - arrowLength * Math.sin(arrowEndAngle - Math.PI / 6)
         );
-        ctx.moveTo(toEdge.x, toEdge.y);
+        ctx.moveTo(toPoint.x, toPoint.y);
         ctx.lineTo(
-          toEdge.x - arrowLength * Math.cos(angle + Math.PI / 6),
-          toEdge.y - arrowLength * Math.sin(angle + Math.PI / 6)
+          toPoint.x - arrowLength * Math.cos(arrowEndAngle + Math.PI / 6),
+          toPoint.y - arrowLength * Math.sin(arrowEndAngle + Math.PI / 6)
         );
-        ctx.stroke();
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = lineWidth;
         
-        // Стрелка на начале связи (если bidirectional)
+        // Эффект свечения для стрелки
+        if (isSelected || isHovered) {
+          ctx.shadowColor = isSelected ? 'rgba(255, 255, 0, 0.6)' : 'rgba(136, 204, 255, 0.5)';
+          ctx.shadowBlur = 8;
+        }
+        
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        
+        // Рисуем стрелку на начале связи (если bidirectional)
         if (connection.bidirectional) {
           ctx.beginPath();
-          ctx.moveTo(fromEdge.x, fromEdge.y);
+          ctx.moveTo(fromPoint.x, fromPoint.y);
           ctx.lineTo(
-            fromEdge.x - arrowLength * Math.cos(reverseAngle - Math.PI / 6),
-            fromEdge.y - arrowLength * Math.sin(reverseAngle - Math.PI / 6)
+            fromPoint.x - arrowLength * Math.cos(arrowStartAngle - Math.PI / 6),
+            fromPoint.y - arrowLength * Math.sin(arrowStartAngle - Math.PI / 6)
           );
-          ctx.moveTo(fromEdge.x, fromEdge.y);
+          ctx.moveTo(fromPoint.x, fromPoint.y);
           ctx.lineTo(
-            fromEdge.x - arrowLength * Math.cos(reverseAngle + Math.PI / 6),
-            fromEdge.y - arrowLength * Math.sin(reverseAngle + Math.PI / 6)
+            fromPoint.x - arrowLength * Math.cos(arrowStartAngle + Math.PI / 6),
+            fromPoint.y - arrowLength * Math.sin(arrowStartAngle + Math.PI / 6)
           );
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = lineWidth;
+          
+          // Эффект свечения для стрелки
+          if (isSelected || isHovered) {
+            ctx.shadowColor = isSelected ? 'rgba(255, 255, 0, 0.6)' : 'rgba(136, 204, 255, 0.5)';
+            ctx.shadowBlur = 8;
+          }
+          
           ctx.stroke();
+          ctx.shadowBlur = 0;
         }
         
         // Метка (label) если есть
         if (connection.label) {
-          const labelX = (fromEdge.x + toEdge.x) / 2;
-          const labelY = (fromEdge.y + toEdge.y) / 2 - 15;
+          const labelX = midX;
+          const labelY = midY - 20;
           
           // Фон для текста
           ctx.font = `${12 * zoom}px Arial`;
@@ -665,9 +692,33 @@ function ScenesView({ onSceneSelect }) {
           );
           
           // Текст
-          ctx.fillStyle = connection.color || '#00ff00';
+          ctx.fillStyle = strokeColor;
           ctx.fillText(connection.label, labelX, labelY);
         }
+      };
+      
+      // Отрисовка связей
+      // Объединяем все элементы (сцены и элементы) для унифицированной отрисовки связей
+      const allElementsForConnections = [
+        ...(allScenes || []),
+        ...(elements || []).filter(e => e.elementType !== 'scene')
+      ];
+      
+      // Используем унифицированную функцию для отрисовки связей между сценами
+      const drawConnection = (ctx, connection) => {
+        drawConnection2D(ctx, connection, allElementsForConnections, {
+          selectedConnectionId,
+          hoveredConnectionId,
+          draggingSceneId,
+          draggingElementId,
+          localPositions,
+          localPositions2D,
+          getSceneAbsolutePositionWithLayout,
+          getElementPosition2D,
+          getSceneSize,
+          worldToScreen,
+          zoom
+        });
       };
       
       // Отрисовка элемента
@@ -998,9 +1049,6 @@ function ScenesView({ onSceneSelect }) {
       drawGrid(ctx, width, height);
       // Сначала рисуем сцены
       rootScenes.forEach(scene => drawScene(ctx, scene));
-      // Затем рисуем связи поверх сцен, чтобы они были видны
-      // Рисуем связи между сценами (используем унифицированную логику с учетом localPositions)
-      sceneConnections.forEach(conn => drawConnection(ctx, conn));
       
       // Рисуем элементы (worker, block)
       const workerAndBlockElements = elements ? elements.filter(e => e.elementType !== 'scene') : [];
@@ -1081,61 +1129,25 @@ function ScenesView({ onSceneSelect }) {
         }
       }
       
-      // Рисуем связи между элементами
-      if (connections && connections.length > 0) {
-        connections.forEach(conn => {
-          const fromElement = elements ? elements.find(e => e.id === conn.from) : null;
-          const toElement = elements ? elements.find(e => e.id === conn.to) : null;
-          
-          if (fromElement && toElement) {
-            const fromPos = draggingElementId === fromElement.id && localPositions2D[fromElement.id]
-              ? localPositions2D[fromElement.id]
-              : getElementPosition2D(fromElement);
-            const toPos = draggingElementId === toElement.id && localPositions2D[toElement.id]
-              ? localPositions2D[toElement.id]
-              : getElementPosition2D(toElement);
-            
-            const fromScreen = worldToScreen(fromPos[0], fromPos[1]);
-            const toScreen = worldToScreen(toPos[0], toPos[1]);
-            
-            // Размеры блоков
-            const blockWidth = 120 * zoom;
-            const blockHeight = 80 * zoom;
-            
-            // Находим точки пересечения с краями блоков
-            const fromEdge = getRectangleEdgeIntersection(
-              fromScreen.x, fromScreen.y, blockWidth, blockHeight,
-              toScreen.x, toScreen.y
-            );
-            const toEdge = getRectangleEdgeIntersection(
-              toScreen.x, toScreen.y, blockWidth, blockHeight,
-              fromScreen.x, fromScreen.y
-            );
-            
-            // Рисуем линию связи
-            ctx.strokeStyle = conn.color || '#ffffff';
-            ctx.lineWidth = Math.max(1, 2 * zoom);
-            ctx.beginPath();
-            ctx.moveTo(fromEdge.x, fromEdge.y);
-            ctx.lineTo(toEdge.x, toEdge.y);
-            ctx.stroke();
-            
-            // Стрелка на конце связи
-            const angle = Math.atan2(toEdge.y - fromEdge.y, toEdge.x - fromEdge.x);
-            const arrowLength = Math.max(6, 10 * zoom);
-            ctx.beginPath();
-            ctx.moveTo(toEdge.x, toEdge.y);
-            ctx.lineTo(
-              toEdge.x - arrowLength * Math.cos(angle - Math.PI / 6),
-              toEdge.y - arrowLength * Math.sin(angle - Math.PI / 6)
-            );
-            ctx.moveTo(toEdge.x, toEdge.y);
-            ctx.lineTo(
-              toEdge.x - arrowLength * Math.cos(angle + Math.PI / 6),
-              toEdge.y - arrowLength * Math.sin(angle + Math.PI / 6)
-            );
-            ctx.stroke();
-          }
+      // Рисуем все связи (используем унифицированную функцию для всех типов связей)
+      // Объединяем все связи: между сценами, между элементами, и между сценами и элементами
+      const allConnections = [...(connections || [])];
+      if (allConnections.length > 0) {
+        allConnections.forEach(conn => {
+          drawConnection2D(ctx, conn, allElementsForConnections, {
+            selectedConnectionId,
+            hoveredConnectionId,
+            deletingConnectionId,
+            draggingSceneId,
+            draggingElementId,
+            localPositions,
+            localPositions2D,
+            getSceneAbsolutePositionWithLayout,
+            getElementPosition2D,
+            getSceneSize,
+            worldToScreen,
+            zoom
+          });
         });
       }
       
@@ -1208,9 +1220,13 @@ function ScenesView({ onSceneSelect }) {
     
     redraw();
     
-    // Анимация мигания для элементов без соединений
+    // Анимация мигания для элементов без соединений и постоянная перерисовка при перетаскивании
     const animationFrameId = requestAnimationFrame(function animate() {
       setAnimationTime(Date.now());
+      // Перерисовываем при перетаскивании для обновления связей в реальном времени
+      if (draggingSceneId || draggingElementId || draggingConnection) {
+        redraw();
+      }
       requestAnimationFrame(animate);
     });
     
@@ -1225,7 +1241,7 @@ function ScenesView({ onSceneSelect }) {
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationFrameId);
     };
-  }, [allScenes, sceneConnections, pan, zoom, selectedSceneId, hoveredSceneId, draggingSceneId, localPositions, localSizes, rootScenes, getSceneAbsolutePosition, getSceneAbsolutePositionWithLayout, worldToScreen, screenToWorld, getSceneSize, calculateChildrenLayout, connectMode, connectingFrom, elements, connections, selectedElementId, hoveredElementId, draggingElementId, localPositions2D, animationTime, getElementPosition2D, getCanvasSize, draggingConnection, connectionMousePos]);
+  }, [allScenes, sceneConnections, pan, zoom, selectedSceneId, hoveredSceneId, draggingSceneId, localPositions, localSizes, rootScenes, getSceneAbsolutePosition, getSceneAbsolutePositionWithLayout, worldToScreen, screenToWorld, getSceneSize, calculateChildrenLayout, connectMode, connectingFrom, elements, connections, selectedElementId, hoveredElementId, draggingElementId, localPositions2D, animationTime, getElementPosition2D, getCanvasSize, draggingConnection, connectionMousePos, selectedConnectionId, hoveredConnectionId]);
 
   // Обработчик wheel для зума (отдельный useEffect)
   useEffect(() => {
@@ -1457,11 +1473,7 @@ function ScenesView({ onSceneSelect }) {
           setSelectedSceneId(clickedScene.id); // Выделяем первую сцену для визуальной обратной связи
         } else if (connectingFrom !== clickedScene.id) {
           // Проверяем, нет ли уже такой связи (учитываем направление)
-          const connectionExists = sceneConnections.some(
-            conn => conn.from === connectingFrom && conn.to === clickedScene.id
-          );
-          
-          if (!connectionExists) {
+          if (!connectionExists(sceneConnections, connectingFrom, clickedScene.id, false)) {
             createConnection({
               from: connectingFrom,
               to: clickedScene.id
@@ -1544,11 +1556,15 @@ function ScenesView({ onSceneSelect }) {
     // Обработка перетаскивания элемента
     if (isDragging && draggingElementId) {
       const element = elements ? elements.find(e => e.id === draggingElementId) : null;
-      if (element && dragStart) {
-        // Вычисляем новую позицию на основе текущей позиции мыши
+      if (element) {
+        // dragStart содержит смещение { x, z } от позиции элемента до точки клика
+        // Вычисляем новую позицию на основе текущей позиции мыши с учетом смещения
+        const dragOffsetX = dragStart && typeof dragStart.x === 'number' ? dragStart.x : 0;
+        const dragOffsetZ = dragStart && typeof dragStart.z === 'number' ? dragStart.z : 0;
+        
         const newPosition2D = [
-          worldPos.x - dragStart.x,
-          worldPos.z - dragStart.z
+          worldPos.x - dragOffsetX,
+          worldPos.z - dragOffsetZ
         ];
         
         // Обновляем локальное состояние для мгновенной перерисовки
@@ -1615,8 +1631,9 @@ function ScenesView({ onSceneSelect }) {
           setHoveredSceneId(hovered);
         }
       }
-    } else if (isDragging && !draggingSceneId) {
+    } else if (isDragging && !draggingSceneId && !draggingElementId) {
       // Панорамирование - используем разницу в экранных координатах
+      // Только если не перетаскиваем элемент и не перетаскиваем сцену
       const deltaX = x - dragStart.x;
       const deltaY = y - dragStart.y;
       setPan(prev => ({
@@ -1699,6 +1716,101 @@ function ScenesView({ onSceneSelect }) {
       setHoveredElementId(newHoveredElementId);
     }
     
+    // Проверяем hover на связях (только если не перетаскиваем и не создаем связь)
+    let newHoveredConnectionId = null;
+    if (!draggingConnection && !isDragging && connections && connections.length > 0) {
+      // Объединяем все элементы для проверки связей
+      const allElementsForHover = [
+        ...(allScenes || []),
+        ...(elements || []).filter(e => e.elementType !== 'scene')
+      ];
+      
+      // Проверяем каждую связь
+      for (const conn of connections) {
+        const fromElement = allElementsForHover.find(e => e.id === conn.from);
+        const toElement = allElementsForHover.find(e => e.id === conn.to);
+        
+        if (!fromElement || !toElement) continue;
+        
+        // Определяем типы элементов
+        const fromType = getElementType(fromElement);
+        const toType = getElementType(toElement);
+        
+        // Пропускаем связи между дочерними сценами (они отображаются как пометки)
+        if (fromType === 'scene' && toType === 'scene') {
+          const isToSceneChildOfFrom = toElement.parent_id === fromElement.id;
+          const isFromSceneChildOfTo = fromElement.parent_id === toElement.id;
+          if (isToSceneChildOfFrom || isFromSceneChildOfTo) {
+            continue;
+          }
+        }
+        
+        // Получаем позиции элементов
+        const fromPos = getElementPosition(
+          fromElement,
+          fromType,
+          draggingSceneId,
+          draggingElementId,
+          localPositions,
+          localPositions2D,
+          getSceneAbsolutePositionWithLayout,
+          getElementPosition2D
+        );
+        
+        const toPos = getElementPosition(
+          toElement,
+          toType,
+          draggingSceneId,
+          draggingElementId,
+          localPositions,
+          localPositions2D,
+          getSceneAbsolutePositionWithLayout,
+          getElementPosition2D
+        );
+        
+        // Преобразуем в экранные координаты
+        const fromScreen = worldToScreen(fromPos[0], fromPos[1]);
+        const toScreen = worldToScreen(toPos[0], toPos[1]);
+        
+        // Получаем границы элементов
+        const fromBounds = getElementBounds(
+          fromElement,
+          zoom,
+          () => fromPos,
+          worldToScreen,
+          getSceneSize
+        );
+        
+        const toBounds = getElementBounds(
+          toElement,
+          zoom,
+          () => toPos,
+          worldToScreen,
+          getSceneSize
+        );
+        
+        // Вычисляем точки подключения
+        const { fromPoint, toPoint } = getConnectionPoints(
+          fromElement,
+          toElement,
+          fromBounds,
+          toBounds
+        );
+        
+        // Проверяем, находится ли курсор на связи
+        const tolerance = Math.max(5, 8 * zoom); // Увеличиваем tolerance с зумом
+        if (isPointOnConnection(x, y, fromPoint, toPoint, tolerance)) {
+          newHoveredConnectionId = conn.id;
+          break; // Нашли связь, выходим из цикла
+        }
+      }
+    }
+    
+    // Обновляем hoveredConnectionId с debounce для производительности
+    if (newHoveredConnectionId !== hoveredConnectionId) {
+      setHoveredConnectionId(newHoveredConnectionId);
+    }
+    
     // Проверяем, находится ли курсор над иконкой подключения
     let isOverConnectionIcon = false;
     if (!draggingConnection && !isDragging) {
@@ -1750,7 +1862,7 @@ function ScenesView({ onSceneSelect }) {
         canvasRef.current.style.cursor = cursorStyle;
       }
     }
-  }, [isDragging, draggingSceneId, draggingElementId, draggingConnection, allScenes, elements, zoom, pan, getSceneAbsolutePosition, getSceneSize, screenToWorld, setLocalPositions, setHoveredSceneId, setIsDragging, setPan, setDragStart, clickStartRef, wasDraggingRef, dragStart, setLocalPositions2D, hoveredElementId, getElementPosition2D, isPointInBlock, isPointInConnectionIcon, setHoveredElementId]);
+  }, [isDragging, draggingSceneId, draggingElementId, draggingConnection, allScenes, elements, connections, zoom, pan, getSceneAbsolutePosition, getSceneAbsolutePositionWithLayout, getSceneSize, screenToWorld, setLocalPositions, setHoveredSceneId, setIsDragging, setPan, setDragStart, clickStartRef, wasDraggingRef, dragStart, setLocalPositions2D, hoveredElementId, hoveredConnectionId, getElementPosition2D, isPointInBlock, isPointInConnectionIcon, setHoveredElementId, setHoveredConnectionId, localPositions, localPositions2D, worldToScreen]);
 
   const handleMouseUp = useCallback((e) => {
     // Обработка создания связи
@@ -1829,11 +1941,7 @@ function ScenesView({ onSceneSelect }) {
       if (targetId && targetType) {
         if (draggingConnection.type === 'scene' && targetType === 'scene') {
           // Связь между сценами
-          const connectionExists = sceneConnections.some(
-            conn => (conn.from === draggingConnection.id && conn.to === targetId) ||
-                    (conn.from === targetId && conn.to === draggingConnection.id)
-          );
-          if (!connectionExists) {
+          if (!connectionExists(sceneConnections, draggingConnection.id, targetId)) {
             createConnection({
               from: draggingConnection.id,
               to: targetId
@@ -1841,11 +1949,7 @@ function ScenesView({ onSceneSelect }) {
           }
         } else if (draggingConnection.type === 'element' && targetType === 'element') {
           // Связь между элементами
-          const connectionExists = connections.some(
-            conn => (conn.from === draggingConnection.id && conn.to === targetId) ||
-                    (conn.from === targetId && conn.to === draggingConnection.id)
-          );
-          if (!connectionExists) {
+          if (!connectionExists(connections, draggingConnection.id, targetId)) {
             createConnection({
               from: draggingConnection.id,
               to: targetId
@@ -1853,11 +1957,7 @@ function ScenesView({ onSceneSelect }) {
           }
         } else if (draggingConnection.type === 'scene' && targetType === 'element') {
           // Связь от сцены к элементу
-          const connectionExists = connections.some(
-            conn => (conn.from === draggingConnection.id && conn.to === targetId) ||
-                    (conn.from === targetId && conn.to === draggingConnection.id)
-          );
-          if (!connectionExists) {
+          if (!connectionExists(connections, draggingConnection.id, targetId)) {
             createConnection({
               from: draggingConnection.id,
               to: targetId
@@ -1865,11 +1965,7 @@ function ScenesView({ onSceneSelect }) {
           }
         } else if (draggingConnection.type === 'element' && targetType === 'scene') {
           // Связь от элемента к сцене
-          const connectionExists = connections.some(
-            conn => (conn.from === draggingConnection.id && conn.to === targetId) ||
-                    (conn.from === targetId && conn.to === draggingConnection.id)
-          );
-          if (!connectionExists) {
+          if (!connectionExists(connections, draggingConnection.id, targetId)) {
             createConnection({
               from: draggingConnection.id,
               to: targetId

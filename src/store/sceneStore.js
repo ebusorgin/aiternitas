@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { io } from 'socket.io-client';
 import { findFreePosition } from '../utils/collisionUtils';
+import { validateConnectionBeforeCreate } from '../utils/connectionUtils';
 
 // Инициализация Socket.IO клиента
 const getSocket = () => {
@@ -301,6 +302,7 @@ export const useSceneStore = create((set, get) => {
         sceneConnections: state.sceneConnections.filter(c => c.id !== id),
         selectedConnectionId: state.selectedConnectionId === id ? null : state.selectedConnectionId
       }));
+      // Визуальная обратная связь уже обработана в компоненте через deletingConnectionId
     });
 
     socket.on('connections:updated', (connections) => {
@@ -500,6 +502,16 @@ export const useSceneStore = create((set, get) => {
         return;
       }
 
+      // Проверяем валидность связи перед созданием (включая проверку на дубликаты)
+      const state = get();
+      const allElements = [...(state.allScenes || []), ...(state.elements || [])];
+      const validation = validateConnectionBeforeCreate(connectionData, state.connections || [], allElements);
+
+      if (!validation.valid) {
+        console.warn('Не удалось создать связь:', validation.reason);
+        return;
+      }
+
       const connection = {
         id: connectionData.id || `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         from: connectionData.from,
@@ -542,13 +554,26 @@ export const useSceneStore = create((set, get) => {
         return;
       }
 
+      // Визуальная обратная связь: помечаем связь как удаляемую
+      set((state) => ({
+        deletingConnectionId: id
+      }));
+
       socket.emit('connection:delete', id);
       
       // Оптимистичное обновление
       set((state) => ({
         connections: state.connections.filter(c => c.id !== id),
+        sceneConnections: state.sceneConnections.filter(c => c.id !== id),
         selectedConnectionId: state.selectedConnectionId === id ? null : state.selectedConnectionId
       }));
+      
+      // Убираем визуальную обратную связь через небольшую задержку
+      setTimeout(() => {
+        set((state) => ({
+          deletingConnectionId: null
+        }));
+      }, 200);
     },
 
     // Выделение

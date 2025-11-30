@@ -1,6 +1,14 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 import { ENTITY_TYPES } from './EntityShape';
+import {
+  getElementType,
+  getElementSize,
+  getElementBounds,
+  getConnectionPoints,
+  getElementPosition,
+  getRectangleEdgeIntersection
+} from '../../utils/connectionUtils';
 import './Canvas2D.css';
 
 function Canvas2D() {
@@ -289,83 +297,110 @@ function Canvas2D() {
     return { width: blockWidth, height: blockHeight };
   };
 
-  // Отрисовка соединения между блоками
-  const drawConnection = (ctx, connection) => {
-    const fromElement = elements.find(e => e.id === connection.from);
-    const toElement = elements.find(e => e.id === connection.to);
+  // Унифицированная функция для отрисовки связей (используется в Canvas2D для элементов внутри сцены)
+  const drawConnection2D = (ctx, connection, allElements, options = {}) => {
+    const {
+      selectedConnectionId: optSelectedConnectionId = selectedConnectionId,
+      hoveredConnectionId: optHoveredConnectionId = hoveredConnectionId,
+      deletingConnectionId: optDeletingConnectionId = deletingConnectionId,
+      draggingSceneId = null,
+      draggingElementId: optDraggingElementId = draggingElementId,
+      localPositions = {},
+      localPositions2D: optLocalPositions2D = localPositions2D,
+      getSceneAbsolutePositionWithLayout = null,
+      getElementPosition2D: optGetElementPosition2D = getElementPosition2D,
+      getSceneSize = null,
+      worldToScreen: optWorldToScreen = worldToScreen,
+      zoom: optZoom = zoom
+    } = options;
+    
+    if (!optWorldToScreen) return;
+    
+    // Находим элементы
+    const fromElement = allElements.find(e => e.id === connection.from);
+    const toElement = allElements.find(e => e.id === connection.to);
     
     if (!fromElement || !toElement) return;
     
-    const blockWidth = 120 * zoom;
-    const blockHeight = 80 * zoom;
+    // Определяем типы элементов
+    const fromType = getElementType(fromElement);
+    const toType = getElementType(toElement);
     
-    // Для перетаскиваемых блоков ВСЕГДА используем локальную позицию, иначе из store
-    const fromPos2D = (draggingElementId === fromElement.id && localPositions2D[fromElement.id])
-      ? localPositions2D[fromElement.id]
-      : (localPositions2D[fromElement.id] || getElementPosition2D(fromElement));
-    const toPos2D = (draggingElementId === toElement.id && localPositions2D[toElement.id])
-      ? localPositions2D[toElement.id]
-      : (localPositions2D[toElement.id] || getElementPosition2D(toElement));
-    const fromPos = worldToScreen(fromPos2D[0], fromPos2D[1]);
-    const toPos = worldToScreen(toPos2D[0], toPos2D[1]);
-    
-    // Вычисляем точки на краях прямоугольных блоков
-    const dx = toPos.x - fromPos.x;
-    const dy = toPos.y - fromPos.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    
-    if (distance === 0) return;
-    
-    // Определяем точки подключения на краях блоков
-    let fromX, fromY, toX, toY;
-    
-    // Находим ближайший край для начальной точки
-    const fromHalfWidth = blockWidth / 2;
-    const fromHalfHeight = blockHeight / 2;
-    
-    // Определяем, с какой стороны блока выходит соединение
-    const absDx = Math.abs(dx);
-    const absDy = Math.abs(dy);
-    
-    if (absDx > absDy) {
-      // Горизонтальное соединение
-      fromX = fromPos.x + (dx > 0 ? fromHalfWidth : -fromHalfWidth);
-      fromY = fromPos.y;
-    } else {
-      // Вертикальное соединение
-      fromX = fromPos.x;
-      fromY = fromPos.y + (dy > 0 ? fromHalfHeight : -fromHalfHeight);
+    // Для сцен: проверяем, не является ли одна дочерней другой
+    if (fromType === 'scene' && toType === 'scene') {
+      const isToSceneChildOfFrom = toElement.parent_id === fromElement.id;
+      const isFromSceneChildOfTo = fromElement.parent_id === toElement.id;
+      
+      if (isToSceneChildOfFrom || isFromSceneChildOfTo) {
+        return; // Связь будет показана как пометка на дочерней сцене
+      }
     }
     
-    // Находим ближайший край для конечной точки
-    const toHalfWidth = blockWidth / 2;
-    const toHalfHeight = blockHeight / 2;
+    // Получаем позиции элементов с учетом перетаскивания
+    const fromPos = getElementPosition(
+      fromElement,
+      fromType,
+      draggingSceneId,
+      optDraggingElementId,
+      localPositions,
+      optLocalPositions2D,
+      getSceneAbsolutePositionWithLayout,
+      optGetElementPosition2D
+    );
     
-    if (absDx > absDy) {
-      // Горизонтальное соединение
-      toX = toPos.x + (dx > 0 ? -toHalfWidth : toHalfWidth);
-      toY = toPos.y;
-    } else {
-      // Вертикальное соединение
-      toX = toPos.x;
-      toY = toPos.y + (dy > 0 ? -toHalfHeight : toHalfHeight);
-    }
+    const toPos = getElementPosition(
+      toElement,
+      toType,
+      draggingSceneId,
+      optDraggingElementId,
+      localPositions,
+      optLocalPositions2D,
+      getSceneAbsolutePositionWithLayout,
+      optGetElementPosition2D
+    );
     
-    const isSelected = selectedConnectionId === connection.id;
+    // Преобразуем в экранные координаты
+    const fromScreen = optWorldToScreen(fromPos[0], fromPos[1]);
+    const toScreen = optWorldToScreen(toPos[0], toPos[1]);
     
-    // Рисуем плавную кривую
-    const midX = (fromX + toX) / 2;
-    const midY = (fromY + toY) / 2 - Math.min(distance * 0.2, 30);
+    // Получаем границы элементов
+    const fromBounds = getElementBounds(
+      fromElement,
+      optZoom,
+      () => fromPos,
+      optWorldToScreen,
+      getSceneSize
+    );
     
-    ctx.beginPath();
-    ctx.moveTo(fromX, fromY);
-    ctx.quadraticCurveTo(midX, midY, toX, toY);
+    const toBounds = getElementBounds(
+      toElement,
+      optZoom,
+      () => toPos,
+      optWorldToScreen,
+      getSceneSize
+    );
     
-    // Цвет соединения
-    const isHovered = hoveredConnectionId === connection.id;
+    // Вычисляем точки подключения
+    const { fromPoint, toPoint } = getConnectionPoints(
+      fromElement,
+      toElement,
+      fromBounds,
+      toBounds
+    );
+    
+    // Определяем состояние связи
+    const isSelected = optSelectedConnectionId === connection.id;
+    const isHovered = optHoveredConnectionId === connection.id;
+    const isDeleting = optDeletingConnectionId === connection.id;
+    
+    // Цвет связи
     let strokeColor = connection.color || '#ffffff';
-    if (isSelected) strokeColor = '#ffff00';
+    if (isDeleting) strokeColor = '#ff0000'; // Красный при удалении
+    else if (isSelected) strokeColor = '#ffff00';
     else if (isHovered) strokeColor = '#88ccff';
+    
+    // Толщина линии
+    const lineWidth = isSelected ? Math.max(4, 5 * optZoom) : (isHovered ? Math.max(3, 4 * optZoom) : Math.max(2, 3 * optZoom));
     
     // Эффект свечения для выбранных и hovered связей
     if (isSelected || isHovered) {
@@ -373,49 +408,53 @@ function Canvas2D() {
       ctx.shadowBlur = 8;
     }
     
+    // Вычисляем расстояние для определения кривизны
+    const dx = toPoint.x - fromPoint.x;
+    const dy = toPoint.y - fromPoint.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance === 0) return;
+    
+    // Рисуем плавную кривую (квадратичную)
+    const midX = (fromPoint.x + toPoint.x) / 2;
+    const midY = (fromPoint.y + toPoint.y) / 2 - Math.min(distance * 0.2, 30);
+    
+    ctx.beginPath();
+    ctx.moveTo(fromPoint.x, fromPoint.y);
+    ctx.quadraticCurveTo(midX, midY, toPoint.x, toPoint.y);
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = isSelected ? 4 : (isHovered ? 3 : 2);
+    ctx.lineWidth = lineWidth;
     ctx.stroke();
     
     // Сбрасываем тень
     ctx.shadowBlur = 0;
     
-    // Рисуем стрелку на конце связи
-    // Получаем направление кривой в конечной точке для правильной ориентации стрелки
-    const curveEndX = toX;
-    const curveEndY = toY;
-    const curveControlX = midX;
-    const curveControlY = midY;
-    
-    // Вычисляем направление стрелки на конце связи
-    // Для квадратичной кривой: P(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
-    // Производная в t=1: P'(1) = 2(P2 - P1) = 2(to - mid)
-    const arrowEndDx = 2 * (curveEndX - curveControlX);
-    const arrowEndDy = 2 * (curveEndY - curveControlY);
+    // Вычисляем направление стрелки на конце связи (для квадратичной кривой)
+    const arrowEndDx = 2 * (toPoint.x - midX);
+    const arrowEndDy = 2 * (toPoint.y - midY);
     const arrowEndAngle = Math.atan2(arrowEndDy, arrowEndDx);
     
     // Вычисляем направление стрелки на начале связи (для bidirectional)
-    // Производная в t=0: P'(0) = 2(P1 - P0) = 2(mid - from)
-    const arrowStartDx = 2 * (curveControlX - fromX);
-    const arrowStartDy = 2 * (curveControlY - fromY);
+    const arrowStartDx = 2 * (midX - fromPoint.x);
+    const arrowStartDy = 2 * (midY - fromPoint.y);
     const arrowStartAngle = Math.atan2(arrowStartDy, arrowStartDx) + Math.PI;
     
-    const arrowLength = 12 * zoom;
+    const arrowLength = Math.max(8, 12 * optZoom);
     
     // Рисуем стрелку на конце связи
     ctx.beginPath();
-    ctx.moveTo(curveEndX, curveEndY);
+    ctx.moveTo(toPoint.x, toPoint.y);
     ctx.lineTo(
-      curveEndX - arrowLength * Math.cos(arrowEndAngle - Math.PI / 6),
-      curveEndY - arrowLength * Math.sin(arrowEndAngle - Math.PI / 6)
+      toPoint.x - arrowLength * Math.cos(arrowEndAngle - Math.PI / 6),
+      toPoint.y - arrowLength * Math.sin(arrowEndAngle - Math.PI / 6)
     );
-    ctx.moveTo(curveEndX, curveEndY);
+    ctx.moveTo(toPoint.x, toPoint.y);
     ctx.lineTo(
-      curveEndX - arrowLength * Math.cos(arrowEndAngle + Math.PI / 6),
-      curveEndY - arrowLength * Math.sin(arrowEndAngle + Math.PI / 6)
+      toPoint.x - arrowLength * Math.cos(arrowEndAngle + Math.PI / 6),
+      toPoint.y - arrowLength * Math.sin(arrowEndAngle + Math.PI / 6)
     );
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = isSelected ? 4 : (isHovered ? 3 : 2);
+    ctx.lineWidth = lineWidth;
     
     // Эффект свечения для стрелки
     if (isSelected || isHovered) {
@@ -429,18 +468,18 @@ function Canvas2D() {
     // Рисуем стрелку на начале связи (если bidirectional)
     if (connection.bidirectional) {
       ctx.beginPath();
-      ctx.moveTo(fromX, fromY);
+      ctx.moveTo(fromPoint.x, fromPoint.y);
       ctx.lineTo(
-        fromX - arrowLength * Math.cos(arrowStartAngle - Math.PI / 6),
-        fromY - arrowLength * Math.sin(arrowStartAngle - Math.PI / 6)
+        fromPoint.x - arrowLength * Math.cos(arrowStartAngle - Math.PI / 6),
+        fromPoint.y - arrowLength * Math.sin(arrowStartAngle - Math.PI / 6)
       );
-      ctx.moveTo(fromX, fromY);
+      ctx.moveTo(fromPoint.x, fromPoint.y);
       ctx.lineTo(
-        fromX - arrowLength * Math.cos(arrowStartAngle + Math.PI / 6),
-        fromY - arrowLength * Math.sin(arrowStartAngle + Math.PI / 6)
+        fromPoint.x - arrowLength * Math.cos(arrowStartAngle + Math.PI / 6),
+        fromPoint.y - arrowLength * Math.sin(arrowStartAngle + Math.PI / 6)
       );
       ctx.strokeStyle = strokeColor;
-      ctx.lineWidth = isSelected ? 4 : (isHovered ? 3 : 2);
+      ctx.lineWidth = lineWidth;
       
       // Эффект свечения для стрелки
       if (isSelected || isHovered) {
@@ -452,19 +491,19 @@ function Canvas2D() {
       ctx.shadowBlur = 0;
     }
     
-    // Рисуем метку (label) если она есть
+    // Метка (label) если есть
     if (connection.label) {
-      const labelX = curveControlX;
-      const labelY = curveControlY - 20;
+      const labelX = midX;
+      const labelY = midY - 20;
       
       // Фон для текста
-      ctx.font = `${12 * zoom}px Arial`;
+      ctx.font = `${12 * optZoom}px Arial`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const textMetrics = ctx.measureText(connection.label);
       const textWidth = textMetrics.width;
-      const textHeight = 16 * zoom;
-      const padding = 4 * zoom;
+      const textHeight = 16 * optZoom;
+      const padding = 4 * optZoom;
       
       ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
       ctx.fillRect(
@@ -478,6 +517,24 @@ function Canvas2D() {
       ctx.fillStyle = strokeColor;
       ctx.fillText(connection.label, labelX, labelY);
     }
+  };
+  
+  // Отрисовка соединения между блоками (использует унифицированную функцию)
+  const drawConnection = (ctx, connection) => {
+    drawConnection2D(ctx, connection, elements, {
+      selectedConnectionId,
+      hoveredConnectionId,
+      deletingConnectionId,
+      draggingSceneId: null,
+      draggingElementId,
+      localPositions: {},
+      localPositions2D,
+      getSceneAbsolutePositionWithLayout: null,
+      getElementPosition2D,
+      getSceneSize: null,
+      worldToScreen,
+      zoom
+    });
   };
 
   // Основная отрисовка
@@ -535,7 +592,7 @@ function Canvas2D() {
         drawEntity(ctx, draggedEntity);
       }
     }
-  }, [elements, connections, selectedElementId, selectedConnectionId, pan, zoom, hoveredElementId, hoveredConnectionId, connectMode, connectingFrom, localPositions2D, draggingElementId, getElementPosition2D]);
+  }, [elements, connections, selectedElementId, selectedConnectionId, deletingConnectionId, pan, zoom, hoveredElementId, hoveredConnectionId, connectMode, connectingFrom, localPositions2D, draggingElementId, getElementPosition2D]);
 
   // Инициализация 2D позиций и распределение блоков при переключении в 2D
   const lastViewModeRef = useRef(null);
