@@ -2,6 +2,10 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import Profile from './pages/Profile';
+import Messages from './pages/Messages';
+import Calls from './pages/Calls';
+import Companies from './pages/Companies';
+import Tasks from './pages/Tasks';
 import VerifyEmail from './pages/VerifyEmail';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
@@ -23,6 +27,38 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="messages"
+            element={
+              <ProtectedRoute>
+                <Messages />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="calls"
+            element={
+              <ProtectedRoute>
+                <Calls />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="companies"
+            element={
+              <ProtectedRoute>
+                <Companies />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="tasks"
+            element={
+              <ProtectedRoute>
+                <Tasks />
+              </ProtectedRoute>
+            }
+          />
         </Route>
       </Routes>
     </AuthProvider>
@@ -30,4 +66,3 @@ function App() {
 }
 
 export default App;
-

@@ -2,7 +2,6 @@ import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from './Sidebar';
-import Footer from './Footer';
 import Preloader from './Preloader';
 import './Layout.css';
 
@@ -11,9 +10,6 @@ function Layout() {
   const { user, loading, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  
-  // Не показываем Footer на страницах входа и регистрации
-  const showFooter = !['/login', '/register'].includes(location.pathname);
   // Показываем Sidebar для всех авторизованных пользователей
   const showSidebar = user && !loading;
 
@@ -60,8 +56,6 @@ function Layout() {
       <main className="main-content">
         <Outlet />
       </main>
-      
-      {showFooter && <Footer />}
     </div>
   );
 }

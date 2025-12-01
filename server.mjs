@@ -11,7 +11,7 @@ import pool from './server/db.mjs';
 import authRouter from './server/routes/auth.mjs';
 import uploadRouter from './server/routes/upload.mjs';
 import statsRouter from './server/routes/stats.mjs';
-import { setupSceneHandlers } from './server/socket/scene.mjs';
+import { setupSocketHandlers } from './server/socket/index.mjs';
 
 // Загружаем .env всегда для локальной разработки
 // В продакшене переменные должны быть установлены через systemd и будут иметь приоритет
@@ -120,9 +120,11 @@ app.use(session({
 }));
 
 // API Routes (должны быть до статических файлов)
+// Google OAuth still uses HTTP routes (OAuth2 requires redirects)
 app.use('/api/auth', authRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/stats', statsRouter);
+// NOTE: /api/flowchart removed - all flowchart operations now via Socket.IO
 
 // Статические файлы из собранного React приложения
 const distPath = path.join(__dirname, 'dist');
@@ -143,13 +145,13 @@ const HOST = process.env.HOST || '0.0.0.0';
 // Инициализация БД и запуск сервера
 initDatabase()
   .then(() => {
-    // Настройка Socket.IO обработчиков с передачей sessionStore
-    setupSceneHandlers(io, sessionStore);
+    // Setup Socket.IO handlers for auth and flowchart
+    setupSocketHandlers(io, sessionStore);
     
     server.listen(PORT, HOST, () => {
       console.log(`✅ Aiternitas сервер запущен на порту ${PORT}`);
       console.log(`📱 Главная страница: http://localhost:${PORT}`);
-      console.log(`🔌 Socket.IO готов к подключениям`);
+      console.log(`🔌 Socket.IO готов к подключениям (auth + flowchart)`);
     });
   })
   .catch((error) => {

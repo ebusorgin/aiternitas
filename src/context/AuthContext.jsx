@@ -1,107 +1,161 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import socketService from '../services/socket';
 
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [socketConnected, setSocketConnected] = useState(false);
 
+  // Initialize socket connection and check auth
   useEffect(() => {
-    checkAuth();
+    const initSocket = async () => {
+      setLoading(true);
+      
+      try {
+        // Connect to socket
+        await socketService.connect();
+        setSocketConnected(true);
+        
+        // Check authentication status
+        const result = await socketService.checkAuth();
+        
+        if (result.authenticated && result.user) {
+          setUser(result.user);
+        } else {
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('Socket init error:', error);
+        setSocketConnected(false);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initSocket();
+
+    // Handle reconnection
+    const unsubReconnect = socketService.on('reconnected:authenticated', (user) => {
+      setUser(user);
+      setSocketConnected(true);
+    });
+
+    const unsubReconnectAnon = socketService.on('reconnected:anonymous', () => {
+      setUser(null);
+      setSocketConnected(true);
+    });
+
+    const unsubDisconnect = socketService.on('disconnected', () => {
+      setSocketConnected(false);
+    });
+
+    return () => {
+      unsubReconnect();
+      unsubReconnectAnon();
+      unsubDisconnect();
+    };
   }, []);
 
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
+    if (!socketService.isConnected) {
+      try {
+        await socketService.connect();
+        setSocketConnected(true);
+      } catch (error) {
+        console.error('Socket connect error:', error);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/me', {
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.user) {
-          setUser(data.user);
-        }
+      const result = await socketService.checkAuth();
+      
+      if (result.authenticated && result.user) {
+        setUser(result.user);
+      } else {
+        setUser(null);
       }
     } catch (error) {
-      console.error('Ошибка проверки авторизации:', error);
+      console.error('Auth check error:', error);
+      setUser(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
+    if (!socketService.isConnected) {
+      try {
+        await socketService.connect();
+        setSocketConnected(true);
+      } catch (error) {
+        return { success: false, error: 'Ошибка подключения к серверу' };
+      }
+    }
+
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        setUser(data.user);
+      const result = await socketService.login(email, password);
+      
+      if (result.success && result.user) {
+        setUser(result.user);
         return { success: true };
       } else {
         return { 
           success: false, 
-          error: data.error || 'Ошибка входа',
-          emailVerificationRequired: data.emailVerificationRequired || false,
-          verificationUrl: data.verificationUrl
+          error: result.error || 'Ошибка входа',
+          emailVerificationRequired: result.emailVerificationRequired || false
         };
       }
     } catch (error) {
-      return { success: false, error: 'Ошибка подключения к серверу' };
+      return { success: false, error: error.message || 'Ошибка подключения к серверу' };
     }
-  };
+  }, []);
 
-  const register = async (name, email, password) => {
+  const register = useCallback(async (name, email, password) => {
+    if (!socketService.isConnected) {
+      try {
+        await socketService.connect();
+        setSocketConnected(true);
+      } catch (error) {
+        return { success: false, error: 'Ошибка подключения к серверу' };
+      }
+    }
+
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ name, email, password }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        setUser(data.user);
+      const result = await socketService.register(name, email, password);
+      
+      if (result.success && result.user) {
+        setUser(result.user);
         return { 
           success: true,
-          emailVerificationRequired: data.emailVerificationRequired || false,
-          verificationUrl: data.verificationUrl
+          emailVerificationRequired: result.emailVerificationRequired || false
         };
       } else {
-        return { success: false, error: data.error || 'Ошибка регистрации' };
+        return { success: false, error: result.error || 'Ошибка регистрации' };
       }
     } catch (error) {
-      return { success: false, error: 'Ошибка подключения к серверу' };
+      return { success: false, error: error.message || 'Ошибка подключения к серверу' };
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
+      await socketService.logout();
       setUser(null);
     } catch (error) {
-      console.error('Ошибка выхода:', error);
+      console.error('Logout error:', error);
+      // Clear user anyway
+      setUser(null);
     }
-  };
+  }, []);
 
-  const loginWithGoogle = async () => {
+  // Google OAuth still uses HTTP redirect
+  const loginWithGoogle = useCallback(async () => {
     try {
-      // Получаем URL для авторизации Google
       const response = await fetch('/api/auth/google', {
         credentials: 'include',
       });
@@ -109,7 +163,6 @@ export function AuthProvider({ children }) {
       const data = await response.json();
 
       if (response.ok && data.authUrl) {
-        // Открываем окно авторизации Google
         window.location.href = data.authUrl;
         return { success: true };
       } else {
@@ -118,14 +171,43 @@ export function AuthProvider({ children }) {
     } catch (error) {
       return { success: false, error: 'Ошибка подключения к серверу' };
     }
-  };
+  }, []);
 
-  const updateUser = (updatedUser) => {
+  const updateUser = useCallback((updatedUser) => {
     setUser(updatedUser);
-  };
+  }, []);
+
+  const updateName = useCallback(async (name) => {
+    if (!socketService.isConnected) {
+      return { success: false, error: 'Нет соединения с сервером' };
+    }
+
+    try {
+      const result = await socketService.updateName(name);
+      
+      if (result.success && result.user) {
+        setUser(result.user);
+      }
+      
+      return result;
+    } catch (error) {
+      return { success: false, error: error.message || 'Ошибка обновления имени' };
+    }
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, checkAuth, loginWithGoogle }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      socketConnected,
+      login, 
+      register, 
+      logout, 
+      updateUser, 
+      updateName,
+      checkAuth, 
+      loginWithGoogle 
+    }}>
       {children}
     </AuthContext.Provider>
   );
@@ -138,4 +220,3 @@ export function useAuth() {
   }
   return context;
 }
-
