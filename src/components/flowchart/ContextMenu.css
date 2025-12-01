@@ -1,6 +1,6 @@
 .context-menu {
   position: fixed;
-  z-index: 10000;
+  z-index: 100000;
   min-width: 200px;
   max-width: 280px;
   background: linear-gradient(145deg, #1e293b, #0f172a);
@@ -286,4 +286,6 @@
 .context-submenu::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
 }
+
+
 

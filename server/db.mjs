@@ -322,6 +322,131 @@ export async function initDatabase() {
     `).catch(() => {});
 
     console.log('✅ Таблица flowcharts создана/проверена');
+
+    // Создаем таблицу для колонок канбана (настраиваемые для каждого департамента)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS task_columns (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        department_id VARCHAR(255) NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        color VARCHAR(50) DEFAULT '#6b7280',
+        is_default BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Индексы для task_columns
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_task_columns_user_id ON task_columns(user_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_task_columns_department_id ON task_columns(department_id)
+    `).catch(() => {});
+
+    // Триггер для автоматического обновления updated_at
+    await pool.query(`
+      DROP TRIGGER IF EXISTS update_task_columns_updated_at ON task_columns;
+      CREATE TRIGGER update_task_columns_updated_at
+          BEFORE UPDATE ON task_columns
+          FOR EACH ROW
+          EXECUTE FUNCTION update_updated_at_column();
+    `).catch(() => {});
+
+    console.log('✅ Таблица task_columns создана/проверена');
+
+    // Создаем таблицу задач
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        department_id VARCHAR(255) NOT NULL,
+        column_id INTEGER REFERENCES task_columns(id) ON DELETE SET NULL,
+        parent_task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+        title VARCHAR(500) NOT NULL,
+        description TEXT,
+        priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
+        assigned_to_worker_id VARCHAR(255),
+        assigned_to_department_id VARCHAR(255),
+        created_by_department_id VARCHAR(255),
+        status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'review', 'revision', 'completed', 'cancelled', 'escalated')),
+        recommendations TEXT,
+        due_date TIMESTAMP,
+        estimated_hours DECIMAL(10,2),
+        actual_hours DECIMAL(10,2),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Индексы для tasks
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_department_id ON tasks(department_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_column_id ON tasks(column_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON tasks(parent_task_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_assigned_worker ON tasks(assigned_to_worker_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_assigned_department ON tasks(assigned_to_department_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)
+    `).catch(() => {});
+
+    // Триггер для автоматического обновления updated_at
+    await pool.query(`
+      DROP TRIGGER IF EXISTS update_tasks_updated_at ON tasks;
+      CREATE TRIGGER update_tasks_updated_at
+          BEFORE UPDATE ON tasks
+          FOR EACH ROW
+          EXECUTE FUNCTION update_updated_at_column();
+    `).catch(() => {});
+
+    console.log('✅ Таблица tasks создана/проверена');
+
+    // Создаем таблицу комментариев/отчетов к задачам
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS task_comments (
+        id SERIAL PRIMARY KEY,
+        task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        author_id VARCHAR(255) NOT NULL,
+        author_type VARCHAR(50) NOT NULL CHECK (author_type IN ('worker', 'department', 'system')),
+        content TEXT NOT NULL,
+        comment_type VARCHAR(50) DEFAULT 'comment' CHECK (comment_type IN ('comment', 'report', 'status_change', 'assignment', 'escalation')),
+        attachments JSONB DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Индексы для task_comments
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_task_comments_task_id ON task_comments(task_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_task_comments_author_id ON task_comments(author_id)
+    `).catch(() => {});
+
+    console.log('✅ Таблица task_comments создана/проверена');
+
     return true;
   } catch (error) {
     console.error('❌ Ошибка инициализации БД:', error);

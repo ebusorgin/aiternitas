@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { useFlowchartStore } from '../store/flowchartStore';
 import { useAuth } from '../context/AuthContext';
 import FlowchartCanvas from '../components/flowchart/FlowchartCanvas';
+import FlowchartCanvas3D from '../components/flowchart/FlowchartCanvas3D';
 import PropertiesPanel from '../components/flowchart/PropertiesPanel';
 import GenerateCompanyModal from '../components/flowchart/GenerateCompanyModal';
+import ViewToggle from '../components/flowchart/ViewToggle';
 import './Companies.css';
 
 function Companies() {
@@ -15,6 +17,8 @@ function Companies() {
   const clearAll = useFlowchartStore((state) => state.clearAll);
   const currentViewId = useFlowchartStore((state) => state.currentViewId);
   const navigateToRoot = useFlowchartStore((state) => state.navigateToRoot);
+  const viewMode = useFlowchartStore((state) => state.viewMode);
+  const setViewMode = useFlowchartStore((state) => state.setViewMode);
   
   // Состояние сохранения
   const isSaving = useFlowchartStore((state) => state.isSaving);
@@ -47,14 +51,18 @@ function Companies() {
           <p className="page-subtitle">Интерактивный редактор блок-схем</p>
         </div>
         
-        <div className="header-stats">
-          <div className="stat-item">
-            <span className="stat-value">{elements.length}</span>
-            <span className="stat-label">Элементов</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-value">{totalConnections}</span>
-            <span className="stat-label">Связей</span>
+        <div className="header-center">
+          <ViewToggle currentView={viewMode} onToggle={setViewMode} />
+          
+          <div className="header-stats">
+            <div className="stat-item">
+              <span className="stat-value">{elements.length}</span>
+              <span className="stat-label">Элементов</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-value">{totalConnections}</span>
+              <span className="stat-label">Связей</span>
+            </div>
           </div>
         </div>
         
@@ -110,7 +118,11 @@ function Companies() {
 
       <div className="companies-content">
         <div className="flowchart-area">
-          <FlowchartCanvas />
+          {viewMode === '2d' ? (
+            <FlowchartCanvas />
+          ) : (
+            <FlowchartCanvas3D />
+          )}
         </div>
         
         <aside className="properties-sidebar">

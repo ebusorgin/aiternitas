@@ -3,6 +3,7 @@
 
 import { setupAuthHandlers, activeSessions, userRooms } from './auth.mjs';
 import { setupFlowchartHandlers } from './flowchart.mjs';
+import { setupTaskHandlers } from './tasks.mjs';
 import pool from '../db.mjs';
 
 export function setupSocketHandlers(io, sessionStore) {
@@ -95,6 +96,7 @@ export function setupSocketHandlers(io, sessionStore) {
     // Setup handlers
     setupAuthHandlers(io, socket, sessionStore);
     setupFlowchartHandlers(io, socket);
+    setupTaskHandlers(io, socket);
 
     // Ping/pong for connection health
     socket.on('ping', (callback) => {
@@ -158,4 +160,6 @@ function getSessionFromStore(sessionStore, sessionId) {
 }
 
 export default { setupSocketHandlers };
+
+
 

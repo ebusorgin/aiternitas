@@ -141,6 +141,7 @@ export const useFlowchartStore = create((set, get) => ({
   isConnecting: false,
   connectingFrom: null,
   dropTargetId: null,
+  viewMode: '2d', // '2d' or '3d'
 
   // Навигация по иерархии
   currentViewId: null, // ID элемента, внутрь которого мы "провалились" (null = корень)
@@ -380,6 +381,7 @@ export const useFlowchartStore = create((set, get) => ({
       name: elementType.name,
       description: '',
       position: position || { x: 0, y: 0 },
+      position3d: null, // 3D position will be set when moved in 3D view
       color: elementType.color,
       parentId: parentId,
       depth: 0,
@@ -452,6 +454,19 @@ export const useFlowchartStore = create((set, get) => ({
 
     // Send to server
     socketService.updateElement(id, updates);
+    get().triggerAutoSave();
+  },
+
+  // Update element 3D position
+  updateElement3DPosition: (id, position3d) => {
+    set((state) => ({
+      elements: state.elements.map((el) =>
+        el.id === id ? { ...el, position3d } : el
+      )
+    }));
+
+    // Send to server
+    socketService.updateElement(id, { position3d });
     get().triggerAutoSave();
   },
 
@@ -948,6 +963,11 @@ export const useFlowchartStore = create((set, get) => ({
 
   clearSelection: () => {
     set({ selectedElementId: null, selectedConnectionId: null });
+  },
+
+  // Switch between 2D and 3D view
+  setViewMode: (mode) => {
+    set({ viewMode: mode });
   },
 
   clearAll: () => {

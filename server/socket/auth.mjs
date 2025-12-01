@@ -432,3 +432,5 @@ async function tryRestoreHttpSession(socket, sessionStore) {
 // Export helpers for other handlers
 export { activeSessions, userRooms };
 
+
+

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useFlowchartStore, ELEMENT_TYPES, CONNECTION_DIRECTIONS } from '../../store/flowchartStore';
+import { useFlowchartStore, ELEMENT_TYPES, CONNECTION_TYPES, CONNECTION_DIRECTIONS } from '../../store/flowchartStore';
 import './ContextMenu.css';
 
 function ContextMenu({ 
@@ -370,6 +370,29 @@ function ContextMenu({
               </span>
             </div>
           </div>
+
+          <div className="context-menu-divider" />
+
+          {/* Тип связи (определяет цвет) */}
+          <div className="context-menu-section-title">Тип связи</div>
+          {Object.entries(CONNECTION_TYPES).map(([typeId, typeData]) => (
+            <button
+              key={typeId}
+              className={`context-menu-item ${target.type === typeId ? 'active' : ''}`}
+              onClick={() => {
+                updateConnection(target.id, { type: typeId });
+              }}
+              style={{
+                borderLeft: `3px solid ${typeData.color}`
+              }}
+            >
+              <span className="context-menu-icon">{typeData.icon}</span>
+              <span className="context-menu-label">{typeData.name}</span>
+              {target.type === typeId && (
+                <span className="check-mark">✓</span>
+              )}
+            </button>
+          ))}
 
           <div className="context-menu-divider" />
 

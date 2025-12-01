@@ -392,8 +392,8 @@ class SocketService {
   // Generate company using AI (longer timeout for multi-step GPT)
   async generateCompany(name, description) {
     try {
-      // 120 second timeout for 5-step AI generation
-      return await this.emit('flowchart:generate-company', { name, description }, 120000);
+      // 5 minute timeout for 7-step AI generation
+      return await this.emit('flowchart:generate-company', { name, description }, 300000);
     } catch (error) {
       console.error('Generate company error:', error);
       return { success: false, error: error.message };

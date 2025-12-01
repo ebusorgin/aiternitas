@@ -28,6 +28,12 @@
   margin: 0;
 }
 
+.header-center {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
 .header-stats {
   display: flex;
   gap: 20px;

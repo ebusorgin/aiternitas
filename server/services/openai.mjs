@@ -860,4 +860,144 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
   return { elements, connections };
 }
 
-export default { generateCompanyStructure, convertToFlowchartElements };
+/**
+ * Decompose a task into subtasks using GPT
+ * Called when a task is assigned to a child department
+ */
+export async function decomposeTask(task, departmentContext = {}) {
+  console.log(`🔄 Decomposing task: "${task.title}"`);
+  
+  const prompt = `Декомпозируй задачу на подзадачи для назначенного департамента.
+
+ЗАДАЧА:
+- Название: ${task.title}
+- Описание: ${task.description || 'Не указано'}
+- Приоритет: ${task.priority || 'medium'}
+- Оценка времени: ${task.estimated_hours ? task.estimated_hours + ' часов' : 'Не указано'}
+- Дедлайн: ${task.due_date || 'Не указан'}
+
+КОНТЕКСТ ДЕПАРТАМЕНТА:
+${departmentContext.departmentName ? `- Название: ${departmentContext.departmentName}` : ''}
+${departmentContext.departmentFunctions ? `- Функции: ${departmentContext.departmentFunctions.join(', ')}` : ''}
+${departmentContext.availableWorkers ? `- Доступные работники: ${departmentContext.availableWorkers.map(w => w.name + ' (' + w.position + ')').join(', ')}` : ''}
+${departmentContext.childDepartments ? `- Дочерние департаменты: ${departmentContext.childDepartments.map(d => d.name).join(', ')}` : ''}
+
+ПРАВИЛА ДЕКОМПОЗИЦИИ:
+1. Разбей задачу на 3-7 логических подзадач
+2. Каждая подзадача должна быть конкретной и измеримой
+3. Подзадачи должны покрывать всю исходную задачу
+4. Укажи примерное время выполнения для каждой подзадачи
+5. Определи приоритет каждой подзадачи
+6. Если задача простая - верни пустой массив подзадач
+
+Ответь JSON:
+{
+  "analysis": {
+    "complexity": "simple/medium/complex",
+    "decompositionNeeded": true/false,
+    "reasoning": "почему нужна/не нужна декомпозиция"
+  },
+  "subtasks": [
+    {
+      "title": "Название подзадачи",
+      "description": "Описание того, что нужно сделать",
+      "priority": "low/medium/high/critical",
+      "estimatedHours": число,
+      "suggestedAssigneeType": "worker/department",
+      "suggestedAssigneeRole": "какая роль/компетенция нужна"
+    }
+  ],
+  "dependencies": [
+    {
+      "from": 0,
+      "to": 1,
+      "type": "blocks/requires"
+    }
+  ],
+  "totalEstimatedHours": число,
+  "recommendations": "общие рекомендации по выполнению"
+}`;
+
+  try {
+    const result = await callGPT(prompt, 3000);
+    
+    // Don't return subtasks if decomposition is not needed
+    if (!result.analysis?.decompositionNeeded) {
+      return { analysis: result.analysis, subtasks: [], recommendations: result.recommendations };
+    }
+    
+    console.log(`✅ Task decomposed into ${result.subtasks?.length || 0} subtasks`);
+    return result;
+    
+  } catch (error) {
+    console.error('❌ Task decomposition error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Suggest the best assignee for a task using GPT
+ */
+export async function suggestAssignee(task, availableWorkers = [], childDepartments = []) {
+  console.log(`🎯 Suggesting assignee for task: "${task.title}"`);
+  
+  if (availableWorkers.length === 0 && childDepartments.length === 0) {
+    return { suggestion: null, message: 'Нет доступных исполнителей' };
+  }
+
+  const prompt = `Рекомендуй лучшего исполнителя для задачи.
+
+ЗАДАЧА:
+- Название: ${task.title}
+- Описание: ${task.description || 'Не указано'}
+- Приоритет: ${task.priority || 'medium'}
+- Оценка времени: ${task.estimated_hours ? task.estimated_hours + ' часов' : 'Не указано'}
+
+ДОСТУПНЫЕ РАБОТНИКИ:
+${availableWorkers.length > 0 ? availableWorkers.map((w, i) => `${i + 1}. [${w.id}] ${w.name}
+   - Должность: ${w.position || 'Не указана'}
+   - Компетенции: ${w.competencies?.join(', ') || 'Не указаны'}
+   - Текущая загрузка: ${w.currentTasksCount || 0} задач`).join('\n') : 'Нет доступных работников'}
+
+ДОЧЕРНИЕ ДЕПАРТАМЕНТЫ:
+${childDepartments.length > 0 ? childDepartments.map((d, i) => `${i + 1}. [${d.id}] ${d.name}
+   - Функции: ${d.functions?.slice(0, 3).join(', ') || 'Не указаны'}`).join('\n') : 'Нет дочерних департаментов'}
+
+Выбери наиболее подходящего исполнителя на основе:
+1. Соответствия компетенций задаче
+2. Текущей загрузки (предпочтение менее загруженным)
+3. Уровня сложности задачи vs опыта исполнителя
+
+Ответь JSON:
+{
+  "suggestion": {
+    "type": "worker/department",
+    "id": "id исполнителя",
+    "name": "имя исполнителя",
+    "confidence": 0.0-1.0,
+    "reasoning": "почему этот исполнитель лучше всего подходит"
+  },
+  "alternatives": [
+    {
+      "type": "worker/department",
+      "id": "id",
+      "name": "имя",
+      "confidence": 0.0-1.0,
+      "reasoning": "краткое пояснение"
+    }
+  ],
+  "recommendations": "дополнительные рекомендации"
+}`;
+
+  try {
+    const result = await callGPT(prompt, 2000);
+    console.log(`✅ Suggested assignee: ${result.suggestion?.name || 'none'}`);
+    return result;
+    
+  } catch (error) {
+    console.error('❌ Assignee suggestion error:', error);
+    throw error;
+  }
+}
+
+export default { generateCompanyStructure, convertToFlowchartElements, decomposeTask, suggestAssignee };

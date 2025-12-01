@@ -5,6 +5,7 @@ import Profile from './pages/Profile';
 import Messages from './pages/Messages';
 import Calls from './pages/Calls';
 import Companies from './pages/Companies';
+import Tasks from './pages/Tasks';
 import VerifyEmail from './pages/VerifyEmail';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
@@ -47,6 +48,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Companies />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="tasks"
+            element={
+              <ProtectedRoute>
+                <Tasks />
               </ProtectedRoute>
             }
           />
