@@ -6,8 +6,11 @@ import Messages from './pages/Messages';
 import Calls from './pages/Calls';
 import Companies from './pages/Companies';
 import Tasks from './pages/Tasks';
+import Settings from './pages/Settings';
 import VerifyEmail from './pages/VerifyEmail';
+import Admin from './pages/Admin';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/AdminRoute';
 import { AuthProvider } from './context/AuthContext';
 
 function App() {
@@ -57,6 +60,22 @@ function App() {
               <ProtectedRoute>
                 <Tasks />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="admin"
+            element={
+              <AdminRoute>
+                <Admin />
+              </AdminRoute>
             }
           />
         </Route>

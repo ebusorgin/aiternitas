@@ -37,6 +37,7 @@
     "react-router-dom": "^7.9.6",
     "socket.io": "^4.7.5",
     "socket.io-client": "^4.7.5",
+    "socks-proxy-agent": "^8.0.4",
     "three": "^0.169.0",
     "zustand": "^4.5.5"
   },

@@ -12,15 +12,15 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const initSocket = async () => {
       setLoading(true);
-      
+
       try {
         // Connect to socket
         await socketService.connect();
         setSocketConnected(true);
-        
+
         // Check authentication status
         const result = await socketService.checkAuth();
-        
+
         if (result.authenticated && result.user) {
           setUser(result.user);
         } else {
@@ -73,8 +73,17 @@ export function AuthProvider({ children }) {
     setLoading(true);
     try {
       const result = await socketService.checkAuth();
-      
+
       if (result.authenticated && result.user) {
+        // Проверяем админские права через API
+        try {
+          const adminResponse = await fetch('/api/admin/check');
+          if (adminResponse.ok) {
+            result.user.isAdmin = true;
+          }
+        } catch (e) {
+          console.error('Admin check error:', e);
+        }
         setUser(result.user);
       } else {
         setUser(null);
@@ -99,13 +108,22 @@ export function AuthProvider({ children }) {
 
     try {
       const result = await socketService.login(email, password);
-      
+
       if (result.success && result.user) {
+        // Проверяем админские права
+        try {
+          const adminResponse = await fetch('/api/admin/check');
+          if (adminResponse.ok) {
+            result.user.isAdmin = true;
+          }
+        } catch (e) {
+          console.error('Admin check error:', e);
+        }
         setUser(result.user);
         return { success: true };
       } else {
-        return { 
-          success: false, 
+        return {
+          success: false,
           error: result.error || 'Ошибка входа',
           emailVerificationRequired: result.emailVerificationRequired || false
         };
@@ -127,10 +145,10 @@ export function AuthProvider({ children }) {
 
     try {
       const result = await socketService.register(name, email, password);
-      
+
       if (result.success && result.user) {
         setUser(result.user);
-        return { 
+        return {
           success: true,
           emailVerificationRequired: result.emailVerificationRequired || false
         };
@@ -184,11 +202,11 @@ export function AuthProvider({ children }) {
 
     try {
       const result = await socketService.updateName(name);
-      
+
       if (result.success && result.user) {
         setUser(result.user);
       }
-      
+
       return result;
     } catch (error) {
       return { success: false, error: error.message || 'Ошибка обновления имени' };
@@ -196,17 +214,17 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      loading, 
+    <AuthContext.Provider value={{
+      user,
+      loading,
       socketConnected,
-      login, 
-      register, 
-      logout, 
-      updateUser, 
+      login,
+      register,
+      logout,
+      updateUser,
       updateName,
-      checkAuth, 
-      loginWithGoogle 
+      checkAuth,
+      loginWithGoogle
     }}>
       {children}
     </AuthContext.Provider>

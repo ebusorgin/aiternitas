@@ -11,7 +11,10 @@ import pool from './server/db.mjs';
 import authRouter from './server/routes/auth.mjs';
 import uploadRouter from './server/routes/upload.mjs';
 import statsRouter from './server/routes/stats.mjs';
+import settingsRouter from './server/routes/settings.mjs';
+import adminRouter from './server/routes/admin.mjs';
 import { setupSocketHandlers } from './server/socket/index.mjs';
+import { initTorSettings } from './server/services/tor.mjs';
 
 // Загружаем .env всегда для локальной разработки
 // В продакшене переменные должны быть установлены через systemd и будут иметь приоритет
@@ -56,19 +59,19 @@ app.use((req, res, next) => {
     'http://localhost:3001',
     'http://localhost:5173'
   ];
-  
+
   if (origin && allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
-  
+
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  
+
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
-  
+
   next();
 });
 
@@ -81,9 +84,9 @@ const PgSession = connectPgSimple(session);
 
 // Сессии с постоянным хранилищем в PostgreSQL
 // Определяем, работаем ли мы в production (HTTPS)
-const isProduction = process.env.NODE_ENV === 'production' || 
-                     process.env.BASE_URL?.includes('https://') ||
-                     process.env.BASE_URL?.includes('aiternitas.ru');
+const isProduction = process.env.NODE_ENV === 'production' ||
+  process.env.BASE_URL?.includes('https://') ||
+  process.env.BASE_URL?.includes('aiternitas.ru');
 
 // Настройка cookies для сессий
 const cookieConfig = {
@@ -124,6 +127,8 @@ app.use(session({
 app.use('/api/auth', authRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/stats', statsRouter);
+app.use('/api/settings', settingsRouter);
+app.use('/api/admin', adminRouter);
 // NOTE: /api/flowchart removed - all flowchart operations now via Socket.IO
 
 // Статические файлы из собранного React приложения
@@ -144,10 +149,12 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 // Инициализация БД и запуск сервера
 initDatabase()
-  .then(() => {
+  .then(async () => {
+    // Initialize TOR settings from database
+    await initTorSettings();
     // Setup Socket.IO handlers for auth and flowchart
     setupSocketHandlers(io, sessionStore);
-    
+
     server.listen(PORT, HOST, () => {
       console.log(`✅ Aiternitas сервер запущен на порту ${PORT}`);
       console.log(`📱 Главная страница: http://localhost:${PORT}`);

@@ -1,17 +1,43 @@
 // OpenAI service for generating company structures
 // 7-step generation with hierarchy, connections, and validation
 import OpenAI from 'openai';
+import { getHttpAgent, isTorEnabled, getTorConfig } from './tor.mjs';
 
+// Create OpenAI client with optional TOR proxy support
+function createOpenAIClient() {
 const apiKey = process.env.OPENAI_API_KEY;
+  
 if (!apiKey) {
   console.warn('⚠️ OPENAI_API_KEY not found in environment variables');
 } else {
   console.log('✅ OpenAI API key loaded (length:', apiKey.length, ')');
 }
 
-const openai = new OpenAI({
-  apiKey: apiKey || 'missing-key'
-});
+  const options = {
+    apiKey: apiKey || 'missing-key',
+  };
+
+  // Add TOR proxy agent if enabled
+  if (isTorEnabled()) {
+    const agent = getHttpAgent();
+    if (agent) {
+      options.httpAgent = agent;
+      const config = getTorConfig();
+      console.log(`🧅 OpenAI client using TOR proxy (${config.host}:${config.port}, exit: ${config.exitCountry})`);
+    }
+  }
+
+  return new OpenAI(options);
+}
+
+// Initialize OpenAI client (will be recreated when settings change)
+let openai = createOpenAIClient();
+
+// Function to refresh OpenAI client (called when TOR settings change)
+export function refreshOpenAIClient() {
+  openai = createOpenAIClient();
+  console.log('🔄 OpenAI client refreshed');
+}
 
 // Connection types for organizational structure
 const CONNECTION_TYPES = {

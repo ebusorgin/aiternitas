@@ -447,6 +447,50 @@ export async function initDatabase() {
 
     console.log('✅ Таблица task_comments создана/проверена');
 
+    // Создаем таблицу для настроек приложения
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key VARCHAR(255) PRIMARY KEY,
+        value TEXT,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Триггер для автоматического обновления updated_at
+    await pool.query(`
+      DROP TRIGGER IF EXISTS update_app_settings_updated_at ON app_settings;
+      CREATE TRIGGER update_app_settings_updated_at
+          BEFORE UPDATE ON app_settings
+          FOR EACH ROW
+          EXECUTE FUNCTION update_updated_at_column();
+    `).catch(() => {});
+
+    // Добавляем дефолтные настройки если их нет
+    await pool.query(`
+      INSERT INTO app_settings (key, value, description)
+      VALUES 
+        ('tor_enabled', 'false', 'Enable TOR proxy for OpenAI API'),
+        ('tor_exit_country', 'US', 'TOR exit node country code'),
+        ('tor_host', '127.0.0.1', 'TOR SOCKS5 proxy host'),
+        ('tor_port', '9050', 'TOR SOCKS5 proxy port')
+      ON CONFLICT (key) DO NOTHING
+    `).catch(() => {});
+
+    console.log('✅ Таблица app_settings создана/проверена');
+
+    // Создаем таблицу прав доступа пользователей (админка)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_acess_rights (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        role VARCHAR(50) NOT NULL DEFAULT 'admin',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    console.log('✅ Таблица user_acess_rights создана/проверена');
+
     return true;
   } catch (error) {
     console.error('❌ Ошибка инициализации БД:', error);
