@@ -12,9 +12,25 @@ export default defineConfig({
   build: {
     outDir: '../dist',
     emptyOutDir: true,
+    // Optimize for low-memory servers
+    minify: 'esbuild',
+    sourcemap: false,
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       input: './src/index.html',
+      output: {
+        // Split vendor chunks to reduce memory usage during build
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-zustand': ['zustand'],
+          'vendor-socket': ['socket.io-client'],
+        },
+      },
+      // Reduce memory usage
+      maxParallelFileOps: 2,
     },
+    // Use fewer workers
+    reportCompressedSize: false,
   },
   server: {
     port: 3000,
@@ -26,5 +42,9 @@ export default defineConfig({
     },
   },
   publicDir: '../public',
+  // Optimize deps
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom', 'zustand', 'socket.io-client'],
+  },
 });
 
