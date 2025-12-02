@@ -89,11 +89,11 @@ jobs:
           # SSH опции для всех команд
           SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3"
           
-          # Создаем директорию на сервере если не существует (с повторными попытками)
-          echo "Creating directory on server..."
+          # Создаем директории на сервере
+          echo "Creating directories on server..."
           for i in {1..3}; do
-            if ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} "mkdir -p $REPO_DIR"; then
-              echo "✅ Directory created on attempt $i"
+            if ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} "mkdir -p $REPO_DIR/dist $REPO_DIR/uploads/avatars $REPO_DIR/public/images"; then
+              echo "✅ Directories created on attempt $i"
               break
             else
               echo "⚠️ Attempt $i failed, retrying..."
@@ -101,69 +101,51 @@ jobs:
             fi
           done
           
-          # Копируем все файлы на сервер (кроме node_modules и .git)
-          echo "Copying files to server..."
-          if command -v rsync &> /dev/null; then
-            for i in {1..3}; do
-              if rsync -avz --delete \
-                -e "ssh $SSH_OPTS" \
-                --exclude='.git' \
-                --exclude='node_modules' \
-                --exclude='.github' \
-                --exclude='dist' \
-                --exclude='uploads' \
-                --exclude='*.log' \
-                --exclude='.env' \
-                --exclude='.env.local' \
-                ./ ${SSH_USER}@${SSH_HOST}:${REPO_DIR}/; then
-                echo "✅ Files copied successfully on attempt $i"
-                break
-              else
-                echo "⚠️ Rsync attempt $i failed, retrying..."
-                sleep 3
-              fi
-            done
-          else
-            # Альтернативный метод с tar, если rsync недоступен
-            echo "Using tar method (rsync not available)..."
-            for i in {1..3}; do
-              if tar --exclude='.git' \
-                  --exclude='node_modules' \
-                  --exclude='.github' \
-                  --exclude='dist' \
-                  --exclude='uploads' \
-                  --exclude='*.log' \
-                  --exclude='.env' \
-                  --exclude='.env.local' \
-                  -czf - . | ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} "cd $REPO_DIR && tar -xzf -"; then
-                echo "✅ Files copied successfully on attempt $i"
-                break
-              else
-                echo "⚠️ Tar attempt $i failed, retrying..."
-                sleep 3
-              fi
-            done
-          fi
+          # Копируем серверные файлы (без dist, uploads, node_modules)
+          echo "Copying server files..."
+          for i in {1..3}; do
+            if rsync -avz --delete \
+              -e "ssh $SSH_OPTS" \
+              --exclude='.git' \
+              --exclude='node_modules' \
+              --exclude='.github' \
+              --exclude='dist' \
+              --exclude='uploads' \
+              --exclude='*.log' \
+              --exclude='.env' \
+              --exclude='.env.local' \
+              --exclude='src' \
+              ./ ${SSH_USER}@${SSH_HOST}:${REPO_DIR}/; then
+              echo "✅ Server files copied on attempt $i"
+              break
+            else
+              echo "⚠️ Rsync attempt $i failed, retrying..."
+              sleep 3
+            fi
+          done
           
-          # Убеждаемся, что папка uploads существует на сервере
-          ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} "mkdir -p $REPO_DIR/uploads/avatars"
+          # Копируем собранный dist на сервер (сборка уже выполнена на GitHub runner)
+          echo "Copying pre-built dist folder..."
+          for i in {1..3}; do
+            if rsync -avz --delete \
+              -e "ssh $SSH_OPTS" \
+              ./dist/ ${SSH_USER}@${SSH_HOST}:${REPO_DIR}/dist/; then
+              echo "✅ Dist folder copied on attempt $i"
+              break
+            else
+              echo "⚠️ Dist copy attempt $i failed, retrying..."
+              sleep 3
+            fi
+          done
           
-          # Выполняем команды на сервере
+          # Устанавливаем только production зависимости и перезапускаем сервис
           ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} <<EOSSH
             set -e
             cd $REPO_DIR
             
             echo ""
-            echo "=== Installing dependencies on server ==="
-            npm ci --production=false || npm install
-            
-            echo ""
-            echo "=== Building application on server ==="
-            npm run build || {
-              echo "❌ Build failed"
-              exit 1
-            }
-            echo "✅ Build completed"
+            echo "=== Installing production dependencies ==="
+            npm install --omit=dev
             
             echo ""
             echo "=== Restarting service ==="
