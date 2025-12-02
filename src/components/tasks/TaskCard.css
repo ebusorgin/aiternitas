@@ -1,0 +1,200 @@
+.task-card {
+  background: rgba(30, 30, 40, 0.9);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+}
+
+.task-card:hover {
+  background: rgba(40, 40, 55, 0.95);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.task-card--dragging {
+  opacity: 0.5;
+  transform: rotate(3deg);
+}
+
+.task-card--overdue {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.task-card--overdue:hover {
+  border-color: rgba(239, 68, 68, 0.6);
+}
+
+/* Header */
+.task-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.task-card__priority {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.task-card__id {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.task-card__overdue-badge {
+  margin-left: auto;
+  background: #ef4444;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Title */
+.task-card__title {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0 0 6px 0;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+/* Description */
+.task-card__description {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0 0 10px 0;
+  line-height: 1.4;
+}
+
+/* Subtasks */
+.task-card__subtasks {
+  margin-bottom: 10px;
+}
+
+.task-card__subtask-progress {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.task-card__subtask-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #4ade80);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.task-card__subtask-count {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Footer */
+.task-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.task-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.task-card__due,
+.task-card__estimate {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.task-card__due--overdue {
+  color: #ef4444;
+  font-weight: 500;
+}
+
+.task-card__assignee {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-card__worker,
+.task-card__department {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+/* Escalated badge */
+.task-card__escalated {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: linear-gradient(135deg, #ec4899, #f472b6);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(236, 72, 153, 0.4);
+}
+
+/* Compact variant */
+.task-card--compact {
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-card--compact .task-card__priority-indicator {
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.task-card--compact .task-card__title {
+  font-size: 13px;
+  margin: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-card--compact .task-card__subtask-badge {
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+
+

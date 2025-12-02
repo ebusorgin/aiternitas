@@ -1,16 +1,14 @@
-name: Deploy Aiternitas to Production
+name: Deploy Aiternitas Main to Production
 
 on:
   push:
     branches:
-      - master
-      - main
       - production
   workflow_dispatch:
 
 jobs:
   deploy:
-    name: Deploy Aiternitas to aiternitas.ru
+    name: Deploy Aiternitas Main to aiternitas.ru
     runs-on: ubuntu-latest
     env:
       SSH_HOST: ${{ secrets.SERVER_HOST || '82.146.44.126' }}
@@ -20,6 +18,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
 
       - name: Check required secrets
         shell: bash
@@ -38,43 +42,120 @@ jobs:
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          # Добавляем SSH опции для стабильности соединения
+          cat >> ~/.ssh/config << EOF
+          Host ${{ env.SSH_HOST }}
+            StrictHostKeyChecking no
+            UserKnownHostsFile ~/.ssh/known_hosts
+            ServerAliveInterval 60
+            ServerAliveCountMax 3
+            ConnectTimeout 30
+            TCPKeepAlive yes
+          EOF
           ssh-keyscan -H ${{ env.SSH_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          
+          # Тестируем подключение с повторными попытками
+          echo "Testing SSH connection..."
+          for i in {1..3}; do
+            if ssh -i ~/.ssh/deploy_key -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${{ env.SSH_USER }}@${{ env.SSH_HOST }} "echo 'SSH connection successful'"; then
+              echo "✅ SSH connection established on attempt $i"
+              break
+            else
+              echo "⚠️ SSH connection attempt $i failed, retrying..."
+              sleep 5
+            fi
+          done
 
-      - name: Deploy Aiternitas
+      - name: Install dependencies
+        if: steps.secrets_check.outputs.skip_deploy == 'false'
+        run: |
+          npm ci
+
+      - name: Build application
+        if: steps.secrets_check.outputs.skip_deploy == 'false'
+        run: |
+          npm run build
+
+      - name: Deploy to server
         if: steps.secrets_check.outputs.skip_deploy == 'false'
         run: |
           set -e
           SSH_HOST="${{ env.SSH_HOST }}"
           SSH_USER="${{ env.SSH_USER }}"
+          REPO_DIR="/opt/aiternitas-main"
           
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
+          echo "=== Deploying to server ==="
+          
+          # SSH опции для всех команд
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3"
+          
+          # Создаем директории на сервере
+          echo "Creating directories on server..."
+          for i in {1..3}; do
+            if ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} "mkdir -p $REPO_DIR/dist $REPO_DIR/uploads/avatars $REPO_DIR/public/images"; then
+              echo "✅ Directories created on attempt $i"
+              break
+            else
+              echo "⚠️ Attempt $i failed, retrying..."
+              sleep 3
+            fi
+          done
+          
+          # Копируем серверные файлы (без dist, uploads, node_modules)
+          echo "Copying server files..."
+          for i in {1..3}; do
+            if rsync -avz --delete \
+              -e "ssh $SSH_OPTS" \
+              --exclude='.git' \
+              --exclude='node_modules' \
+              --exclude='.github' \
+              --exclude='dist' \
+              --exclude='uploads' \
+              --exclude='*.log' \
+              --exclude='.env' \
+              --exclude='.env.local' \
+              --exclude='src' \
+              ./ ${SSH_USER}@${SSH_HOST}:${REPO_DIR}/; then
+              echo "✅ Server files copied on attempt $i"
+              break
+            else
+              echo "⚠️ Rsync attempt $i failed, retrying..."
+              sleep 3
+            fi
+          done
+          
+          # Копируем собранный dist на сервер (сборка уже выполнена на GitHub runner)
+          echo "Copying pre-built dist folder..."
+          for i in {1..3}; do
+            if rsync -avz --delete \
+              -e "ssh $SSH_OPTS" \
+              ./dist/ ${SSH_USER}@${SSH_HOST}:${REPO_DIR}/dist/; then
+              echo "✅ Dist folder copied on attempt $i"
+              break
+            else
+              echo "⚠️ Dist copy attempt $i failed, retrying..."
+              sleep 3
+            fi
+          done
+          
+          # Устанавливаем только production зависимости и перезапускаем сервис
+          ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} <<EOSSH
             set -e
+            cd $REPO_DIR
             
-            REPO_DIR="/opt/aiternitas"
+            echo ""
+            echo "=== Installing production dependencies ==="
+            npm install --omit=dev
             
-            # Создаем директорию если не существует
-            if [ ! -d "$REPO_DIR" ]; then
-              mkdir -p "$REPO_DIR"
-              cd "$REPO_DIR"
-              git init
-              git remote add origin git@github.com:ebusorgin/aiternitas.git || true
+            echo ""
+            echo "=== Restarting service ==="
+            if systemctl restart aiternitas-main.service; then
+              echo "✅ Service restarted"
+              sleep 2
+              systemctl status aiternitas-main.service --no-pager | head -10 || true
+            else
+              echo "⚠️  Service restart failed or service not found"
             fi
-            
-            cd "$REPO_DIR"
-            git config --global --add safe.directory "$REPO_DIR" || true
-            git fetch origin
-            git checkout production || git checkout -b production
-            git reset --hard origin/production
-            
-            # Установка зависимостей
-            if [ -f "package.json" ]; then
-              npm install --production
-            fi
-            
-            # Перезапуск сервиса
-            systemctl restart aiternitas-main.service
-            sleep 2
-            systemctl status aiternitas-main.service --no-pager | head -10
             echo ""
           EOSSH
 
@@ -85,25 +166,29 @@ jobs:
           SSH_HOST="${{ env.SSH_HOST }}"
           SSH_USER="${{ env.SSH_USER }}"
           
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${SSH_USER}@${SSH_HOST} <<'EOSSH'
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3"
+          ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} <<'EOSSH'
             set -e
             
-            echo "=== Aiternitas Service Status ==="
-            systemctl status aiternitas-main.service --no-pager | head -10
+            echo "=== Aiternitas Main Service Status ==="
+            systemctl status aiternitas-main.service --no-pager | head -10 || echo "Service not found"
             
             echo ""
-            echo "=== Last Commit ==="
-            cd /opt/aiternitas && git log --oneline -1 || echo "No commits yet"
+            echo "=== Deployment Directory ==="
+            cd /opt/aiternitas-main
+            echo "Directory: $(pwd)"
+            echo "Package version: $(cat package.json | grep '"version"' | head -1 || echo 'unknown')"
+            echo "Dist directory exists: $([ -d dist ] && echo 'yes' || echo 'no')"
             
             echo ""
             echo "=== Service Health ==="
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 || echo "000")
-            echo "Aiternitas (3001) HTTP status: $HTTP_CODE"
+            echo "Aiternitas Main HTTP status: $HTTP_CODE"
             
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "✅ Aiternitas service is responding"
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ]; then
+              echo "✅ Aiternitas Main service is responding"
             else
-              echo "⚠️ Aiternitas service may not be responding correctly"
+              echo "⚠️ Aiternitas Main service may not be responding correctly"
             fi
           EOSSH
 

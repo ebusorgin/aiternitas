@@ -1,0 +1,120 @@
+.layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.mobile-menu-toggle {
+  display: none;
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 1001;
+  width: 50px;
+  height: 50px;
+  background: rgba(102, 126, 234, 0.2);
+  border: 2px solid rgba(102, 126, 234, 0.5);
+  border-radius: 12px;
+  cursor: pointer;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s ease;
+  border: none;
+}
+
+.mobile-menu-toggle:hover {
+  background: rgba(102, 126, 234, 0.3);
+  border-color: rgba(102, 126, 234, 0.7);
+}
+
+.mobile-menu-toggle span {
+  display: block;
+  width: 24px;
+  height: 3px;
+  background: #667eea;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+.mobile-menu-toggle.active span:nth-child(1) {
+  transform: rotate(45deg) translate(8px, 8px);
+}
+
+.mobile-menu-toggle.active span:nth-child(2) {
+  opacity: 0;
+}
+
+.mobile-menu-toggle.active span:nth-child(3) {
+  transform: rotate(-45deg) translate(7px, -7px);
+}
+
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 999;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.sidebar-overlay.active {
+  opacity: 1;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  transition: margin-left 0.3s ease;
+  position: relative;
+}
+
+.layout.with-sidebar .main-content {
+  margin-left: 280px;
+  width: calc(100% - 280px);
+}
+
+/* На главной странице main-content не должен иметь отступ, так как workspace сам позиционируется */
+.layout.with-sidebar .main-content:has(.workspace-container) {
+  margin-left: 0;
+  width: 100%;
+}
+
+/* На странице сцен main-content должен занимать весь экран */
+.layout.with-sidebar .main-content:has(.scenes-view-container) {
+  margin-left: 0;
+  width: 100%;
+  height: 100vh;
+}
+
+.layout.no-sidebar .main-content {
+  margin-left: 0;
+  width: 100%;
+}
+
+.layout.no-sidebar .main-content {
+  padding-top: 0;
+}
+
+@media (max-width: 768px) {
+  .mobile-menu-toggle {
+    display: flex;
+  }
+
+  .sidebar-overlay {
+    display: block;
+  }
+
+  .layout.with-sidebar .main-content {
+    margin-left: 0;
+    width: 100%;
+  }
+
+}
+

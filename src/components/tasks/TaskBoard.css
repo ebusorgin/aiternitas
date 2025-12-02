@@ -1,0 +1,325 @@
+.task-board {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: rgba(15, 15, 20, 0.5);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.task-board--loading {
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+}
+
+.task-board__loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.loader-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Header */
+.task-board__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(20, 20, 30, 0.8);
+}
+
+.task-board__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.task-board__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.task-board__add-btn {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.task-board__add-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+/* Columns container */
+.task-board__columns {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  overflow-x: auto;
+  flex: 1;
+  align-items: flex-start;
+}
+
+/* Single column */
+.task-board__column {
+  min-width: 280px;
+  max-width: 320px;
+  flex-shrink: 0;
+  background: rgba(25, 25, 35, 0.8);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 280px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.2s ease;
+}
+
+.task-board__column--drop-target {
+  border-color: #6366f1;
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+/* Column header */
+.task-board__column-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.task-board__column-color {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.task-board__column-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.task-board__column-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.task-board__column-remove {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.task-board__column-header:hover .task-board__column-remove {
+  opacity: 1;
+}
+
+.task-board__column-remove:hover {
+  color: #ef4444;
+}
+
+/* Column tasks */
+.task-board__column-tasks {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-board__column-empty {
+  text-align: center;
+  padding: 24px 16px;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 12px;
+  border: 2px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  margin: 4px;
+}
+
+/* Add task button */
+.task-board__column-add-task {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.task-board__column-add-task:hover {
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Add column */
+.task-board__add-column {
+  min-width: 260px;
+  flex-shrink: 0;
+}
+
+.task-board__add-column-btn {
+  width: 100%;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.task-board__add-column-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.task-board__add-column-form {
+  background: rgba(25, 25, 35, 0.9);
+  border-radius: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.task-board__add-column-form input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: white;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.task-board__add-column-form input:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.task-board__add-column-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.task-board__add-column-actions button {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.task-board__add-column-actions button:first-child {
+  background: #22c55e;
+  color: white;
+}
+
+.task-board__add-column-actions button:last-child {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Compact variant */
+.task-board--compact {
+  background: transparent;
+  border-radius: 0;
+}
+
+.task-board--compact .task-board__header {
+  padding: 12px 0;
+  border-bottom: none;
+  background: transparent;
+}
+
+.task-board--compact .task-board__title {
+  font-size: 14px;
+}
+
+.task-board--compact .task-board__add-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.task-board__compact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-board__empty {
+  text-align: center;
+  padding: 20px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 13px;
+}
+
+/* Scrollbar styling */
+.task-board__column-tasks::-webkit-scrollbar,
+.task-board__columns::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.task-board__column-tasks::-webkit-scrollbar-track,
+.task-board__columns::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.task-board__column-tasks::-webkit-scrollbar-thumb,
+.task-board__columns::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.task-board__column-tasks::-webkit-scrollbar-thumb:hover,
+.task-board__columns::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+
+

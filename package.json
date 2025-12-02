@@ -5,8 +5,12 @@
   "type": "module",
   "main": "server.mjs",
   "scripts": {
+    "dev": "vite",
+    "build": "node --max-old-space-size=512 node_modules/vite/bin/vite.js build",
+    "build:low-mem": "NODE_OPTIONS='--max-old-space-size=384' vite build",
+    "preview": "vite preview",
     "start": "node server.mjs",
-    "dev": "node server.mjs"
+    "start:dev": "node server.mjs"
   },
   "keywords": [
     "aiternitas",
@@ -15,7 +19,30 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.19.2"
+    "@react-three/drei": "^9.114.3",
+    "@react-three/fiber": "^8.17.10",
+    "bcrypt": "^5.1.1",
+    "connect-pg-simple": "^10.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.1",
+    "google-auth-library": "^10.5.0",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^7.0.11",
+    "openai": "^6.9.1",
+    "pg": "^8.16.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.9.6",
+    "socket.io": "^4.7.5",
+    "socket.io-client": "^4.7.5",
+    "socks-proxy-agent": "^8.0.4",
+    "three": "^0.169.0",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^6.0.0"
   }
 }
-
