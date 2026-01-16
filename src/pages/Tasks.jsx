@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTaskStore, TASK_STATUSES, TASK_PRIORITIES } from '../store/taskStore';
 import { useFlowchartStore } from '../store/flowchartStore';
+import { useAuth } from '../context/AuthContext';
 import TaskBoard from '../components/tasks/TaskBoard';
 import TaskCard from '../components/tasks/TaskCard';
 import TaskModal from '../components/tasks/TaskModal';
@@ -11,15 +12,25 @@ function Tasks() {
     tasks,
     columns,
     stats,
-    isLoading,
+    isLoading: isTasksLoading,
     loadAllTasks,
     loadStats,
     loadColumns,
     loadTasks,
-    initSocketListeners
+    initSocketListeners,
+    createTask
   } = useTaskStore();
 
-  const { elements } = useFlowchartStore();
+  const {
+    elements,
+    isLoading: isFlowchartLoading,
+    loadFlowchart,
+    initSocketListeners: initFlowchartSocketListeners
+  } = useFlowchartStore();
+
+  const isLoading = isTasksLoading || isFlowchartLoading;
+
+  const { socketConnected } = useAuth();
 
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [viewMode, setViewMode] = useState('kanban'); // 'kanban' | 'list'
@@ -30,6 +41,7 @@ function Tasks() {
   });
   const [selectedTask, setSelectedTask] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // Get departments from flowchart elements
   const departments = elements.filter(el => el.type === 'department');
@@ -40,6 +52,14 @@ function Tasks() {
     loadAllTasks();
     loadStats();
   }, [initSocketListeners, loadAllTasks, loadStats]);
+
+  // Load flowchart (departments) when socket is connected
+  useEffect(() => {
+    if (socketConnected) {
+      initFlowchartSocketListeners();
+      loadFlowchart();
+    }
+  }, [socketConnected, initFlowchartSocketListeners, loadFlowchart]);
 
   // Load tasks for selected department
   useEffect(() => {
@@ -55,8 +75,8 @@ function Tasks() {
     if (filter.priority && task.priority !== filter.priority) return false;
     if (filter.search) {
       const search = filter.search.toLowerCase();
-      if (!task.title.toLowerCase().includes(search) && 
-          !task.description?.toLowerCase().includes(search)) {
+      if (!task.title.toLowerCase().includes(search) &&
+        !task.description?.toLowerCase().includes(search)) {
         return false;
       }
     }
@@ -80,6 +100,19 @@ function Tasks() {
     return null;
   };
 
+  const handleCreateTask = async (taskData) => {
+    if (!selectedDepartment) return;
+
+    const result = await createTask({
+      ...taskData,
+      department_id: selectedDepartment.id
+    });
+
+    if (result.success) {
+      setIsCreateModalOpen(false);
+    }
+  };
+
   const handleTaskSelect = (task) => {
     setSelectedTask(task);
     setIsModalOpen(true);
@@ -87,6 +120,12 @@ function Tasks() {
 
   return (
     <div className="tasks-page">
+      {isLoading && tasks.length === 0 && (
+        <div className="tasks-page__global-loading">
+          <div className="loader-spinner large"></div>
+          <span>Загрузка системы...</span>
+        </div>
+      )}
       <div className="tasks-page__header">
         <div className="tasks-page__title-section">
           <h1 className="tasks-page__title">📋 Задачи</h1>
@@ -110,20 +149,33 @@ function Tasks() {
                   Просрочено: {stats.overdue}
                 </span>
               )}
+
+
             </div>
           )}
+
+
         </div>
 
         <div className="tasks-page__controls">
+          <button
+            className="tasks-page__create-btn"
+            onClick={() => setIsCreateModalOpen(true)}
+            disabled={!selectedDepartment}
+            title={!selectedDepartment ? "Выберите департамент для создания задачи" : ""}
+          >
+            ➕ Новая задача
+          </button>
+
           {/* View mode toggle */}
           <div className="tasks-page__view-toggle">
-            <button 
+            <button
               className={viewMode === 'kanban' ? 'active' : ''}
               onClick={() => setViewMode('kanban')}
             >
               📊 Канбан
             </button>
-            <button 
+            <button
               className={viewMode === 'list' ? 'active' : ''}
               onClick={() => setViewMode('list')}
             >
@@ -167,8 +219,8 @@ function Tasks() {
         {/* Department sidebar */}
         <div className="tasks-page__departments">
           <h3>Департаменты</h3>
-          
-          <button 
+
+          <button
             className={`tasks-page__dept-item ${!selectedDepartment ? 'active' : ''}`}
             onClick={() => {
               setSelectedDepartment(null);
@@ -183,13 +235,13 @@ function Tasks() {
           {departments.map(dept => {
             const deptTasks = tasks.filter(t => t.department_id === dept.id);
             return (
-              <button 
+              <button
                 key={dept.id}
                 className={`tasks-page__dept-item ${selectedDepartment?.id === dept.id ? 'active' : ''}`}
                 onClick={() => setSelectedDepartment(dept)}
               >
-                <span 
-                  className="dept-color" 
+                <span
+                  className="dept-color"
                   style={{ backgroundColor: dept.color }}
                 />
                 <span className="dept-name">{dept.name}</span>
@@ -230,46 +282,52 @@ function Tasks() {
                   const deptTasks = filteredTasks.filter(t => t.department_id === dept.id);
                   return (
                     <div key={dept.id} className="tasks-page__dept-section">
-                      <div 
+                      <div
                         className="tasks-page__dept-header"
                         onClick={() => setSelectedDepartment(dept)}
                       >
-                        <span 
-                          className="dept-color-bar" 
+                        <span
+                          className="dept-color-bar"
                           style={{ backgroundColor: dept.color }}
                         />
                         <h4>{dept.name}</h4>
                         <span className="dept-task-count">{deptTasks.length} задач</span>
                         <span className="dept-expand">→</span>
                       </div>
-                      
+
                       <div className="tasks-page__dept-tasks">
                         {deptTasks.slice(0, 3).map(task => (
-                          <TaskCard 
-                            key={task.id} 
-                            task={task} 
-                            compact 
+                          <TaskCard
+                            key={task.id}
+                            task={task}
+                            compact
                             onSelect={handleTaskSelect}
                           />
                         ))}
                         {deptTasks.length > 3 && (
-                          <button 
+                          <button
                             className="tasks-page__see-more"
                             onClick={() => setSelectedDepartment(dept)}
                           >
                             Ещё {deptTasks.length - 3} задач →
                           </button>
                         )}
+
+
                         {deptTasks.length === 0 && (
                           <div className="tasks-page__dept-empty">
                             Нет задач
                           </div>
                         )}
+
+
                       </div>
                     </div>
                   );
                 })
               )}
+
+
             </div>
           ) : (
             // List view
@@ -297,11 +355,11 @@ function Tasks() {
                       const status = TASK_STATUSES[task.status] || TASK_STATUSES.pending;
                       const priority = TASK_PRIORITIES[task.priority] || TASK_PRIORITIES.medium;
                       const dept = departments.find(d => d.id === task.department_id);
-                      const isOverdue = task.due_date && new Date(task.due_date) < new Date() && 
+                      const isOverdue = task.due_date && new Date(task.due_date) < new Date() &&
                         !['completed', 'cancelled'].includes(task.status);
 
                       return (
-                        <tr 
+                        <tr
                           key={task.id}
                           onClick={() => handleTaskSelect(task)}
                           className={isOverdue ? 'overdue' : ''}
@@ -309,7 +367,7 @@ function Tasks() {
                           <td className="task-id">#{task.id}</td>
                           <td className="task-title">{task.title}</td>
                           <td>
-                            <span 
+                            <span
                               className="task-status-badge"
                               style={{ backgroundColor: status.color }}
                             >
@@ -317,7 +375,7 @@ function Tasks() {
                             </span>
                           </td>
                           <td>
-                            <span 
+                            <span
                               className="task-priority-badge"
                               style={{ backgroundColor: priority.color }}
                             >
@@ -326,7 +384,7 @@ function Tasks() {
                           </td>
                           <td>
                             <span className="task-dept">
-                              <span 
+                              <span
                                 className="dept-dot"
                                 style={{ backgroundColor: dept?.color || '#6b7280' }}
                               />
@@ -334,7 +392,7 @@ function Tasks() {
                             </span>
                           </td>
                           <td className={`task-due ${isOverdue ? 'overdue' : ''}`}>
-                            {task.due_date 
+                            {task.due_date
                               ? new Date(task.due_date).toLocaleDateString('ru-RU')
                               : '—'
                             }
@@ -345,8 +403,12 @@ function Tasks() {
                   </tbody>
                 </table>
               )}
+
+
             </div>
           )}
+
+
         </div>
       </div>
 
@@ -367,11 +429,38 @@ function Tasks() {
           }}
         />
       )}
+
+
+      {/* Create Task modal */}
+      {isCreateModalOpen && selectedDepartment && (
+        <TaskModal
+          mode="create"
+          departmentId={selectedDepartment.id}
+          departmentName={selectedDepartment.name}
+          columns={columns}
+          availableWorkers={getAvailableWorkers(selectedDepartment.id)}
+          childDepartments={getChildDepartments(selectedDepartment.id)}
+          parentDepartmentId={getParentDepartment(selectedDepartment.id)?.id}
+          onSave={handleCreateTask}
+          onClose={() => setIsCreateModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
 
 export default Tasks;
+
+
+
+
+
+
+
+
+
+
+
 
 
 

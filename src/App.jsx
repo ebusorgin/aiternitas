@@ -1,6 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Home from './pages/Home';
+import AgencyLanding from './pages/AgencyLanding';
+import InvestorLanding from './pages/InvestorLanding';
 import Profile from './pages/Profile';
 import Messages from './pages/Messages';
 import Calls from './pages/Calls';
@@ -17,6 +19,8 @@ function App() {
   return (
     <AuthProvider>
       <Routes>
+        <Route path="/landing" element={<AgencyLanding />} />
+        <Route path="/investors" element={<InvestorLanding />} />
         <Route path="/" element={<Layout />}>
           <Route index element={<Home />} />
           <Route path="login" element={<Navigate to="/" replace />} />

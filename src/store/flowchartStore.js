@@ -3,13 +3,54 @@ import socketService from '../services/socket';
 
 // 4 типа элементов блок-схемы
 export const ELEMENT_TYPES = {
+  flowchart_root: {
+    id: 'flowchart_root',
+    name: 'Компания',
+    icon: '🏢',
+    color: '#6366f1',
+    description: 'Корень организационной структуры',
+    canContain: true,
+    properties: {
+      head: { label: 'Генеральный директор', type: 'text', default: '' },
+      location: { label: 'Расположение', type: 'text', default: '' },
+      budget: { label: 'Общий бюджет', type: 'number', default: 0 }
+    }
+  },
+  executive: {
+    id: 'executive',
+    name: 'Топ-менеджер',
+    icon: '👔',
+    color: '#ec4899',
+    description: 'Высшее руководство компании',
+    canContain: true,
+    properties: {
+      position: { label: 'Должность', type: 'text', default: '' },
+      level: { label: 'Уровень', type: 'text', default: 'c-level' },
+      email: { label: 'Email', type: 'text', default: '' },
+      phone: { label: 'Телефон', type: 'text', default: '' }
+    }
+  },
+  head: {
+    id: 'head',
+    name: 'Руководитель отдела',
+    icon: '👤',
+    color: '#f59e0b',
+    description: 'Руководитель департамента или подразделения',
+    canContain: true,
+    properties: {
+      position: { label: 'Должность', type: 'text', default: '' },
+      level: { label: 'Уровень', type: 'text', default: 'head' },
+      email: { label: 'Email', type: 'text', default: '' },
+      phone: { label: 'Телефон', type: 'text', default: '' }
+    }
+  },
   department: {
     id: 'department',
     name: 'Департамент',
     icon: '🏢',
     color: '#3b82f6',
     description: 'Отдел или подразделение компании',
-    canContain: true, // Только департамент может иметь дочерние элементы
+    canContain: true,
     properties: {
       head: { label: 'Руководитель', type: 'text', default: '' },
       location: { label: 'Расположение', type: 'text', default: '' },
@@ -19,12 +60,13 @@ export const ELEMENT_TYPES = {
   worker: {
     id: 'worker',
     name: 'Работник',
-    icon: '👤',
+    icon: '👷',
     color: '#22c55e',
-    description: 'Сотрудник компании',
+    description: 'Рядовой сотрудник компании',
     canContain: false,
     properties: {
       position: { label: 'Должность', type: 'text', default: '' },
+      level: { label: 'Уровень', type: 'text', default: 'middle' },
       email: { label: 'Email', type: 'text', default: '' },
       phone: { label: 'Телефон', type: 'text', default: '' }
     }
@@ -130,6 +172,8 @@ export const useFlowchartStore = create((set, get) => ({
   // Состояние элементов и связей
   elements: [],
   connections: [],
+  parentChildConnections: [], // New state for parent-child relationships
+
   selectedElementId: null,
   selectedConnectionId: null,
   
@@ -156,11 +200,14 @@ export const useFlowchartStore = create((set, get) => ({
 
   // Вычислить размер элемента на основе его детей
   calculateElementSize: (elementId) => {
-    const { elements } = get();
+    const { elements, parentChildConnections } = get();
     const element = elements.find(e => e.id === elementId);
     if (!element) return BASE_SIZE;
 
-    const children = elements.filter(e => e.parentId === elementId);
+    const children = parentChildConnections
+      .filter(conn => conn.parent_element_id === elementId)
+      .map(conn => elements.find(e => e.id === conn.child_element_id))
+      .filter(Boolean); // Remove any undefined children if not found in elements array
     
     if (children.length === 0) {
       return BASE_SIZE;
@@ -189,31 +236,85 @@ export const useFlowchartStore = create((set, get) => ({
       set((state) => {
         // Only add if not already exists
         if (state.elements.find(e => e.id === element.id)) return state;
-        return { elements: [...state.elements, element] };
+        // Ensure element_type is used and old type/parentId/depth are not directly set on element
+        const newElement = { ...element };
+        if (newElement.type) { // Remove old 'type' if present
+          newElement.element_type = newElement.type;
+          delete newElement.type;
+        }
+        delete newElement.parentId; // ParentId is now in parentChildConnections
+        delete newElement.depth; // Depth is now derived or handled by client logic
+        
+        return { elements: [...state.elements, newElement] };
+      });
+    });
+
+    // Parent-child connection events
+    socketService.on('flowchart:element:parent_child_connection_created', ({ parent_element_id, child_element_id }) => {
+      set((state) => {
+        // Only add if not already exists
+        if (state.parentChildConnections.some(conn => 
+          conn.parent_element_id === parent_element_id && conn.child_element_id === child_element_id
+        )) return state;
+        return { 
+          parentChildConnections: [...state.parentChildConnections, { parent_element_id, child_element_id }]
+        };
       });
     });
 
     socketService.on('flowchart:element:updated', ({ id, updates }) => {
+      set((state) => {
+        // Ensure element_type is used and old type/parentId/depth are not directly set on element
+        const newUpdates = { ...updates };
+        if (newUpdates.type) {
+          newUpdates.element_type = newUpdates.type;
+          delete newUpdates.type;
+        }
+        delete newUpdates.parentId;
+        delete newUpdates.depth;
+
+        return {
+          elements: state.elements.map(el =>
+            el.id === id ? { ...el, ...newUpdates } : el
+          )
+        };
+      });
+    });
+
+    socketService.on('flowchart:element:parent_child_connection_updated', ({ old_parent_id, old_child_id, new_parent_id, new_child_id }) => {
       set((state) => ({
-        elements: state.elements.map(el => 
-          el.id === id ? { ...el, ...updates } : el
+        parentChildConnections: state.parentChildConnections.map(conn =>
+          conn.parent_element_id === old_parent_id && conn.child_element_id === old_child_id
+            ? { ...conn, parent_element_id: new_parent_id, child_element_id: new_child_id }
+            : conn
+        )
+      }));
+    });
+
+    socketService.on('flowchart:element:parent_child_connection_deleted', ({ parent_element_id, child_element_id }) => {
+      set((state) => ({
+        parentChildConnections: state.parentChildConnections.filter(conn =>
+          !(conn.parent_element_id === parent_element_id && conn.child_element_id === child_element_id)
         )
       }));
     });
 
     socketService.on('flowchart:element:moved', ({ id, position }) => {
       set((state) => ({
-        elements: state.elements.map(el => 
+        elements: state.elements.map(el =>
           el.id === id ? { ...el, position } : el
         )
       }));
     });
 
     socketService.on('flowchart:element:deleted', ({ id }) => {
-      const { elements } = get();
+      const { elements, parentChildConnections } = get(); // Get parentChildConnections
+      
       const collectChildren = (elementId) => {
-        const children = elements.filter(e => e.parentId === elementId);
-        return [elementId, ...children.flatMap(c => collectChildren(c.id))];
+        const children = parentChildConnections // Use parentChildConnections
+          .filter(conn => conn.parent_element_id === elementId)
+          .map(conn => conn.child_element_id);
+        return [elementId, ...children.flatMap(c => collectChildren(c))];
       };
       const idsToDelete = collectChildren(id);
 
@@ -222,51 +323,14 @@ export const useFlowchartStore = create((set, get) => ({
         connections: state.connections.filter(
           conn => !idsToDelete.includes(conn.from) && !idsToDelete.includes(conn.to)
         ),
+        parentChildConnections: state.parentChildConnections.filter(conn => // Filter out deleted parent-child connections
+          !idsToDelete.includes(conn.parent_element_id) && !idsToDelete.includes(conn.child_element_id)
+        ),
         selectedElementId: idsToDelete.includes(state.selectedElementId) ? null : state.selectedElementId
       }));
     });
 
-    socketService.on('flowchart:element:nested', ({ childId, parentId }) => {
-      const { elements } = get();
-      const parent = elements.find(el => el.id === parentId);
-      if (!parent) return;
-
-      set((state) => ({
-        elements: state.elements.map(el => {
-          if (el.id === childId) {
-            return { ...el, parentId, depth: (parent.depth || 0) + 1 };
-          }
-          return el;
-        })
-      }));
-    });
-
-    socketService.on('flowchart:element:unnested', ({ id, newPosition }) => {
-      const { elements, currentViewId } = get();
-      const element = elements.find(el => el.id === id);
-      if (!element || !element.parentId) return;
-
-      const parent = elements.find(el => el.id === element.parentId);
-      const newParentId = parent?.parentId || null;
-      const newParent = newParentId ? elements.find(e => e.id === newParentId) : null;
-      const newDepth = newParent ? (newParent.depth || 0) + 1 : 0;
-
-      set((state) => ({
-        elements: state.elements.map(el => {
-          if (el.id === id) {
-            return {
-              ...el,
-              parentId: newParentId,
-              depth: newDepth,
-              position: newPosition || el.position
-            };
-          }
-          return el;
-        })
-      }));
-    });
-
-    // Connection events from other clients
+    // Navigation events
     socketService.on('flowchart:connection:created', ({ connection }) => {
       set((state) => {
         if (state.connections.find(c => c.id === connection.id)) return state;
@@ -377,26 +441,17 @@ export const useFlowchartStore = create((set, get) => ({
 
     const newElement = {
       id: `element_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      type: type,
+      element_type: type,
       name: elementType.name,
       description: '',
       position: position || { x: 0, y: 0 },
       position3d: null, // 3D position will be set when moved in 3D view
       color: elementType.color,
-      parentId: parentId,
-      depth: 0,
       properties: Object.fromEntries(
         Object.entries(elementType.properties).map(([key, prop]) => [key, prop.default])
       )
     };
 
-    // Если есть родитель, обновляем глубину
-    if (parentId) {
-      const parent = elements.find(el => el.id === parentId);
-      if (parent) {
-        newElement.depth = (parent.depth || 0) + 1;
-      }
-    }
 
     set((state) => ({
       elements: [...state.elements, newElement],

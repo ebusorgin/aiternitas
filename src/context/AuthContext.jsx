@@ -119,6 +119,19 @@ export function AuthProvider({ children }) {
         } catch (e) {
           console.error('Admin check error:', e);
         }
+        // Если сервер вернул attachToken (socket -> HTTP session), создаем HTTP-сессию
+        if (result.attachToken) {
+          try {
+            await fetch('/api/auth/attach-session', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: result.attachToken })
+            });
+          } catch (e) {
+            console.error('Attach session error:', e);
+          }
+        }
         setUser(result.user);
         return { success: true };
       } else {
@@ -147,6 +160,19 @@ export function AuthProvider({ children }) {
       const result = await socketService.register(name, email, password);
 
       if (result.success && result.user) {
+        // Если сервер вернул attachToken (socket -> HTTP session), создаем HTTP-сессию
+        if (result.attachToken) {
+          try {
+            await fetch('/api/auth/attach-session', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: result.attachToken })
+            });
+          } catch (e) {
+            console.error('Attach session error:', e);
+          }
+        }
         setUser(result.user);
         return {
           success: true,

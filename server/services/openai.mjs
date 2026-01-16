@@ -556,9 +556,9 @@ export async function generateCompanyStructure(companyName, description, onProgr
 export function convertToFlowchartElements(structure, companyName, companyDescription) {
   const elements = [];
   const connections = [];
-  let elementIndex = 0;
+  const parentChildConnections = []; // New array to store parent-child relationships
   
-  const generateId = () => `element_${Date.now()}_${elementIndex++}_${Math.random().toString(36).substr(2, 9)}`;
+  const generateId = () => uuidv4(); // Use uuidv4 for consistent unique IDs
   
   const COLORS = {
     company: '#6366f1',
@@ -574,19 +574,21 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
   const rootId = generateId();
   elements.push({
     id: rootId,
-    type: 'department',
+    element_type: 'flowchart_root', // Changed to element_type
     name: companyName,
     description: companyDescription || structure.analysis?.businessType || '',
-    position: { x: 0, y: 0 },
+    position_2d: { x: 0, y: 0 }, // Changed to position_2d
+    position: { x: 0, y: 0, z: 0 }, // Added position for 3D
     color: COLORS.company,
-    parentId: null,
-    depth: 0,
+    // parentId removed from element object
+    // depth removed
     properties: {
       head: structure.executives?.executives?.[0]?.name || '',
       location: '',
       budget: 0
     }
   });
+  idMap.set('flowchart_root', rootId); // Map a generic key to the root ID
   
   // 2. TOP MANAGEMENT (executives on company level)
   structure.executives?.executives?.forEach((exec, index) => {
@@ -607,13 +609,14 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
     
     elements.push({
       id: execId,
-      type: 'worker',
+      element_type: 'executive', // Changed to element_type
       name: exec.name,
       description: descParts.join('') || exec.responsibilities?.join(', ') || '',
-      position: { x: -300 + index * 200, y: 0 },
+      position_2d: { x: -300 + index * 200, y: 0 }, // Changed to position_2d
+      position: { x: -300 + index * 200, y: 0, z: 0 }, // Added position for 3D
       color: COLORS.executive,
-      parentId: rootId,
-      depth: 1,
+      // parentId removed from element object
+      // depth removed
       properties: {
         position: exec.position,
         level: exec.level,
@@ -624,10 +627,16 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
         phone: ''
       }
     });
+    
+    // Add to parent-child connections table
+    parentChildConnections.push({
+      parent_element_id: rootId,
+      child_element_id: execId,
+    });
   });
   
   // 3. DEPARTMENTS (on company level)
-  const processDepartments = (depts, parentId, level, startX = 0) => {
+  const processDepartments = (depts, parentElementIdForConnection, startX = 0) => {
     if (!depts) return;
     
     const spacing = 250;
@@ -657,13 +666,14 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
       
       elements.push({
         id: deptId,
-        type: 'department',
+        element_type: 'department', // Changed to element_type
         name: dept.name,
         description: descParts.join('') || dept.description || '',
-        position: { x, y: 0 },
+        position_2d: { x, y: 0 }, // Changed to position_2d
+        position: { x, y: 0, z: 0 }, // Added position for 3D
         color: COLORS.department,
-        parentId,
-        depth: level,
+        // parentId removed from element object
+        // depth removed
         properties: {
           head: '',
           departmentType: dept.type,
@@ -676,12 +686,18 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
         }
       });
       
+      // Add to parent-child connections table
+      parentChildConnections.push({
+        parent_element_id: parentElementIdForConnection,
+        child_element_id: deptId,
+      });
+      
       if (dept.subdepartments) {
-        processDepartments(dept.subdepartments, deptId, level + 1, x);
+        processDepartments(dept.subdepartments, deptId, x);
       }
     });
   };
-  processDepartments(structure.departments?.departments, rootId, 1);
+  processDepartments(structure.departments?.departments, rootId);
   
   // 4. DEPARTMENT HEADS (on company level, linked to departments)
   structure.departmentHeads?.departmentHeads?.forEach((head, index) => {
@@ -705,13 +721,14 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
     
     elements.push({
       id: headId,
-      type: 'worker',
+      element_type: 'head', // Changed to element_type
       name: head.name,
       description: descParts.join('') || head.responsibilities?.join(', ') || '',
-      position: { x: 300 + index * 180, y: 0 },
+      position_2d: { x: 300 + index * 180, y: 0 }, // Changed to position_2d
+      position: { x: 300 + index * 180, y: 0, z: 0 }, // Added position for 3D
       color: COLORS.head,
-      parentId: rootId,
-      depth: 1,
+      // parentId removed from element object
+      // depth removed
       properties: {
         position: head.position,
         level: head.level,
@@ -722,6 +739,13 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
         email: '',
         phone: ''
       }
+    });
+    
+    // Add to parent-child connections table (head reports to root, or specific executive)
+    const reportsToId = head.reportsTo && idMap.has(head.reportsTo) ? idMap.get(head.reportsTo) : rootId;
+    parentChildConnections.push({
+      parent_element_id: reportsToId,
+      child_element_id: headId,
     });
   });
   
@@ -751,13 +775,14 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
       
       elements.push({
         id: workerId,
-        type: 'worker',
+        element_type: 'worker', // Changed to element_type
         name: worker.name,
         description: descParts.join('') || worker.responsibilities?.join(', ') || '',
-        position: { x: (wIndex - (deptWorkers.workers.length - 1) / 2) * 140, y: 0 },
+        position_2d: { x: (wIndex - (deptWorkers.workers.length - 1) / 2) * 140, y: 0 }, // Changed to position_2d
+        position: { x: (wIndex - (deptWorkers.workers.length - 1) / 2) * 140, y: 0, z: 0 }, // Added position for 3D
         color: COLORS.worker,
-        parentId: deptElementId,
-        depth: 2,
+        // parentId removed from element object
+        // depth removed
         properties: {
           position: worker.position,
           level: worker.level,
@@ -768,6 +793,12 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
           email: '',
           phone: ''
         }
+      });
+      
+      // Add to parent-child connections table
+      parentChildConnections.push({
+        parent_element_id: deptElementId,
+        child_element_id: workerId,
       });
     });
   });
@@ -781,19 +812,26 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
       
       elements.push({
         id: headId,
-        type: 'worker',
+        element_type: 'head', // Changed to element_type (was 'worker')
         name: fix.newHead.name,
         description: fix.newHead.responsibilities?.join(', ') || '',
-        position: { x: 0, y: 0 },
+        position_2d: { x: 0, y: 0 }, // Added position_2d
+        position: { x: 0, y: 0, z: 0 }, // Added position for 3D
         color: COLORS.head,
-        parentId: rootId,
-        depth: 1,
+        // parentId removed
+        // depth removed
         properties: {
           position: fix.newHead.position,
           level: 'head',
           email: '',
           phone: ''
         }
+      });
+      
+      // Add to parent-child connections table
+      parentChildConnections.push({
+        parent_element_id: rootId,
+        child_element_id: headId,
       });
       
       // Connection head -> department
@@ -821,19 +859,26 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
         
         elements.push({
           id: workerId,
-          type: 'worker',
+          element_type: 'worker', // Changed to element_type
           name: worker.name,
           description: worker.responsibilities?.join(', ') || '',
-          position: { x: wIndex * 140, y: 0 },
+          position_2d: { x: wIndex * 140, y: 0 }, // Added position_2d
+          position: { x: wIndex * 140, y: 0, z: 0 }, // Added position for 3D
           color: COLORS.worker,
-          parentId: deptElementId,
-          depth: 2,
+          // parentId removed
+          // depth removed
           properties: {
             position: worker.position,
             level: worker.level,
             email: '',
             phone: ''
           }
+        });
+        
+        // Add to parent-child connections table
+        parentChildConnections.push({
+          parent_element_id: deptElementId,
+          child_element_id: workerId,
         });
       });
     });
@@ -883,7 +928,7 @@ export function convertToFlowchartElements(structure, companyName, companyDescri
 
   console.log(`📦 Created: ${elements.length} elements, ${connections.length} connections`);
 
-  return { elements, connections };
+  return { elements, connections, parentChildConnections };
 }
 
 /**

@@ -29,6 +29,7 @@ function TaskModal({
     isSaving
   } = useTaskStore();
 
+  const [currentMode, setCurrentMode] = useState(mode);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -47,6 +48,11 @@ function TaskModal({
   const [showAssignment, setShowAssignment] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
   const [fullTask, setFullTask] = useState(null);
+
+  // Update mode when prop changes
+  useEffect(() => {
+    setCurrentMode(mode);
+  }, [mode]);
 
   // Load full task data if viewing
   useEffect(() => {
@@ -84,10 +90,10 @@ function TaskModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.title.trim()) return;
 
-    if (mode === 'create') {
+    if (currentMode === 'create') {
       await onSave(formData);
     } else {
       await updateTask(task.id, formData);
@@ -132,19 +138,19 @@ function TaskModal({
 
   const handleEscalate = async () => {
     if (!parentDepartmentId) return;
-    
+
     const result = await escalateTask(task.id, parentDepartmentId, escalationReason);
-    
+
     if (result.success) {
       onClose();
     }
   };
 
   const handleReview = async (action) => {
-    const feedback = action === 'revision' 
+    const feedback = action === 'revision'
       ? window.prompt('Укажите что нужно доработать:')
       : null;
-    
+
     await reviewTask(task.id, action, feedback);
     loadTask(task.id);
   };
@@ -176,7 +182,7 @@ function TaskModal({
   const comments = fullTask?.comments || [];
 
   const status = TASK_STATUSES[task?.status] || TASK_STATUSES.pending;
-  const isEditable = mode === 'create' || mode === 'edit';
+  const isEditable = currentMode === 'create' || currentMode === 'edit';
 
   return (
     <div className="task-modal-overlay" onClick={onClose}>
@@ -190,34 +196,44 @@ function TaskModal({
               {mode === 'create' ? 'Новая задача' : task?.title}
             </h2>
           </div>
-          
+
           {task?.id && (
-            <div 
+            <div
               className="task-modal__status"
               style={{ backgroundColor: status.color }}
             >
               {status.icon} {status.name}
             </div>
           )}
-          
+
+          {currentMode === 'view' && (
+            <button
+              className="task-modal__edit-btn"
+              onClick={() => setCurrentMode('edit')}
+              title="Редактировать"
+            >
+              ✏️
+            </button>
+          )}
+
           <button className="task-modal__close" onClick={onClose}>×</button>
         </div>
 
         {mode !== 'create' && (
           <div className="task-modal__tabs">
-            <button 
+            <button
               className={`task-modal__tab ${activeTab === 'details' ? 'active' : ''}`}
               onClick={() => setActiveTab('details')}
             >
               📋 Детали
             </button>
-            <button 
+            <button
               className={`task-modal__tab ${activeTab === 'subtasks' ? 'active' : ''}`}
               onClick={() => setActiveTab('subtasks')}
             >
               📝 Подзадачи ({subtasks.length})
             </button>
-            <button 
+            <button
               className={`task-modal__tab ${activeTab === 'activity' ? 'active' : ''}`}
               onClick={() => setActiveTab('activity')}
             >
@@ -330,7 +346,7 @@ function TaskModal({
             <div className="task-modal__subtasks">
               <div className="task-modal__subtasks-header">
                 <span>Подзадачи ({subtasks.length})</span>
-                <button 
+                <button
                   className="task-modal__decompose-btn"
                   onClick={handleDecompose}
                   disabled={isDecomposing}
@@ -347,7 +363,7 @@ function TaskModal({
                 <div className="task-modal__subtasks-list">
                   {subtasks.map(st => (
                     <div key={st.id} className="task-modal__subtask">
-                      <div 
+                      <div
                         className="task-modal__subtask-status"
                         style={{ backgroundColor: (TASK_STATUSES[st.status] || TASK_STATUSES.pending).color }}
                       />
@@ -372,7 +388,7 @@ function TaskModal({
                   placeholder="Добавить отчет или комментарий..."
                   rows={3}
                 />
-                <button 
+                <button
                   onClick={handleAddReport}
                   disabled={!reportContent.trim()}
                 >
@@ -417,16 +433,16 @@ function TaskModal({
           <div className="task-modal__bottom-actions">
             {/* Assignment section */}
             <div className="task-modal__action-group">
-              <button 
+              <button
                 className="task-modal__action-btn"
                 onClick={() => setShowAssignment(!showAssignment)}
               >
                 👤 Назначить
               </button>
-              
+
               {showAssignment && (
                 <div className="task-modal__assignment-panel">
-                  <button 
+                  <button
                     className="task-modal__suggest-btn"
                     onClick={handleGetSuggestion}
                   >
@@ -450,7 +466,7 @@ function TaskModal({
                     <div className="task-modal__assignee-list">
                       <h5>Работники:</h5>
                       {availableWorkers.map(w => (
-                        <button 
+                        <button
                           key={w.id}
                           onClick={() => handleAssign(w.id, null)}
                         >
@@ -464,7 +480,7 @@ function TaskModal({
                     <div className="task-modal__assignee-list">
                       <h5>Департаменты:</h5>
                       {childDepartments.map(d => (
-                        <button 
+                        <button
                           key={d.id}
                           onClick={() => handleAssign(null, d.id)}
                         >
@@ -480,19 +496,19 @@ function TaskModal({
             {/* Review actions */}
             {task?.status === 'review' && (
               <div className="task-modal__review-actions">
-                <button 
+                <button
                   className="task-modal__review-btn task-modal__review-btn--accept"
                   onClick={() => handleReview('accept')}
                 >
                   ✅ Принять
                 </button>
-                <button 
+                <button
                   className="task-modal__review-btn task-modal__review-btn--revision"
                   onClick={() => handleReview('revision')}
                 >
                   📝 На доработку
                 </button>
-                <button 
+                <button
                   className="task-modal__review-btn task-modal__review-btn--reject"
                   onClick={() => handleReview('reject')}
                 >
@@ -504,13 +520,13 @@ function TaskModal({
             {/* Escalation */}
             {parentDepartmentId && !['completed', 'cancelled', 'escalated'].includes(task?.status) && (
               <div className="task-modal__action-group">
-                <button 
+                <button
                   className="task-modal__action-btn task-modal__action-btn--escalate"
                   onClick={() => setShowEscalation(!showEscalation)}
                 >
                   ⬆️ Эскалировать
                 </button>
-                
+
                 {showEscalation && (
                   <div className="task-modal__escalation-panel">
                     <textarea
@@ -528,7 +544,7 @@ function TaskModal({
             )}
 
             {/* Delete */}
-            <button 
+            <button
               className="task-modal__delete-btn"
               onClick={handleDelete}
             >
@@ -542,6 +558,17 @@ function TaskModal({
 }
 
 export default TaskModal;
+
+
+
+
+
+
+
+
+
+
+
 
 
 

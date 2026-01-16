@@ -4,8 +4,8 @@ import TaskCard from './TaskCard';
 import TaskModal from './TaskModal';
 import './TaskBoard.css';
 
-function TaskBoard({ 
-  departmentId, 
+function TaskBoard({
+  departmentId,
   departmentName = 'Департамент',
   availableWorkers = [],
   childDepartments = [],
@@ -13,11 +13,11 @@ function TaskBoard({
   compact = false,
   onTaskSelect
 }) {
-  const { 
-    tasks, 
-    columns, 
+  const {
+    tasks,
+    columns,
     isLoading,
-    loadColumns, 
+    loadColumns,
     loadTasks,
     createTask,
     moveTask,
@@ -37,17 +37,12 @@ function TaskBoard({
   // Initialize
   useEffect(() => {
     initSocketListeners();
-    
-    if (departmentId) {
-      loadColumns(departmentId);
-      loadTasks(departmentId);
-    }
-  }, [departmentId, initSocketListeners, loadColumns, loadTasks]);
+  }, [initSocketListeners]);
 
   // Get tasks for a specific column
   const getColumnTasks = useCallback((columnId) => {
-    return tasks.filter(t => 
-      t.column_id === columnId && 
+    return tasks.filter(t =>
+      t.column_id === columnId &&
       t.department_id === departmentId &&
       !t.parent_task_id
     );
@@ -109,21 +104,21 @@ function TaskBoard({
       // Determine new status based on column position
       const columnIndex = columns.findIndex(c => c.id === columnId);
       let newStatus = 'in_progress';
-      
+
       if (columnIndex === 0) newStatus = 'pending';
       else if (columnIndex === columns.length - 1) newStatus = 'completed';
       else if (columnIndex === columns.length - 2) newStatus = 'review';
-      
+
       await moveTask(parseInt(taskId), columnId, newStatus);
     }
-    
+
     setDraggedTask(null);
   };
 
   // Add new column
   const handleAddColumn = async () => {
     if (!newColumnName.trim()) return;
-    
+
     await createColumn(departmentId, newColumnName, '#6b7280', columns.length);
     setNewColumnName('');
     setShowAddColumn(false);
@@ -154,14 +149,14 @@ function TaskBoard({
       <div className="task-board task-board--compact">
         <div className="task-board__header">
           <h3 className="task-board__title">📋 Задачи</h3>
-          <button 
+          <button
             className="task-board__add-btn"
             onClick={() => handleCreateTask()}
           >
             + Добавить
           </button>
         </div>
-        
+
         <div className="task-board__compact-list">
           {tasks.filter(t => t.department_id === departmentId && !t.parent_task_id).length === 0 ? (
             <div className="task-board__empty">
@@ -172,10 +167,10 @@ function TaskBoard({
               .filter(t => t.department_id === departmentId && !t.parent_task_id)
               .slice(0, 5)
               .map(task => (
-                <TaskCard 
-                  key={task.id} 
-                  task={task} 
-                  compact 
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  compact
                   onSelect={handleTaskSelect}
                 />
               ))
@@ -210,7 +205,7 @@ function TaskBoard({
           📋 Задачи: {departmentName}
         </h3>
         <div className="task-board__actions">
-          <button 
+          <button
             className="task-board__add-btn"
             onClick={() => handleCreateTask()}
           >
@@ -225,7 +220,7 @@ function TaskBoard({
           const isDropTarget = dragOverColumn === column.id;
 
           return (
-            <div 
+            <div
               key={column.id}
               className={`task-board__column ${isDropTarget ? 'task-board__column--drop-target' : ''}`}
               onDragOver={(e) => handleDragOver(e, column.id)}
@@ -233,14 +228,14 @@ function TaskBoard({
               onDrop={(e) => handleDrop(e, column.id)}
             >
               <div className="task-board__column-header">
-                <div 
+                <div
                   className="task-board__column-color"
                   style={{ backgroundColor: column.color }}
                 />
                 <span className="task-board__column-name">{column.name}</span>
                 <span className="task-board__column-count">{columnTasks.length}</span>
                 {!column.is_default && (
-                  <button 
+                  <button
                     className="task-board__column-remove"
                     onClick={() => handleRemoveColumn(column.id)}
                     title="Удалить колонку"
@@ -261,7 +256,7 @@ function TaskBoard({
                     isDragging={draggedTask?.id === task.id}
                   />
                 ))}
-                
+
                 {columnTasks.length === 0 && (
                   <div className="task-board__column-empty">
                     Перетащите задачу сюда
@@ -269,7 +264,7 @@ function TaskBoard({
                 )}
               </div>
 
-              <button 
+              <button
                 className="task-board__column-add-task"
                 onClick={() => handleCreateTask(column.id)}
               >
@@ -300,7 +295,7 @@ function TaskBoard({
               </div>
             </div>
           ) : (
-            <button 
+            <button
               className="task-board__add-column-btn"
               onClick={() => setShowAddColumn(true)}
             >
@@ -332,6 +327,17 @@ function TaskBoard({
 }
 
 export default TaskBoard;
+
+
+
+
+
+
+
+
+
+
+
 
 
 

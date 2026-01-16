@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import pool from '../db.mjs';
+import { activeSessions } from '../socket/auth.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
 import { sendVerificationEmail } from '../utils/email.mjs';
 import { getClientIp } from '../utils/ip.mjs';
@@ -195,6 +196,55 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Ошибка авторизации:', error);
     res.status(500).json({ error: 'Ошибка сервера при авторизации' });
+  }
+});
+
+// Создать HTTP-сессию на основе временного токена, выданного после Socket.IO входа
+router.post('/attach-session', async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ error: 'Токен не предоставлен' });
+    }
+
+    // Ищем запись в activeSessions с совпадающим attachToken
+    let foundEntry = null;
+    for (const [socketId, info] of activeSessions) {
+      if (info && info.attachToken === token) {
+        foundEntry = { socketId, info };
+        break;
+      }
+    }
+
+    if (!foundEntry) {
+      return res.status(404).json({ error: 'Некорректный или просроченный токен' });
+    }
+
+    const sessionInfo = foundEntry.info;
+
+    // Создаем HTTP-сессию
+    req.session.userId = sessionInfo.userId;
+    req.session.userName = sessionInfo.userName;
+    req.session.userEmail = sessionInfo.userEmail;
+
+    req.session.save((err) => {
+      if (err) {
+        console.error('Ошибка сохранения HTTP-сессии (attach):', err);
+        return res.status(500).json({ error: 'Ошибка сохранения сессии' });
+      }
+
+      // Удаляем attachToken, чтобы он нельзя было повторно использовать
+      const stored = activeSessions.get(foundEntry.socketId);
+      if (stored && stored.attachToken) {
+        delete stored.attachToken;
+      }
+
+      res.json({ success: true, message: 'HTTP-сессия создана' });
+    });
+  } catch (error) {
+    console.error('Ошибка attach-session:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
 

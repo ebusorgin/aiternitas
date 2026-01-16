@@ -133,7 +133,9 @@ function Home() {
 
         <div className="dashboard-cards">
           <div className="dashboard-card" onClick={() => navigate('/messages')}>
-            <div className="card-icon">💬</div>
+            <div className="card-icon">
+              <img src="/images/dashboard-messages.svg" alt="Сообщения" />
+            </div>
             <div className="card-content">
               <h3>Сообщения</h3>
               <p>Просмотр и отправка сообщений</p>
@@ -141,7 +143,9 @@ function Home() {
           </div>
 
           <div className="dashboard-card" onClick={() => navigate('/calls')}>
-            <div className="card-icon">📞</div>
+            <div className="card-icon">
+              <img src="/images/dashboard-calls.svg" alt="Звонки" />
+            </div>
             <div className="card-content">
               <h3>Звонки</h3>
               <p>История звонков и видеозвонки</p>
@@ -149,7 +153,9 @@ function Home() {
           </div>
 
           <div className="dashboard-card" onClick={() => navigate('/companies')}>
-            <div className="card-icon">🏢</div>
+            <div className="card-icon">
+              <img src="/images/dashboard-companies.svg" alt="Компании" />
+            </div>
             <div className="card-content">
               <h3>Мои компании</h3>
               <p>Управление компаниями</p>
@@ -157,7 +163,9 @@ function Home() {
           </div>
 
           <div className="dashboard-card" onClick={() => navigate('/profile')}>
-            <div className="card-icon">👤</div>
+            <div className="card-icon">
+              <img src="/images/dashboard-profile.svg" alt="Профиль" />
+            </div>
             <div className="card-content">
               <h3>Личный кабинет</h3>
               <p>Настройки профиля</p>
@@ -172,6 +180,9 @@ function Home() {
   return (
     <div className="auth-page">
       <div className="auth-container">
+        <div className="auth-illustration">
+          <img src="/images/auth-illustration.svg" alt="Authentication" />
+        </div>
         <div className="auth-card">
           <div className="auth-header">
             <h1>Aiternitas</h1>

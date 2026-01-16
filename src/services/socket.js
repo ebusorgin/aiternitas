@@ -22,9 +22,31 @@ class SocketService {
     }
 
     return new Promise((resolve, reject) => {
-      try {
-        // Get base URL for socket connection
-        const baseUrl = window.location.origin;
+    try {
+      // Get base URL for socket connection.
+      // Prefer explicit env var (set VITE_SOCKET_URL), otherwise try to derive backend host:
+      // - If frontend runs on a different port during dev, default backend port is 3001.
+      // - If the origin already points to the backend, use it.
+      const envUrl = typeof import.meta !== 'undefined' ? import.meta.env.VITE_SOCKET_URL : undefined;
+      let baseUrl;
+      if (envUrl) {
+        baseUrl = envUrl;
+      } else {
+        try {
+          const loc = new URL(window.location.origin);
+          // If frontend origin equals backend default host/port, use it; otherwise set port to 3001
+          const DEFAULT_BACKEND_PORT = (typeof import.meta !== 'undefined' && import.meta.env.VITE_BACKEND_PORT) || '3001';
+          // If current origin port looks like backend (3001) keep it, otherwise switch to backend port
+          if (loc.port && (loc.port === DEFAULT_BACKEND_PORT)) {
+            baseUrl = window.location.origin;
+          } else {
+            baseUrl = `${loc.protocol}//${loc.hostname}:${DEFAULT_BACKEND_PORT}`;
+          }
+        } catch (e) {
+          // Fallback to localhost:3001
+          baseUrl = 'http://localhost:3001';
+        }
+      }
 
         this.socket = io(baseUrl, {
           withCredentials: true,

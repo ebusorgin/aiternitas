@@ -1,0 +1,15 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="profGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#7c3aed;stop-opacity:0.6" />
+    </linearGradient>
+  </defs>
+  <!-- Head -->
+  <circle cx="60" cy="45" r="25" fill="url(#profGrad)"/>
+  <!-- Body -->
+  <path d="M 25 80 Q 25 70, 35 70 L 85 70 Q 95 70, 95 80 L 95 100 L 25 100 Z" fill="url(#profGrad)"/>
+  <!-- Badge/Icon on body -->
+  <circle cx="60" cy="85" r="8" fill="#fff" opacity="0.5"/>
+</svg>
+

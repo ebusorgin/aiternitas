@@ -35,15 +35,15 @@ export const useTaskStore = create((set, get) => ({
   columns: [],
   selectedTask: null,
   selectedDepartmentId: null,
-  
+
   // Loading states
   isLoading: false,
   isDecomposing: false,
   isSaving: false,
-  
+
   // Stats
   stats: null,
-  
+
   // Socket initialization flag
   socketInitialized: false,
 
@@ -135,7 +135,7 @@ export const useTaskStore = create((set, get) => ({
 
     socketService.on('task:columns:reordered', ({ columnOrder }) => {
       set((state) => ({
-        columns: state.columns.sort((a, b) => 
+        columns: state.columns.sort((a, b) =>
           columnOrder.indexOf(a.id) - columnOrder.indexOf(b.id)
         )
       }));
@@ -151,16 +151,16 @@ export const useTaskStore = create((set, get) => ({
 
   loadColumns: async (departmentId) => {
     if (!departmentId) return;
-    
+
     set({ isLoading: true });
-    
+
     try {
       const result = await socketService.emit('task:columns:get', { departmentId });
-      
+
       if (result.success) {
         set({ columns: result.columns, selectedDepartmentId: departmentId });
       }
-      
+
       return result;
     } catch (error) {
       console.error('Load columns error:', error);
@@ -175,13 +175,13 @@ export const useTaskStore = create((set, get) => ({
       const result = await socketService.emit('task:column:create', {
         departmentId, name, color, position
       });
-      
+
       if (result.success) {
         set((state) => ({
           columns: [...state.columns, result.column].sort((a, b) => a.position - b.position)
         }));
       }
-      
+
       return result;
     } catch (error) {
       console.error('Create column error:', error);
@@ -192,13 +192,13 @@ export const useTaskStore = create((set, get) => ({
   updateColumn: async (id, updates) => {
     try {
       const result = await socketService.emit('task:column:update', { id, ...updates });
-      
+
       if (result.success) {
         set((state) => ({
           columns: state.columns.map(c => c.id === id ? result.column : c)
         }));
       }
-      
+
       return result;
     } catch (error) {
       console.error('Update column error:', error);
@@ -209,16 +209,16 @@ export const useTaskStore = create((set, get) => ({
   deleteColumn: async (id, moveTasksToColumnId) => {
     try {
       const result = await socketService.emit('task:column:delete', { id, moveTasksToColumnId });
-      
+
       if (result.success) {
         set((state) => ({
           columns: state.columns.filter(c => c.id !== id),
-          tasks: moveTasksToColumnId 
+          tasks: moveTasksToColumnId
             ? state.tasks.map(t => t.column_id === id ? { ...t, column_id: moveTasksToColumnId } : t)
             : state.tasks.filter(t => t.column_id !== id)
         }));
       }
-      
+
       return result;
     } catch (error) {
       console.error('Delete column error:', error);
@@ -234,7 +234,7 @@ export const useTaskStore = create((set, get) => ({
           .map(c => ({ ...c, position: columnOrder.indexOf(c.id) }))
           .sort((a, b) => a.position - b.position)
       }));
-      
+
       const result = await socketService.emit('task:columns:reorder', { departmentId, columnOrder });
       return result;
     } catch (error) {
@@ -249,16 +249,16 @@ export const useTaskStore = create((set, get) => ({
 
   loadTasks: async (departmentId, includeSubtasks = false) => {
     if (!departmentId) return;
-    
+
     set({ isLoading: true });
-    
+
     try {
       const result = await socketService.emit('task:list', { departmentId, includeSubtasks });
-      
+
       if (result.success) {
         set({ tasks: result.tasks, selectedDepartmentId: departmentId });
       }
-      
+
       return result;
     } catch (error) {
       console.error('Load tasks error:', error);
@@ -269,20 +269,26 @@ export const useTaskStore = create((set, get) => ({
   },
 
   loadAllTasks: async (options = {}) => {
+    console.log('🔄 loadAllTasks started', options);
     set({ isLoading: true });
-    
+
     try {
+      console.log('📡 Emitting task:list:all');
       const result = await socketService.emit('task:list:all', options);
-      
+      console.log('✅ task:list:all result:', result);
+
       if (result.success) {
         set({ tasks: result.tasks });
+      } else {
+        console.error('❌ task:list:all failed:', result.error);
       }
-      
+
       return result;
     } catch (error) {
-      console.error('Load all tasks error:', error);
+      console.error('❌ Load all tasks error (catch):', error);
       return { success: false, error: error.message };
     } finally {
+      console.log('🏁 loadAllTasks finally block, setting isLoading = false');
       set({ isLoading: false });
     }
   },
@@ -290,11 +296,11 @@ export const useTaskStore = create((set, get) => ({
   loadTask: async (taskId) => {
     try {
       const result = await socketService.emit('task:get', { id: taskId });
-      
+
       if (result.success) {
         set({ selectedTask: result.task });
       }
-      
+
       return result;
     } catch (error) {
       console.error('Load task error:', error);
@@ -304,16 +310,16 @@ export const useTaskStore = create((set, get) => ({
 
   createTask: async (taskData) => {
     set({ isSaving: true });
-    
+
     try {
       const result = await socketService.emit('task:create', taskData);
-      
+
       if (result.success) {
         set((state) => ({
           tasks: [...state.tasks, result.task]
         }));
       }
-      
+
       return result;
     } catch (error) {
       console.error('Create task error:', error);
@@ -325,17 +331,17 @@ export const useTaskStore = create((set, get) => ({
 
   updateTask: async (taskId, updates) => {
     set({ isSaving: true });
-    
+
     try {
       const result = await socketService.emit('task:update', { id: taskId, ...updates });
-      
+
       if (result.success) {
         set((state) => ({
           tasks: state.tasks.map(t => t.id === taskId ? result.task : t),
           selectedTask: state.selectedTask?.id === taskId ? result.task : state.selectedTask
         }));
       }
-      
+
       return result;
     } catch (error) {
       console.error('Update task error:', error);
@@ -348,19 +354,19 @@ export const useTaskStore = create((set, get) => ({
   moveTask: async (taskId, columnId, status) => {
     // Optimistic update
     set((state) => ({
-      tasks: state.tasks.map(t => 
+      tasks: state.tasks.map(t =>
         t.id === taskId ? { ...t, column_id: columnId, status: status || t.status } : t
       )
     }));
-    
+
     try {
       const result = await socketService.emit('task:move', { taskId, columnId, status });
-      
+
       if (!result.success) {
         // Revert on failure
         get().loadTasks(get().selectedDepartmentId);
       }
-      
+
       return result;
     } catch (error) {
       console.error('Move task error:', error);
@@ -372,14 +378,14 @@ export const useTaskStore = create((set, get) => ({
   deleteTask: async (taskId) => {
     try {
       const result = await socketService.emit('task:delete', { id: taskId });
-      
+
       if (result.success) {
         set((state) => ({
           tasks: state.tasks.filter(t => t.id !== taskId && t.parent_task_id !== taskId),
           selectedTask: state.selectedTask?.id === taskId ? null : state.selectedTask
         }));
       }
-      
+
       return result;
     } catch (error) {
       console.error('Delete task error:', error);
@@ -393,12 +399,12 @@ export const useTaskStore = create((set, get) => ({
 
   assignTask: async (taskId, assignToWorkerId, assignToDepartmentId, autoDecompose = true) => {
     set({ isSaving: true });
-    
+
     try {
       const result = await socketService.emit('task:assign', {
         taskId, assignToWorkerId, assignToDepartmentId, autoDecompose
       }, 60000); // Longer timeout for decomposition
-      
+
       if (result.success) {
         set((state) => ({
           tasks: state.tasks
@@ -406,7 +412,7 @@ export const useTaskStore = create((set, get) => ({
             .concat(result.subtasks || [])
         }));
       }
-      
+
       return result;
     } catch (error) {
       console.error('Assign task error:', error);
@@ -418,18 +424,18 @@ export const useTaskStore = create((set, get) => ({
 
   decomposeTask: async (taskId, departmentContext = {}) => {
     set({ isDecomposing: true });
-    
+
     try {
       const result = await socketService.emit('task:decompose', {
         taskId, departmentContext
       }, 60000); // Longer timeout for GPT
-      
+
       if (result.success && result.subtasks?.length > 0) {
         set((state) => ({
           tasks: [...state.tasks, ...result.subtasks]
         }));
       }
-      
+
       return result;
     } catch (error) {
       console.error('Decompose task error:', error);
@@ -441,18 +447,18 @@ export const useTaskStore = create((set, get) => ({
 
   escalateTask: async (taskId, parentDepartmentId, recommendations) => {
     set({ isSaving: true });
-    
+
     try {
       const result = await socketService.emit('task:escalate', {
         taskId, parentDepartmentId, recommendations
       });
-      
+
       if (result.success) {
         set((state) => ({
           tasks: state.tasks.map(t => t.id === taskId ? result.task : t)
         }));
       }
-      
+
       return result;
     } catch (error) {
       console.error('Escalate task error:', error);
@@ -467,13 +473,13 @@ export const useTaskStore = create((set, get) => ({
       const result = await socketService.emit('task:report', {
         taskId, authorId, authorType, content, commentType, newStatus
       });
-      
+
       if (result.success && result.task) {
         set((state) => ({
           tasks: state.tasks.map(t => t.id === taskId ? result.task : t)
         }));
       }
-      
+
       return result;
     } catch (error) {
       console.error('Add report error:', error);
@@ -483,18 +489,18 @@ export const useTaskStore = create((set, get) => ({
 
   reviewTask: async (taskId, action, feedback) => {
     set({ isSaving: true });
-    
+
     try {
       const result = await socketService.emit('task:review', {
         taskId, action, feedback
       });
-      
+
       if (result.success) {
         set((state) => ({
           tasks: state.tasks.map(t => t.id === taskId ? result.task : t)
         }));
       }
-      
+
       return result;
     } catch (error) {
       console.error('Review task error:', error);
@@ -509,7 +515,7 @@ export const useTaskStore = create((set, get) => ({
       const result = await socketService.emit('task:suggest-assignee', {
         taskId, availableWorkers, childDepartments
       }, 30000);
-      
+
       return result;
     } catch (error) {
       console.error('Suggest assignee error:', error);
@@ -524,11 +530,11 @@ export const useTaskStore = create((set, get) => ({
   loadStats: async (departmentId) => {
     try {
       const result = await socketService.emit('task:stats', { departmentId });
-      
+
       if (result.success) {
         set({ stats: result.stats });
       }
-      
+
       return result;
     } catch (error) {
       console.error('Load stats error:', error);
@@ -566,16 +572,16 @@ export const useTaskStore = create((set, get) => ({
 
   getOverdueTasks: () => {
     const now = new Date();
-    return get().tasks.filter(t => 
-      t.due_date && 
-      new Date(t.due_date) < now && 
+    return get().tasks.filter(t =>
+      t.due_date &&
+      new Date(t.due_date) < now &&
       !['completed', 'cancelled'].includes(t.status)
     );
   },
 
   getCriticalTasks: () => {
-    return get().tasks.filter(t => 
-      t.priority === 'critical' && 
+    return get().tasks.filter(t =>
+      t.priority === 'critical' &&
       !['completed', 'cancelled'].includes(t.status)
     );
   },
@@ -594,6 +600,17 @@ export const useTaskStore = create((set, get) => ({
     });
   }
 }));
+
+
+
+
+
+
+
+
+
+
+
 
 
 

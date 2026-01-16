@@ -1,0 +1,322 @@
+/* Agency Landing Page Styles */
+
+/* Font setup - using system fonts fallback to sans-serif for now, 
+   but designed for 'Inter' or 'JetBrains Mono' if available */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Manrope:wght@300;400;600;800&display=swap');
+
+:root {
+    --neon-blue: #00f3ff;
+    --neon-green: #0aff00;
+    --neon-purple: #bd00ff;
+    --bg-dark: #050505;
+    --bg-panel: rgba(20, 20, 20, 0.6);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --text-main: #ffffff;
+    --text-dim: #888888;
+}
+
+.agency-landing {
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: 'Manrope', sans-serif;
+    min-height: 100vh;
+    width: 100vw;
+    overflow-x: hidden;
+    position: relative;
+}
+
+.agency-landing code,
+.agency-landing .mono {
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Scrollbar */
+.agency-landing::-webkit-scrollbar {
+    width: 6px;
+}
+
+.agency-landing::-webkit-scrollbar-track {
+    background: var(--bg-dark);
+}
+
+.agency-landing::-webkit-scrollbar-thumb {
+    background: var(--neon-blue);
+    border-radius: 3px;
+}
+
+/* Utilities */
+.text-gradient {
+    background: linear-gradient(90deg, #fff, var(--text-dim));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.text-neon-blue {
+    color: var(--neon-blue);
+    text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+}
+
+.text-neon-green {
+    color: var(--neon-green);
+    text-shadow: 0 0 10px rgba(10, 255, 0, 0.5);
+}
+
+/* Glassmorphism Card */
+.glass-card {
+    background: var(--bg-panel);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 2rem;
+    transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+    border-color: var(--neon-blue);
+    box-shadow: 0 0 20px rgba(0, 243, 255, 0.1);
+}
+
+/* The Line of Energy */
+.energy-line-container {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+}
+
+.energy-line {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to bottom,
+            var(--neon-blue) 0%,
+            var(--neon-purple) 50%,
+            var(--neon-green) 100%);
+    opacity: 0.3;
+}
+
+.energy-pulse {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 100px;
+    background: #fff;
+    box-shadow: 0 0 15px #fff, 0 0 30px var(--neon-blue);
+    border-radius: 2px;
+    animation: pulse-down 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes pulse-down {
+    0% {
+        top: -100px;
+        opacity: 0;
+    }
+
+    10% {
+        opacity: 1;
+    }
+
+    90% {
+        opacity: 1;
+    }
+
+    100% {
+        top: 100%;
+        opacity: 0;
+    }
+}
+
+/* Sections */
+.section {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+    padding: 4rem 2rem;
+}
+
+/* Hero */
+.hero-title {
+    font-size: 5rem;
+    font-weight: 800;
+    letter-spacing: -2px;
+    line-height: 1.1;
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.hero-subtitle {
+    font-size: 1.5rem;
+    color: var(--text-dim);
+    text-align: center;
+    max-width: 600px;
+    margin-bottom: 4rem;
+}
+
+/* Animated Flow (Logic Block) */
+.flow-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.flow-node {
+    padding: 1rem 2rem;
+    background: #111;
+    border: 1px solid #333;
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    position: relative;
+}
+
+.flow-node.active {
+    border-color: var(--neon-blue);
+    box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+    color: var(--neon-blue);
+}
+
+.flow-node.profit {
+    border-color: var(--neon-green);
+    color: var(--neon-green);
+    box-shadow: 0 0 15px rgba(10, 255, 0, 0.3);
+}
+
+.flow-arrow {
+    font-size: 1.5rem;
+    color: #333;
+    transition: color 0.3s;
+}
+
+.flow-arrow.active {
+    color: #fff;
+    text-shadow: 0 0 10px #fff;
+}
+
+/* Identity / Morphing Text */
+.morph-text {
+    font-size: 4rem;
+    font-weight: 700;
+    text-align: center;
+    height: 6rem;
+    /* fixed height to prevent jump */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.strikethrough {
+    text-decoration: line-through;
+    color: #555;
+    text-decoration-color: var(--neon-purple);
+    text-decoration-thickness: 3px;
+}
+
+/* Capabilities Grid */
+.grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+    max-width: 1200px;
+    width: 100%;
+}
+
+.grid-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.grid-item:hover {
+    background: rgba(0, 243, 255, 0.05);
+    border-color: var(--neon-blue);
+    transform: translateY(-5px);
+}
+
+.grid-icon {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    color: var(--text-dim);
+}
+
+.grid-item:hover .grid-icon {
+    color: var(--neon-blue);
+}
+
+/* CTA Button */
+.cta-button {
+    background: transparent;
+    border: 1px solid var(--neon-blue);
+    color: var(--neon-blue);
+    padding: 1rem 3rem;
+    font-size: 1.2rem;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.cta-button:hover {
+    background: var(--neon-blue);
+    color: #000;
+    box-shadow: 0 0 30px rgba(0, 243, 255, 0.4);
+}
+
+.cta-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+    transition: 0.5s;
+}
+
+.cta-button:hover::before {
+    left: 100%;
+}
+
+/* Footer Manifest */
+.manifest-text {
+    font-size: 3rem;
+    text-align: center;
+    line-height: 1.4;
+    margin-bottom: 3rem;
+    max-width: 800px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .hero-title {
+        font-size: 3rem;
+    }
+
+    .manifest-text {
+        font-size: 2rem;
+    }
+
+    .flow-node {
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+    }
+}

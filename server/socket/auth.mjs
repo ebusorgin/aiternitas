@@ -11,6 +11,15 @@ function generateVerificationToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+import fs from 'fs';
+import path from 'path';
+
+// Helper to log to file
+const logToFile = (msg) => {
+  const logPath = path.join(process.cwd(), 'debug_auth.txt');
+  fs.appendFileSync(logPath, `${new Date().toISOString()} ${msg}\n`);
+};
+
 // Store active sessions: socketId -> { sessionId, userId, userName, userEmail }
 const activeSessions = new Map();
 
@@ -18,7 +27,7 @@ const activeSessions = new Map();
 const userRooms = new Map();
 
 export function setupAuthHandlers(io, socket, sessionStore) {
-  
+
   // Register new user
   socket.on('auth:register', async (data, callback) => {
     try {
@@ -41,9 +50,9 @@ export function setupAuthHandlers(io, socket, sessionStore) {
 
       if (existingUser.rows.length > 0) {
         if (existingUser.rows[0].google_id) {
-          return callback({ 
-            success: false, 
-            error: 'Пользователь с таким email уже зарегистрирован через Google. Используйте вход через Google.' 
+          return callback({
+            success: false,
+            error: 'Пользователь с таким email уже зарегистрирован через Google. Используйте вход через Google.'
           });
         }
         return callback({ success: false, error: 'Пользователь с таким email уже существует' });
@@ -82,13 +91,16 @@ export function setupAuthHandlers(io, socket, sessionStore) {
       socket.userName = user.name;
       socket.userEmail = user.email;
       socket.sessionId = sessionId;
+      // Temporary token to allow creating an HTTP session from the browser after socket login
+      const attachToken = crypto.randomBytes(24).toString('hex');
 
       // Store session
       activeSessions.set(socket.id, {
         sessionId,
         userId: user.id,
         userName: user.name,
-        userEmail: user.email
+        userEmail: user.email,
+        attachToken
       });
 
       // Join user room for broadcasting
@@ -109,7 +121,8 @@ export function setupAuthHandlers(io, socket, sessionStore) {
           avatar: user.avatar,
           email_verified: user.email_verified
         },
-        message: 'Регистрация успешна'
+        message: 'Регистрация успешна',
+        attachToken
       });
 
     } catch (error) {
@@ -128,28 +141,33 @@ export function setupAuthHandlers(io, socket, sessionStore) {
       }
 
       // Find user
+      logToFile(`🔍 Вход: ищем пользователя ${email.toLowerCase()}`);
       const result = await pool.query(
         'SELECT id, name, email, password, avatar, google_id, email_verified FROM users WHERE email = $1',
         [email.toLowerCase()]
       );
 
       if (result.rows.length === 0) {
+        logToFile(`❌ Вход: пользователь ${email.toLowerCase()} не найден`);
         return callback({ success: false, error: 'Неверный email или пароль' });
       }
 
       const user = result.rows[0];
+      logToFile(`✅ Вход: пользователь найден ID: ${user.id}, Verified: ${user.email_verified}`);
 
       // Check if user has password (not Google-only)
       if (!user.password) {
-        return callback({ 
-          success: false, 
-          error: 'Этот аккаунт зарегистрирован через Google. Используйте вход через Google.' 
+        logToFile(`❌ Вход: у пользователя нет пароля (Google auth)`);
+        return callback({
+          success: false,
+          error: 'Этот аккаунт зарегистрирован через Google. Используйте вход через Google.'
         });
       }
 
       // Verify password
       const passwordMatch = await bcrypt.compare(password, user.password);
       if (!passwordMatch) {
+        logToFile(`❌ Вход: неверный пароль для ${email.toLowerCase()}`);
         return callback({ success: false, error: 'Неверный email или пароль' });
       }
 
@@ -159,13 +177,16 @@ export function setupAuthHandlers(io, socket, sessionStore) {
       socket.userName = user.name;
       socket.userEmail = user.email;
       socket.sessionId = sessionId;
+      // Temporary token to allow creating an HTTP session from the browser after socket login
+      const attachToken = crypto.randomBytes(24).toString('hex');
 
       // Store session
       activeSessions.set(socket.id, {
         sessionId,
         userId: user.id,
         userName: user.name,
-        userEmail: user.email
+        userEmail: user.email,
+        attachToken
       });
 
       // Join user room
@@ -176,6 +197,7 @@ export function setupAuthHandlers(io, socket, sessionStore) {
       userRooms.get(user.id).add(socket.id);
 
       console.log(`✅ Пользователь вошел через Socket.IO: ${user.email} (id: ${user.id})`);
+      logToFile(`✅ Пользователь вошел успешно: ${user.email}`);
 
       callback({
         success: true,
@@ -185,7 +207,8 @@ export function setupAuthHandlers(io, socket, sessionStore) {
           email: user.email,
           avatar: user.avatar,
           email_verified: user.email_verified
-        }
+        },
+        attachToken
       });
 
     } catch (error) {
@@ -198,7 +221,7 @@ export function setupAuthHandlers(io, socket, sessionStore) {
   socket.on('auth:logout', (data, callback) => {
     try {
       const userId = socket.userId;
-      
+
       // Remove from user room
       if (userId) {
         socket.leave(`user:${userId}`);
@@ -261,7 +284,7 @@ export function setupAuthHandlers(io, socket, sessionStore) {
 
         if (result.rows.length > 0) {
           const user = result.rows[0];
-          
+
           // Update socket
           socket.userId = user.id;
           socket.userName = user.name;
@@ -351,7 +374,7 @@ export function setupAuthHandlers(io, socket, sessionStore) {
   // Handle disconnect - cleanup session
   socket.on('disconnect', () => {
     const userId = socket.userId;
-    
+
     if (userId) {
       if (userRooms.has(userId)) {
         userRooms.get(userId).delete(socket.id);
@@ -370,7 +393,7 @@ export function setupAuthHandlers(io, socket, sessionStore) {
 async function tryRestoreHttpSession(socket, sessionStore) {
   return new Promise((resolve) => {
     const cookieHeader = socket.request?.headers?.cookie;
-    
+
     if (!cookieHeader) {
       return resolve(null);
     }
@@ -394,12 +417,12 @@ async function tryRestoreHttpSession(socket, sessionStore) {
     // Clean session ID
     try {
       sessionId = decodeURIComponent(sessionId);
-    } catch (e) {}
-    
+    } catch (e) { }
+
     if (sessionId.startsWith('s:')) {
       sessionId = sessionId.substring(2);
     }
-    
+
     if (sessionId.includes('.')) {
       sessionId = sessionId.split('.')[0];
     }

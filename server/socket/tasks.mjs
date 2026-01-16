@@ -15,7 +15,7 @@ const DEFAULT_COLUMNS = [
 ];
 
 export function setupTaskHandlers(io, socket) {
-  
+
   // Helper: broadcast to all user's connected clients except sender
   const broadcastToUser = (event, data) => {
     if (socket.userId) {
@@ -42,7 +42,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { departmentId } = data;
-      
+
       if (!departmentId) {
         return callback?.({ success: false, error: 'ID департамента обязателен' });
       }
@@ -64,7 +64,7 @@ export function setupTaskHandlers(io, socket) {
             [socket.userId, departmentId, col.name, col.position, col.color]
           );
         }
-        
+
         result = await pool.query(
           `SELECT * FROM task_columns 
            WHERE user_id = $1 AND department_id = $2 
@@ -89,7 +89,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { departmentId, name, color, position } = data;
-      
+
       if (!departmentId || !name) {
         return callback?.({ success: false, error: 'Некорректные данные' });
       }
@@ -102,9 +102,9 @@ export function setupTaskHandlers(io, socket) {
       );
 
       const column = result.rows[0];
-      
+
       console.log(`📋 Column created: ${column.name} for dept ${departmentId}`);
-      
+
       broadcastToUser('task:column:created', { column });
       callback?.({ success: true, column });
 
@@ -122,7 +122,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { id, name, color, position } = data;
-      
+
       if (!id) {
         return callback?.({ success: false, error: 'ID колонки обязателен' });
       }
@@ -163,7 +163,7 @@ export function setupTaskHandlers(io, socket) {
       }
 
       const column = result.rows[0];
-      
+
       broadcastToUser('task:column:updated', { column });
       callback?.({ success: true, column });
 
@@ -181,7 +181,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { id, moveTasksToColumnId } = data;
-      
+
       if (!id) {
         return callback?.({ success: false, error: 'ID колонки обязателен' });
       }
@@ -200,7 +200,7 @@ export function setupTaskHandlers(io, socket) {
       );
 
       console.log(`🗑️ Column deleted: ${id}`);
-      
+
       broadcastToUser('task:column:deleted', { id, moveTasksToColumnId });
       callback?.({ success: true });
 
@@ -218,7 +218,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { departmentId, columnOrder } = data;
-      
+
       if (!departmentId || !Array.isArray(columnOrder)) {
         return callback?.({ success: false, error: 'Некорректные данные' });
       }
@@ -253,7 +253,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { departmentId, includeSubtasks } = data;
-      
+
       if (!departmentId) {
         return callback?.({ success: false, error: 'ID департамента обязателен' });
       }
@@ -268,11 +268,11 @@ export function setupTaskHandlers(io, socket) {
         LEFT JOIN task_columns tc ON t.column_id = tc.id
         WHERE t.user_id = $1 AND t.department_id = $2
       `;
-      
+
       if (!includeSubtasks) {
         query += ` AND t.parent_task_id IS NULL`;
       }
-      
+
       query += ` ORDER BY t.created_at DESC`;
 
       const result = await pool.query(query, [socket.userId, departmentId]);
@@ -304,7 +304,7 @@ export function setupTaskHandlers(io, socket) {
         LEFT JOIN task_columns tc ON t.column_id = tc.id
         WHERE t.user_id = $1
       `;
-      
+
       const params = [socket.userId];
       let paramIndex = 2;
 
@@ -320,7 +320,9 @@ export function setupTaskHandlers(io, socket) {
       query += ` ORDER BY t.updated_at DESC LIMIT $${paramIndex}`;
       params.push(limit);
 
+      console.log(`📡 Server received task:list:all from user ${socket.userId}`);
       const result = await pool.query(query, params);
+      console.log(`✅ Server executed task:list:all query, row count: ${result.rows.length}`);
 
       callback?.({ success: true, tasks: result.rows });
 
@@ -338,7 +340,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { id } = data;
-      
+
       if (!id) {
         return callback?.({ success: false, error: 'ID задачи обязателен' });
       }
@@ -380,8 +382,8 @@ export function setupTaskHandlers(io, socket) {
         [id]
       );
 
-      callback?.({ 
-        success: true, 
+      callback?.({
+        success: true,
         task: {
           ...task,
           subtasks: subtasksResult.rows,
@@ -402,18 +404,18 @@ export function setupTaskHandlers(io, socket) {
     }
 
     try {
-      const { 
-        departmentId, 
-        columnId, 
+      const {
+        departmentId,
+        columnId,
         parentTaskId,
-        title, 
-        description, 
+        title,
+        description,
         priority,
         dueDate,
         estimatedHours,
         createdByDepartmentId
       } = data;
-      
+
       if (!departmentId || !title) {
         return callback?.({ success: false, error: 'Некорректные данные' });
       }
@@ -442,7 +444,7 @@ export function setupTaskHandlers(io, socket) {
          RETURNING *`,
         [
           socket.userId, departmentId, finalColumnId, parentTaskId || null,
-          title, description || '', priority || 'medium', 
+          title, description || '', priority || 'medium',
           dueDate || null, estimatedHours || null,
           createdByDepartmentId || departmentId
         ]
@@ -476,13 +478,13 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { id, ...updates } = data;
-      
+
       if (!id) {
         return callback?.({ success: false, error: 'ID задачи обязателен' });
       }
 
       const allowedFields = [
-        'title', 'description', 'priority', 'status', 
+        'title', 'description', 'priority', 'status',
         'column_id', 'due_date', 'estimated_hours', 'actual_hours',
         'recommendations'
       ];
@@ -538,7 +540,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { taskId, columnId, status } = data;
-      
+
       if (!taskId || !columnId) {
         return callback?.({ success: false, error: 'Некорректные данные' });
       }
@@ -587,7 +589,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { id } = data;
-      
+
       if (!id) {
         return callback?.({ success: false, error: 'ID задачи обязателен' });
       }
@@ -633,7 +635,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { taskId, assignToWorkerId, assignToDepartmentId, autoDecompose } = data;
-      
+
       if (!taskId || (!assignToWorkerId && !assignToDepartmentId)) {
         return callback?.({ success: false, error: 'Некорректные данные' });
       }
@@ -670,7 +672,7 @@ export function setupTaskHandlers(io, socket) {
       if (assignToDepartmentId && autoDecompose) {
         try {
           const decompositionResult = await decomposeTask(task, { departmentId: assignToDepartmentId });
-          
+
           if (decompositionResult?.subtasks?.length > 0) {
             // Create subtasks
             for (const subtask of decompositionResult.subtasks) {
@@ -723,7 +725,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { taskId, departmentContext } = data;
-      
+
       if (!taskId) {
         return callback?.({ success: false, error: 'ID задачи обязателен' });
       }
@@ -750,7 +752,7 @@ export function setupTaskHandlers(io, socket) {
       // Create subtasks
       const subtasks = [];
       const targetDepartmentId = task.assigned_to_department_id || task.department_id;
-      
+
       for (const subtask of decompositionResult.subtasks) {
         const subtaskResult = await pool.query(
           `INSERT INTO tasks (
@@ -795,7 +797,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { taskId, parentDepartmentId, recommendations } = data;
-      
+
       if (!taskId || !parentDepartmentId) {
         return callback?.({ success: false, error: 'Некорректные данные' });
       }
@@ -845,7 +847,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { taskId, authorId, authorType, content, commentType, newStatus } = data;
-      
+
       if (!taskId || !authorId || !content) {
         return callback?.({ success: false, error: 'Некорректные данные' });
       }
@@ -889,7 +891,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { taskId, action, feedback } = data;
-      
+
       if (!taskId || !action) {
         return callback?.({ success: false, error: 'Некорректные данные' });
       }
@@ -956,7 +958,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { departmentId } = data;
-      
+
       let whereClause = 'WHERE user_id = $1';
       const params = [socket.userId];
 
@@ -998,7 +1000,7 @@ export function setupTaskHandlers(io, socket) {
 
     try {
       const { taskId, availableWorkers, childDepartments } = data;
-      
+
       if (!taskId) {
         return callback?.({ success: false, error: 'ID задачи обязателен' });
       }
@@ -1028,6 +1030,17 @@ export function setupTaskHandlers(io, socket) {
 }
 
 export default { setupTaskHandlers };
+
+
+
+
+
+
+
+
+
+
+
 
 
 
