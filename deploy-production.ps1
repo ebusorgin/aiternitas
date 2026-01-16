@@ -11,7 +11,8 @@ Write-Host "=== Stage 1: Prepare and push code ===" -ForegroundColor Cyan
 
 Write-Host "Committing local changes (if any) and pushing to develop..." -ForegroundColor Yellow
 git add -A
-git commit -m "deploy(production): prepare build and artifacts" || Write-Host "No changes to commit"
+git commit -m "deploy(production): prepare build and artifacts" 2>$null
+if ($LASTEXITCODE -ne 0) { Write-Host "No changes to commit" }
 git push origin develop
 
 Write-Host "Installing deps and building locally..." -ForegroundColor Yellow
