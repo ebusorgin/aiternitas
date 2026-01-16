@@ -1,8 +1,11 @@
 # Deployment script for Local Build + PM2 (PowerShell version)
+# Generic template — set $SUBDOMAIN to target subdomain (without domain suffix)
+$SUBDOMAIN = "your-subdomain"   # e.g. "app1" -> final domain will be app1.aiternitas.ru
 $SERVER = "root@82.146.44.126"
 $SSH_KEY = "$env:USERPROFILE\.ssh\id_rsa_aiternitas"
-$REPO_PATH = "/home/blago/blagojevic.aiternitas.ru"
-$PM2_NAME = "aiternitas-blagojevic"
+# Remote repository path — will be constructed from $SUBDOMAIN
+$REPO_PATH = "/home/$($SUBDOMAIN).aiternitas.ru"
+$PM2_NAME = "aiternitas-$SUBDOMAIN"
 $PORT = 3003
 
 Write-Host "=== Stage 1: Local Build ===" -ForegroundColor Cyan
@@ -48,8 +51,11 @@ Write-Host "=== Stage 3: Transferring to Server ===" -ForegroundColor Cyan
 scp -i $SSH_KEY deploy.tar.gz "$SERVER`:$REPO_PATH/"
 
 Write-Host "Uploading Nginx configuration if present..." -ForegroundColor Yellow
-if (Test-Path nginx-blagojevic.conf) {
-  scp -i $SSH_KEY nginx-blagojevic.conf "$SERVER`:/etc/nginx/sites-available/blagojevic.aiternitas.ru"
+# Expect nginx config to be named like nginx-<subdomain>.conf, or place generic file `nginx-subdomain.conf`
+$localNginxConf = "nginx-$SUBDOMAIN.conf"
+if (Test-Path $localNginxConf) {
+  $remoteNginxPath = "/etc/nginx/sites-available/$($SUBDOMAIN).aiternitas.ru"
+  scp -i $SSH_KEY $localNginxConf "$SERVER`:$remoteNginxPath"
 }
 
 Write-Host "=== Stage 4: Unpacking and Restarting Services ===" -ForegroundColor Cyan
@@ -80,7 +86,7 @@ fi
 pm2 save || true
 
 # Nginx reload if config was uploaded
-if [ -f /etc/nginx/sites-available/blagojevic.aiternitas.ru ]; then
+if [ -f /etc/nginx/sites-available/$($SUBDOMAIN).aiternitas.ru ]; then
   nginx -t && systemctl reload nginx || true
 fi
 
