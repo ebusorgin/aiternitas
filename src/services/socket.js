@@ -34,12 +34,17 @@ class SocketService {
       } else {
         try {
           const loc = new URL(window.location.origin);
-          // If frontend origin equals backend default host/port, use it; otherwise set port to 3001
           const DEFAULT_BACKEND_PORT = (typeof import.meta !== 'undefined' && import.meta.env.VITE_BACKEND_PORT) || '3001';
-          // If current origin port looks like backend (3001) keep it, otherwise switch to backend port
-          if (loc.port && (loc.port === DEFAULT_BACKEND_PORT)) {
+
+          // If running on HTTPS in production-like environment, prefer same-origin (no port)
+          // This avoids forcing :3001 on production where nginx terminates TLS and proxies to backend.
+          const isLocalhost = loc.hostname === 'localhost' || loc.hostname === '127.0.0.1';
+          const isHttps = loc.protocol === 'https:';
+
+          if (isHttps && !isLocalhost) {
             baseUrl = window.location.origin;
           } else {
+            // For local dev or when explicit backend port is desired, use backend port
             baseUrl = `${loc.protocol}//${loc.hostname}:${DEFAULT_BACKEND_PORT}`;
           }
         } catch (e) {
