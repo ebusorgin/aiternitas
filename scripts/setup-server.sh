@@ -63,6 +63,12 @@ if [ ! -f "$UNIT_PATH" ]; then
   echo "    Сервис установлен и включён в автозагрузку."
 else
   echo "[3/5] Сервис $SERVICE_NAME уже установлен."
+  # Раскомментировать EnvironmentFile= если ещё закомментирован (чтобы подхватить TOR_PROXY из .env.production)
+  if grep -q '^# EnvironmentFile=' "$UNIT_PATH" 2>/dev/null; then
+    ( sudo sed -i 's|^# EnvironmentFile=|EnvironmentFile=|' "$UNIT_PATH" && sudo systemctl daemon-reload ) || \
+    ( sed -i 's|^# EnvironmentFile=|EnvironmentFile=|' "$UNIT_PATH" 2>/dev/null && systemctl daemon-reload ) || true
+    echo "    EnvironmentFile раскомментирован в unit (переменные из .env.production теперь подхватываются)."
+  fi
   # Добавить tor.service в After= если ещё нет (обновление при деплое)
   if ! grep -q 'tor\.service' "$UNIT_PATH" 2>/dev/null; then
     ( sudo sed -i 's/^After=network\.target postgresql\.service$/After=network.target postgresql.service tor.service/' "$UNIT_PATH" && sudo systemctl daemon-reload ) || \

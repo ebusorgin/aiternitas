@@ -5,7 +5,19 @@ import pool from '../db.mjs';
 import { userRooms } from './auth.mjs';
 import { generateCompanyStructure, convertToFlowchartElements } from '../services/openai.mjs';
 
+// Ожидающие ответы на уточнения: clarificationId -> resolve(choice)
+const pendingClarifications = new Map();
+
 export function setupFlowchartHandlers(io, socket) {
+  // Ответ пользователя на уточнение по ходу генерации
+  socket.on('flowchart:clarification-response', (data) => {
+    const { clarificationId, choice } = data || {};
+    const resolve = pendingClarifications.get(clarificationId);
+    if (resolve) {
+      resolve(choice || 'keep');
+      pendingClarifications.delete(clarificationId);
+    }
+  });
   
   // Helper: broadcast to all user's connected clients except sender
   const broadcastToUser = (event, data) => {
@@ -457,9 +469,18 @@ export function setupFlowchartHandlers(io, socket) {
         console.log(`📊 Progress: Step ${progress.step}/${progress.total} - ${progress.message}`);
       };
 
-      // Call OpenAI multi-step generation
+      // Уточнение у пользователя по ходу генерации (всплывающее окно с вариантами)
+      const onClarification = (payload) => {
+        return new Promise((resolve) => {
+          const clarificationId = `clar-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+          pendingClarifications.set(clarificationId, resolve);
+          socket.emit('flowchart:clarification-needed', { clarificationId, ...payload });
+        });
+      };
+
+      // Call OpenAI multi-step generation (with optional clarification)
       console.log('🔄 Starting multi-step generation...');
-      const structure = await generateCompanyStructure(name, description || '', onProgress);
+      const structure = await generateCompanyStructure(name, description || '', onProgress, onClarification);
       console.log('✅ Multi-step generation complete');
       
       // Convert GPT response to flowchart elements (with root company element)

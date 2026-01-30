@@ -21,6 +21,7 @@ function GenerateCompanyModal({ onClose }) {
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(null);
   const [statusHistory, setStatusHistory] = useState([]);
+  const [clarification, setClarification] = useState(null);
 
   const setElements = useFlowchartStore((state) => state.setElements);
   const setConnections = useFlowchartStore((state) => state.setConnections);
@@ -32,11 +33,10 @@ function GenerateCompanyModal({ onClose }) {
       setProgress(data);
       if (data.message) {
         setStatusHistory(prev => {
-          // Don't add duplicate messages
           if (prev.length > 0 && prev[prev.length - 1].message === data.message) {
             return prev;
           }
-          return [...prev, { ...data, time: new Date() }].slice(-8); // Keep last 8
+          return [...prev, { ...data, time: new Date() }].slice(-8);
         });
       }
     };
@@ -47,6 +47,21 @@ function GenerateCompanyModal({ onClose }) {
       unsubscribe?.();
     };
   }, []);
+
+  // Уточнение по ходу генерации (всплывающее окно с вариантами)
+  useEffect(() => {
+    const handleClarification = (payload) => {
+      setClarification(payload);
+    };
+    const unsubscribe = socketService.on('flowchart:clarification-needed', handleClarification);
+    return () => unsubscribe?.();
+  }, []);
+
+  const handleClarificationChoice = (optionId) => {
+    if (!clarification?.clarificationId) return;
+    socketService.sendClarificationResponse(clarification.clarificationId, optionId);
+    setClarification(null);
+  };
 
   const handleOverlayClick = (e) => {
     if (e.target === e.currentTarget && !isGenerating) {
@@ -235,6 +250,34 @@ function GenerateCompanyModal({ onClose }) {
                   ))}
                 </div>
               </div>
+
+              {/* Всплывающее уточнение по ходу генерации */}
+              {clarification && (
+                <div className="clarification-overlay">
+                  <div className="clarification-box">
+                    <div className="clarification-title">Уточните вектор</div>
+                    <p className="clarification-question">{clarification.question}</p>
+                    {clarification.summary && (
+                      <p className="clarification-summary">Сейчас: {clarification.summary}</p>
+                    )}
+                    <div className="clarification-options">
+                      {clarification.options?.map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          className="clarification-option"
+                          onClick={() => handleClarificationChoice(opt.id)}
+                        >
+                          <span className="clarification-option-label">{opt.label}</span>
+                          {opt.description && (
+                            <span className="clarification-option-desc">{opt.description}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

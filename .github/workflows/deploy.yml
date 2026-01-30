@@ -145,6 +145,12 @@ jobs:
             chmod +x scripts/setup-server.sh 2>/dev/null || true
             bash scripts/setup-server.sh $REPO_DIR
             echo ""
+            echo "=== Проверка TOR (для обхода 403 OpenAI) ==="
+            chmod +x scripts/check-tor.sh 2>/dev/null || true
+            bash scripts/check-tor.sh $REPO_DIR || true
+            echo ""
+            echo "=== Логи приложения (TOR/OpenAI) ==="
+            journalctl -u aiternitas-main.service -n 15 --no-pager 2>/dev/null | grep -E 'TOR|OpenAI|403|Error' || echo "(нет совпадений)"
           EOSSH
 
       - name: Verify deployment

@@ -171,7 +171,8 @@ class SocketService {
       'flowchart:navigated:root',
       'flowchart:saved',
       'flowchart:generated',
-      'flowchart:generate-progress'
+      'flowchart:generate-progress',
+      'flowchart:clarification-needed'
     ];
 
     flowchartEvents.forEach(event => {
@@ -365,6 +366,13 @@ class SocketService {
     } catch (error) {
       console.error('Generate company error:', error);
       return { success: false, error: error.message };
+    }
+  }
+
+  // Ответ на уточнение по ходу генерации (всплывающее окно)
+  sendClarificationResponse(clarificationId, choice) {
+    if (this.socket?.connected) {
+      this.socket.emit('flowchart:clarification-response', { clarificationId, choice });
     }
   }
 
