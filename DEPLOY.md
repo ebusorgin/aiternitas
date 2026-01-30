@@ -63,7 +63,84 @@ sudo journalctl -u aiternitas-main.service -f
 
 Сайт: https://aiternitas.ru
 
-Если 502 Bad Gateway — смотрите логи (`journalctl`). Частые причины: приложение не стартует (ошибка БД, неверные переменные) или nginx не может достучаться до порта приложения.
+Если **502 Bad Gateway** — Nginx не получает ответ от приложения на порту 3001. Ниже чек-лист проверок на сервере.
+
+---
+
+## Устранение 502 Bad Gateway
+
+Выполняйте на сервере (SSH в aiternitas.ru или где развёрнут проект).
+
+### 1. Сервис запущен и не падает
+
+```bash
+sudo systemctl status aiternitas-main.service
+```
+
+- **active (running)** — процесс есть; переходите к шагу 2.
+- **inactive** или **failed** — запустите и смотрите логи:
+  ```bash
+  sudo systemctl start aiternitas-main.service
+  sudo journalctl -u aiternitas-main.service -n 100 --no-pager
+  ```
+
+### 2. Логи приложения
+
+Часто сервер не доходит до `server.listen(3001)` из-за ошибки при старте (например, БД).
+
+```bash
+sudo journalctl -u aiternitas-main.service -n 80 --no-pager
+```
+
+Ищите:
+- `❌ Ошибка запуска сервера:` — дальше будет причина (часто БД или переменные).
+- `✅ Aiternitas сервер запущен на порту 3001` — приложение слушает порт; если 502 остаётся, смотрите шаг 3 и 4.
+
+### 3. Переменные окружения и БД
+
+Сервис должен подхватывать переменные из файла:
+
+```bash
+# Должна быть раскомментирована строка EnvironmentFile=...
+sudo grep EnvironmentFile /etc/systemd/system/aiternitas-main.service
+```
+
+Если пусто — в `/etc/systemd/system/aiternitas-main.service` раскомментируйте:
+`EnvironmentFile=/opt/aiternitas-main/.env.production`
+
+Проверьте, что в `/opt/aiternitas-main/.env.production` заданы и корректны:
+- `NODE_ENV=production`
+- `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` (PostgreSQL доступен с сервера)
+- `SESSION_SECRET` (любая длинная случайная строка)
+
+После правок:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart aiternitas-main.service
+```
+
+### 4. Порт 3001 слушается
+
+```bash
+sudo ss -tlnp | grep 3001
+# или
+sudo lsof -i :3001
+```
+
+Должен быть процесс `node` (или `aiternitas-main`). Если порт не слушается — приложение не стартовало до `listen()` (снова смотрите логи из шага 2).
+
+### 5. Nginx и upstream
+
+Конфиг Nginx должен проксировать на `http://127.0.0.1:3001` (как в `nginx-main.conf`). Проверка:
+
+```bash
+sudo nginx -t
+curl -I http://127.0.0.1:3001
+```
+
+Если `curl` к `127.0.0.1:3001` возвращает HTTP 200/301 и т.п., а в браузере по-прежнему 502 — проверьте `server_name` и то, что запрос идёт на тот же сервер, где крутится Nginx.
+
+**Кратко:** в большинстве случаев 502 устраняется после проверки логов (`journalctl`), настройки `DB_*` и `EnvironmentFile` в systemd и перезапуска `aiternitas-main.service`.
 
 ---
 

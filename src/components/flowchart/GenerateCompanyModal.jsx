@@ -297,12 +297,13 @@ function GenerateCompanyModal({ onClose }) {
                       <p className="clarification-summary">Сейчас: {clarification.summary}</p>
                     )}
                     <div className="clarification-custom-text-wrap">
-                      <label className="clarification-custom-text-label">Дополнительные уточнения (необязательно)</label>
+                      <label className="clarification-custom-text-label">Дополнительные уточнения</label>
+                      <p className="clarification-hint">Например: «2 сотрудника», «только барберы». Если важно только ваше описание — нажмите «Использовать только моё описание». При «Упростить»/«Расширить» текст тоже учитывается (число сотрудников подставится автоматически).</p>
                       <textarea
                         className="clarification-custom-text"
                         value={clarificationCustomText}
                         onChange={(e) => setClarificationCustomText(e.target.value)}
-                        placeholder="Например: только барберы, без финансового отдела…"
+                        placeholder="Например: 2 сотрудника, только барберы…"
                         rows={3}
                       />
                     </div>

@@ -507,10 +507,28 @@ async function step_planSteps(companyName, analysis) {
 }
 
 /**
- * Apply user clarification choice to analysis (simplify / expand / keep).
+ * Parse approximate number of employees from user text (e.g. "2 сотрудника", "3 человека").
+ */
+function parseEstimatedEmployeesFromText(text) {
+  if (!text || typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  // "2 сотрудника", "3 человека", "5 людей", "2 работника", "будет 2 сотрудника"
+  const m = trimmed.match(/(\d+)\s*(?:сотрудник|человек|людей|работник|штат|сотр\.?)/iu)
+    || trimmed.match(/(?:будет|всего|именно)\s*(\d+)/iu)
+    || trimmed.match(/^(\d+)\s*$/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    return n >= 1 && n <= 200 ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Apply user clarification choice to analysis (simplify / expand / keep / custom).
  */
 function applyClarificationChoice(analysis, choice) {
   if (choice === 'keep' || !choice) return analysis;
+  if (choice === 'custom') return analysis; // только userClarification, анализ не меняем
   if (choice === 'simplify') {
     return {
       ...analysis,
@@ -562,15 +580,32 @@ export async function generateCompanyStructure(companyName, description, onProgr
         options: [
           { id: 'keep', label: 'Оставить как есть', description: summary },
           { id: 'simplify', label: 'Упростить', description: '1 департамент, 3–5 человек (например барбершоп)' },
-          { id: 'expand', label: 'Расширить', description: 'Больше департаментов и ролей' }
+          { id: 'expand', label: 'Расширить', description: 'Больше департаментов и ролей' },
+          { id: 'custom', label: 'Использовать только моё описание', description: 'Учесть только текст выше, без смены масштаба' }
         ]
       });
       checkAborted();
       const choice = typeof result === 'object' ? (result.choice || 'keep') : result;
       const customText = typeof result === 'object' ? (result.customText || '') : '';
+      const customTrimmed = customText && typeof customText === 'string' ? customText.trim() : '';
       analysis = applyClarificationChoice(analysis, choice);
-      if (customText && typeof customText === 'string' && customText.trim()) {
-        analysis.userClarification = customText.trim();
+      if (customTrimmed) {
+        analysis.userClarification = customTrimmed;
+        const parsedCount = parseEstimatedEmployeesFromText(customTrimmed);
+        if (parsedCount != null) {
+          analysis.estimatedEmployees = parsedCount;
+          if (choice === 'simplify' && parsedCount <= 2) {
+            analysis.requiredDepartments = ['Услуги'];
+            analysis.requiredCLevelRoles = ['Владелец'];
+          }
+          if (choice === 'custom' && parsedCount <= 5) {
+            analysis.companySize = 'микро';
+            analysis.requiredDepartments = ['Услуги'];
+            analysis.requiredCLevelRoles = ['Владелец'];
+            analysis.structureType = 'линейная';
+          }
+          console.log(`📊 Учтено число сотрудников из уточнения: ${parsedCount}`);
+        }
       }
       onProgress?.({ stepIndex: 1, totalSteps: 0, stepLabel: 'Анализ', message: 'Масштаб учтён...' });
     }

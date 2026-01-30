@@ -494,10 +494,9 @@ export function setupFlowchartHandlers(io, socket) {
       };
 
       generationAborted.set(socket.id, false);
-      try {
-        // Call OpenAI multi-step generation (plan + dynamic steps + clarification + abort)
-        console.log('🔄 Starting multi-step generation...');
-        const structure = await generateCompanyStructure(name, description || '', onProgress, onClarification, getAborted, onStepsPlan);
+      // Call OpenAI multi-step generation (plan + dynamic steps + clarification + abort)
+      console.log('🔄 Starting multi-step generation...');
+      const structure = await generateCompanyStructure(name, description || '', onProgress, onClarification, getAborted, onStepsPlan);
       console.log('✅ Multi-step generation complete');
       
       // Convert GPT response to flowchart elements (with root company element)
