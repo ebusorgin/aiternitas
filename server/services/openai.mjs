@@ -1,6 +1,9 @@
 // OpenAI service for generating company structures
 // 7-step generation with hierarchy, connections, and validation
 import OpenAI from 'openai';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 
 const apiKey = process.env.OPENAI_API_KEY;
 if (!apiKey) {
@@ -9,9 +12,20 @@ if (!apiKey) {
   console.log('✅ OpenAI API key loaded (length:', apiKey.length, ')');
 }
 
-const openai = new OpenAI({
-  apiKey: apiKey || 'missing-key'
-});
+// TOR proxy: set TOR_PROXY=socks5://127.0.0.1:9050 to route OpenAI requests via TOR (avoids 403 country block)
+const torProxy = process.env.TOR_PROXY;
+let openai;
+
+if (torProxy) {
+  const { SocksProxyAgent } = require('socks-proxy-agent');
+  const nodeFetch = require('node-fetch');
+  const agent = new SocksProxyAgent(torProxy);
+  const fetchViaTor = (url, opts = {}) => nodeFetch(url, { ...opts, agent });
+  openai = new OpenAI({ apiKey: apiKey || 'missing-key', fetch: fetchViaTor });
+  console.log('✅ OpenAI requests routed via TOR:', torProxy);
+} else {
+  openai = new OpenAI({ apiKey: apiKey || 'missing-key' });
+}
 
 // Connection types for organizational structure
 const CONNECTION_TYPES = {

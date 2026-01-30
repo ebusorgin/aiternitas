@@ -1,6 +1,6 @@
 [Unit]
 Description=Aiternitas Main (aiternitas.ru)
-After=network.target postgresql.service
+After=network.target postgresql.service tor.service
 
 [Service]
 Type=simple
