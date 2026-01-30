@@ -185,6 +185,14 @@ sudo systemctl restart opendkim postfix
 
 Публичный ключ для DNS: содержимое файла `mail.txt` в каталоге ключей.
 
+**Текущая DKIM-запись для aiternitas.ru** (добавьте TXT в DNS):
+
+```
+Имя:  mail._domainkey.aiternitas.ru
+Тип:  TXT
+Значение: v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnwRCx+OQAU6q4wNQYG890RtuVasoXcdUnhZhoXkt3YJAKm9OgRhMDqL3w1jyT3fMmX7VTCP38KY4trQkVLN86FQKanuY256U38Kz5SuG4HGwJl0x9B2Rzspr6IpvXjuCKlxFFWyqeN7gKrAdWKDkueAHS5V8rjY2/MRaHSvYeVDOUMvw6pRuH4eBtQseFHG7im6S7ewV7OeDXm24dj64GikLPLbDkiLW4phawE3RxCN4l9S5KFEQK4QUvUr8mtNYOV09udF5YFYSwuoZ1f1Z0c+o6CmSwy+0jZPeI1dHGjx+9Cs4zr4Wz2Vx11iDAPryrXGDjbftx4+mHjQ3RtO5WwIDAQAB
+```
+
 ---
 
 ## 6. Rspamd (антиспам)

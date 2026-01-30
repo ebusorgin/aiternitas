@@ -242,23 +242,8 @@ router.post('/send', requireAuth, sendLimiter, async (req, res) => {
     if (!result.success) {
       return res.status(500).json({ error: result.error || 'Не удалось отправить письмо' });
     }
-    const recipientUser = await pool.query('SELECT id, mail_login FROM users WHERE LOWER(email) = $1 OR (mail_login IS NOT NULL AND LOWER(mail_login || $2) = $3)', [toEmail, '@' + MAIL_DOMAIN, toEmail]);
-    if (recipientUser.rows.length > 0) {
-      const recId = recipientUser.rows[0].id;
-      await logEmailToDatabase({
-        sender: from,
-        recipient: toEmail,
-        subject: subject || '(без темы)',
-        body: (body || '').substring(0, 50000),
-        headers: '',
-        size: Buffer.byteLength(body || '', 'utf8'),
-        clientIp: null,
-        direction: 'incoming',
-        status: 'delivered',
-        folder: 'inbox',
-        user_id: recId
-      });
-    }
+    // Не дублируем во «Входящие» — письма туда попадают только через receiver (MX → Postfix → порт 2525),
+    // когда кто‑то отправляет на user@aiternitas.ru. Внешние адреса (Gmail и т.п.) — только у получателя.
     res.json({ success: true, message: 'Письмо отправлено' });
   } catch (e) {
     console.error('POST /api/mail/send:', e);
