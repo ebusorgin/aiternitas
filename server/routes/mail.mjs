@@ -127,7 +127,7 @@ router.get('/messages', requireAuth, async (req, res) => {
     const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
     const result = await pool.query(
       `SELECT id, sender, recipient, subject,
-              LEFT(COALESCE(body,''), 300) AS body_preview,
+              LEFT(TRIM(REGEXP_REPLACE(COALESCE(body,''), '<[^>]+>', ' ', 'g')), 300) AS body_preview,
               direction, folder, read_at, created_at
        FROM emails
        WHERE user_id = $1 AND folder = $2

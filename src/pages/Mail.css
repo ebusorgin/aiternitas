@@ -195,12 +195,27 @@
 .mail-detail-body {
   font-size: 14px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.9);
+  color: #333;
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  min-height: 100px;
 }
 
 .mail-detail-body img {
   max-width: 100%;
   height: auto;
+}
+
+/* Стили для писем из Gmail/внешних — светлый фон для читаемости */
+.mail-detail-body a {
+  color: #667eea;
+}
+.mail-detail-body blockquote {
+  border-left: 3px solid #ddd;
+  margin: 12px 0;
+  padding-left: 16px;
+  color: #666;
 }
 
 /* ——— Настройка ящика (логин) ——— */
