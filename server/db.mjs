@@ -303,7 +303,7 @@ export async function initDatabase() {
       CREATE TRIGGER update_emails_updated_at
           BEFORE UPDATE ON emails
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE PROCEDURE update_updated_at_column();
     `).catch(() => {});
 
     console.log('✅ Таблица emails создана/проверена');
@@ -355,7 +355,7 @@ export async function initDatabase() {
       CREATE TRIGGER update_elements_updated_at
           BEFORE UPDATE ON elements
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE PROCEDURE update_updated_at_column();
     `).catch(() => {});
 
     console.log('✅ Таблица elements создана/проверена');
@@ -396,7 +396,7 @@ export async function initDatabase() {
       CREATE TRIGGER update_elements_connections_updated_at
           BEFORE UPDATE ON elements_connections
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE PROCEDURE update_updated_at_column();
     `).catch(() => {});
 
     console.log('✅ Таблица elements_connections создана/проверена');
@@ -427,7 +427,7 @@ export async function initDatabase() {
       CREATE TRIGGER update_flowcharts_updated_at
           BEFORE UPDATE ON flowcharts
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE PROCEDURE update_updated_at_column();
     `).catch(() => {});
 
     console.log('✅ Таблица flowcharts создана/проверена');
@@ -462,7 +462,7 @@ export async function initDatabase() {
       CREATE TRIGGER update_task_columns_updated_at
           BEFORE UPDATE ON task_columns
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE PROCEDURE update_updated_at_column();
     `).catch(() => {});
 
     console.log('✅ Таблица task_columns создана/проверена');
@@ -526,7 +526,7 @@ export async function initDatabase() {
       CREATE TRIGGER update_tasks_updated_at
           BEFORE UPDATE ON tasks
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE PROCEDURE update_updated_at_column();
     `).catch(() => {});
 
     console.log('✅ Таблица tasks создана/проверена');
