@@ -138,24 +138,12 @@ jobs:
             fi
           done
           
-          # Устанавливаем только production зависимости и перезапускаем сервис
+          # Настройка сервера (при первом запуске создаёт .env.production и systemd), установка зависимостей, перезапуск
           ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} <<EOSSH
             set -e
             cd $REPO_DIR
-            
-            echo ""
-            echo "=== Installing production dependencies ==="
-            npm install --omit=dev
-            
-            echo ""
-            echo "=== Restarting service ==="
-            if systemctl restart aiternitas-main.service; then
-              echo "✅ Service restarted"
-              sleep 2
-              systemctl status aiternitas-main.service --no-pager | head -10 || true
-            else
-              echo "⚠️  Service restart failed or service not found"
-            fi
+            chmod +x scripts/setup-server.sh 2>/dev/null || true
+            bash scripts/setup-server.sh $REPO_DIR
             echo ""
           EOSSH
 
