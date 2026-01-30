@@ -7,6 +7,7 @@ import pool from '../db.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email.mjs';
 import { getClientIp } from '../utils/ip.mjs';
+import { getBaseUrl } from '../utils/url.mjs';
 
 const router = express.Router();
 
@@ -46,7 +47,7 @@ function generateVerificationToken() {
 const googleClient = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI || `${process.env.BASE_URL || 'http://localhost:3001'}/api/auth/google/callback`
+  process.env.GOOGLE_REDIRECT_URI || `${getBaseUrl()}/api/auth/google/callback`
 );
 
 // Регистрация
@@ -346,7 +347,7 @@ router.get('/google/callback', async (req, res) => {
     const { code } = req.query;
 
     if (!code) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=google_auth_failed`);
+      return res.redirect(`${getBaseUrl()}/?error=google_auth_failed`);
     }
 
     // Обмениваем код на токен
@@ -423,15 +424,15 @@ router.get('/google/callback', async (req, res) => {
     req.session.save((err) => {
       if (err) {
         console.error('Ошибка сохранения сессии:', err);
-        return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=session_failed`);
+        return res.redirect(`${getBaseUrl()}/?error=session_failed`);
       }
       
       // Перенаправляем на главную страницу
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/`);
+      res.redirect(`${getBaseUrl()}/`);
     });
   } catch (error) {
     console.error('Ошибка Google OAuth:', error);
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=google_auth_failed`);
+    res.redirect(`${getBaseUrl()}/?error=google_auth_failed`);
   }
 });
 
@@ -535,7 +536,7 @@ router.get('/verify-email', async (req, res) => {
     const { token } = req.query;
 
     if (!token) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=invalid_token`);
+      return res.redirect(`${getBaseUrl()}/?error=invalid_token`);
     }
 
     // Поиск пользователя по токену
@@ -545,14 +546,14 @@ router.get('/verify-email', async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=invalid_token`);
+      return res.redirect(`${getBaseUrl()}/?error=invalid_token`);
     }
 
     const user = result.rows[0];
 
     // Проверка срока действия токена
     if (new Date(user.email_verification_expires) < new Date()) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=token_expired`);
+      return res.redirect(`${getBaseUrl()}/?error=token_expired`);
     }
 
     // Подтверждаем email
@@ -570,11 +571,11 @@ router.get('/verify-email', async (req, res) => {
       if (err) {
         console.error('Ошибка сохранения сессии:', err);
       }
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?email_verified=true`);
+      res.redirect(`${getBaseUrl()}/?email_verified=true`);
     });
   } catch (error) {
     console.error('Ошибка верификации email:', error);
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/?error=verification_failed`);
+    res.redirect(`${getBaseUrl()}/?error=verification_failed`);
   }
 });
 

@@ -1,5 +1,7 @@
 import nodemailer from 'nodemailer';
 import pool from '../db.mjs';
+import { getBaseUrl } from './url.mjs';
+import { getBaseUrl } from './url.mjs';
 
 // Логирование письма в базу данных.
 // folder: inbox|sent|drafts|spam|trash. user_id: владелец письма (для фильтра по папкам).
@@ -61,7 +63,7 @@ function createTransporter() {
 
 // Отправка письма для верификации email (sentByUserId — для раздела «Исходящие»)
 export async function sendVerificationEmail(email, name, verificationToken, clientIp = null, sentByUserId = null) {
-  const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}`;
+  const verificationUrl = `${getBaseUrl()}/verify-email?token=${verificationToken}`;
   
   const mailOptions = {
     from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@aiternitas.ru',
@@ -223,7 +225,7 @@ export async function sendVerificationEmail(email, name, verificationToken, clie
 
 // Отправка письма для сброса пароля (sentByUserId опционально — для раздела «Исходящие»)
 export async function sendPasswordResetEmail(email, name, resetToken, clientIp = null, sentByUserId = null) {
-  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/reset-password?token=${resetToken}`;
+  const resetUrl = `${getBaseUrl()}/reset-password?token=${resetToken}`;
 
   const mailOptions = {
     from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@aiternitas.ru',
