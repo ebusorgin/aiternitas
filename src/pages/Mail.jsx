@@ -77,6 +77,7 @@ function MailSetup({ onSetup }) {
 
 function MailLayout({ mailAddress, folder: initialFolder, onFolderChange, isCompose }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
   const { refreshUnread } = useMail();
   const [folders, setFolders] = useState([]);
@@ -244,7 +245,11 @@ function MailLayout({ mailAddress, folder: initialFolder, onFolderChange, isComp
       </div>
       <div className="mail-main">
         {isCompose ? (
-          <MailCompose onSent={() => { navigate('/mail/folder/sent'); loadMessages(); loadFolders(); }} onCancel={() => navigate('/mail')} />
+          <MailCompose
+            onSent={() => { navigate('/mail/folder/sent'); loadMessages(); loadFolders(); }}
+            onCancel={() => navigate('/mail')}
+            initialReply={location.state?.replyTo ? location.state : null}
+          />
         ) : (
           <>
             <div className="mail-list">
@@ -297,9 +302,21 @@ function MailLayout({ mailAddress, folder: initialFolder, onFolderChange, isComp
                         </button>
                       </>
                     ) : (
-                      <button type="button" className="mail-action-btn mail-action-btn-danger" onClick={() => deleteMessage(null, false)}>
-                        В корзину
-                      </button>
+                      <>
+                        <button type="button" className="mail-action-btn mail-action-btn-primary" onClick={() => {
+                          const replyTo = detail.direction === 'incoming' ? detail.sender : detail.recipient;
+                          const subj = (detail.subject || '').trim();
+                          const reSubject = subj.startsWith('Re:') ? subj : `Re: ${subj || '(без темы)'}`;
+                          const plainBody = (detail.body || '').replace(/<[^>]+>/g, '').trim();
+                          const quotedBody = `\n\n---\n${detail.sender} писал(а) ${formatDate(detail.created_at)}:\n\n${plainBody}`;
+                          navigate('/mail/compose', { state: { replyTo, subject: reSubject, body: quotedBody } });
+                        }}>
+                          Ответить
+                        </button>
+                        <button type="button" className="mail-action-btn mail-action-btn-danger" onClick={() => deleteMessage(null, false)}>
+                          В корзину
+                        </button>
+                      </>
                     )}
                   </div>
                   <div className="mail-detail-header">
@@ -312,7 +329,11 @@ function MailLayout({ mailAddress, folder: initialFolder, onFolderChange, isComp
               ) : selected ? (
                 <p className="mail-loading">Загрузка письма...</p>
               ) : (
-                <p className="mail-placeholder">Выберите письмо из списка</p>
+                <div className="mail-empty-state">
+                  <div className="mail-empty-icon">✉️</div>
+                  <h3 className="mail-empty-title">Выберите письмо</h3>
+                  <p className="mail-empty-subtitle">Выберите письмо из списка слева, чтобы прочитать его содержимое</p>
+                </div>
               )}
             </div>
           </>
@@ -322,12 +343,34 @@ function MailLayout({ mailAddress, folder: initialFolder, onFolderChange, isComp
   );
 }
 
-function MailCompose({ onSent, onCancel }) {
-  const [to, setTo] = useState('');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
+function MailCompose({ onSent, onCancel, initialReply }) {
+  const fileInputRef = useRef(null);
+  const [to, setTo] = useState(initialReply?.replyTo || '');
+  const [subject, setSubject] = useState(initialReply?.subject || '');
+  const [body, setBody] = useState(initialReply?.body || '');
+  const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const addFiles = (e) => {
+    const selected = Array.from(e.target.files || []);
+    if (files.length + selected.length > 5) {
+      setError('Максимум 5 файлов');
+      return;
+    }
+    const totalSize = [...files, ...selected].reduce((acc, f) => acc + (f.size || 0), 0);
+    if (totalSize > 10 * 1024 * 1024) {
+      setError('Общий размер файлов не более 10 МБ');
+      return;
+    }
+    setFiles((prev) => [...prev, ...selected]);
+    setError('');
+    e.target.value = '';
+  };
+
+  const removeFile = (idx) => {
+    setFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const send = async (e) => {
     e?.preventDefault();
@@ -338,11 +381,15 @@ function MailCompose({ onSent, onCancel }) {
     setLoading(true);
     setError('');
     try {
+      const formData = new FormData();
+      formData.append('to', to.trim());
+      formData.append('subject', subject);
+      formData.append('body', body);
+      files.forEach((f) => formData.append('files', f));
       const res = await fetch('/api/mail/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ to: to.trim(), subject, body })
+        body: formData
       });
       const data = await res.json();
       if (data.success) {
@@ -388,6 +435,33 @@ function MailCompose({ onSent, onCancel }) {
             placeholder="Текст письма"
             rows={12}
           />
+        </div>
+        <div className="mail-compose-row">
+          <label>Вложения</label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: 'none' }}
+            onChange={addFiles}
+          />
+          <button
+            type="button"
+            className="mail-attach-btn"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Прикрепить файл
+          </button>
+          {files.length > 0 && (
+            <ul className="mail-files-list">
+              {files.map((f, idx) => (
+                <li key={idx} className="mail-file-item">
+                  <span>{f.name}</span>
+                  <button type="button" className="mail-file-remove" onClick={() => removeFile(idx)} title="Удалить">×</button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         {error && <p className="mail-send-message error">{error}</p>}
         <div className="mail-compose-actions">

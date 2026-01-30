@@ -2,6 +2,7 @@
  * API встроенной почты: ящик @aiternitas.ru, папки, список, просмотр, отправка, черновики.
  */
 import express from 'express';
+import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import pool from '../db.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
@@ -9,6 +10,19 @@ import { sendUserEmail, logEmailToDatabase } from '../utils/email.mjs';
 import { getClientIp } from '../utils/ip.mjs';
 
 const router = express.Router();
+
+// Multer для вложений писем (memory storage, до 5 файлов по 10MB)
+const mailUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 5 },
+  fileFilter: (req, file, cb) => {
+    const dangerous = /\.(exe|bat|cmd|sh|js|vbs|jar|msi|scr)$/i;
+    if (dangerous.test(file.originalname)) {
+      return cb(new Error('Тип файла не разрешён'));
+    }
+    cb(null, true);
+  }
+});
 const MAIL_DOMAIN = (process.env.MAIL_DOMAIN || 'aiternitas.ru').toLowerCase();
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -220,14 +234,29 @@ router.put('/messages/:id', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/mail/send — отправить письмо (To, CC, BCC, subject, body)
-router.post('/send', requireAuth, sendLimiter, async (req, res) => {
+// POST /api/mail/send — отправить письмо (multipart: to, subject, body, files[] или JSON)
+router.post('/send', requireAuth, sendLimiter, (req, res, next) => {
+  const contentType = req.headers['content-type'] || '';
+  if (contentType.includes('multipart/form-data')) {
+    return mailUpload.array('files', 5)(req, res, (err) => {
+      if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Файл слишком большой (макс. 10 МБ)' });
+        if (err.code === 'LIMIT_FILE_COUNT') return res.status(400).json({ error: 'Максимум 5 файлов' });
+        return res.status(400).json({ error: err.message || 'Ошибка загрузки файла' });
+      }
+      next();
+    });
+  }
+  next();
+}, async (req, res) => {
   try {
     const userId = req.session.userId;
     const userEmail = req.session.userEmail;
     const userName = req.session.userName || 'Пользователь';
-    const { to, cc, bcc, subject, body } = req.body;
-    const toEmail = (to || '').toString().trim().toLowerCase();
+    const to = (req.body?.to ?? req.body?.toEmail ?? '').toString().trim();
+    const subject = (req.body?.subject ?? '').toString();
+    const body = (req.body?.body ?? '').toString();
+    const toEmail = to.toLowerCase();
     if (!toEmail || !toEmail.includes('@')) {
       return res.status(400).json({ error: 'Укажите корректный email получателя (Кому)' });
     }
@@ -238,7 +267,8 @@ router.post('/send', requireAuth, sendLimiter, async (req, res) => {
     if (!from) {
       return res.status(400).json({ error: 'Сначала создайте почтовый ящик (логин) в разделе «Почта»' });
     }
-    const result = await sendUserEmail(from, userName, toEmail, subject || '', body || '', userId, clientIp);
+    const attachments = (req.files || []).map((f) => ({ filename: f.originalname || 'attachment', content: f.buffer }));
+    const result = await sendUserEmail(from, userName, toEmail, subject, body, userId, clientIp, attachments);
     if (!result.success) {
       return res.status(500).json({ error: result.error || 'Не удалось отправить письмо' });
     }

@@ -299,9 +299,9 @@ export async function sendPasswordResetEmail(email, name, resetToken, clientIp =
 
 /**
  * Отправка произвольного письма от пользователя (раздел «Написать письмо»).
- * fromEmail/fromName — от кого, to — кому, subject/body — тема и тело, sentByUserId — для раздела «Исходящие».
+ * attachments: [{ filename, content: Buffer }]
  */
-export async function sendUserEmail(fromEmail, fromName, to, subject, body, sentByUserId, clientIp = null) {
+export async function sendUserEmail(fromEmail, fromName, to, subject, body, sentByUserId, clientIp = null, attachments = []) {
   // Для писем от пользователя приоритет — введённый адрес (mail_login@domain), а не SMTP_FROM
   const from = fromEmail || process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@aiternitas.ru';
   const mailOptions = {
@@ -311,6 +311,9 @@ export async function sendUserEmail(fromEmail, fromName, to, subject, body, sent
     text: body || '',
     html: body ? body.replace(/\n/g, '<br>') : ''
   };
+  if (attachments.length > 0) {
+    mailOptions.attachments = attachments.map((a) => ({ filename: a.filename, content: a.content }));
+  }
 
   const transporter = createTransporter();
   try {
