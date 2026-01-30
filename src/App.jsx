@@ -12,10 +12,12 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
+import { MailProvider } from './context/MailContext';
 
 function App() {
   return (
     <AuthProvider>
+      <MailProvider>
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Home />} />
@@ -70,6 +72,7 @@ function App() {
           <Route path="mail/folder/:folder/read/:id" element={<ProtectedRoute><Mail /></ProtectedRoute>} />
         </Route>
       </Routes>
+      </MailProvider>
     </AuthProvider>
   );
 }

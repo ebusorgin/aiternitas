@@ -1,9 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useMail } from '../context/MailContext';
 import './Sidebar.css';
 
 function Sidebar({ user, loading, onLogout, isOpen, onClose }) {
   const { logout } = useAuth();
+  const { unreadCount } = useMail();
   const location = useLocation();
 
   const handleLinkClick = () => {
@@ -114,6 +116,9 @@ function Sidebar({ user, loading, onLogout, isOpen, onClose }) {
                 <polyline points="22,6 12,13 2,6"></polyline>
               </svg>
               <span>Почта</span>
+              {unreadCount > 0 && (
+                <span className="sidebar-nav-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+              )}
             </Link>
 
             <button 

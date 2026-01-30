@@ -11,9 +11,9 @@ const MAIL_PORT = parseInt(process.env.MAIL_PORT || '2525', 10);
 
 /**
  * Запуск SMTP-сервера для приёма входящей почты.
- * Письма сохраняются в таблицу emails (direction='incoming'); получатель определяется по users.email.
+ * io — Socket.IO server для мгновенного оповещения о новом письме.
  */
-export function startMailReceiver() {
+export function startMailReceiver(io) {
   const server = new SMTPServer({
     authOptional: true,
     disabledCommands: ['AUTH'],
@@ -70,6 +70,9 @@ export function startMailReceiver() {
             folder: 'inbox',
             user_id: userId
           });
+          if (io && userId) {
+            io.to(`user:${userId}`).emit('mail:new', { folder: 'inbox', sender: from, subject });
+          }
         }
         callback();
       } catch (err) {

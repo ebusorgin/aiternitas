@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useMail } from '../context/MailContext';
+import socketService from '../services/socket';
 import './PageStyles.css';
 import './Mail.css';
 
@@ -76,23 +78,29 @@ function MailSetup({ onSetup }) {
 function MailLayout({ mailAddress, folder: initialFolder, onFolderChange, isCompose }) {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { refreshUnread } = useMail();
   const [folders, setFolders] = useState([]);
   const [messages, setMessages] = useState([]);
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
+  const folderRef = useRef(initialFolder || 'inbox');
   const folder = initialFolder || 'inbox';
+  folderRef.current = folder;
 
   const loadFolders = useCallback(async () => {
     try {
       const res = await fetch('/api/mail/folders', { credentials: 'include' });
       const data = await res.json();
-      if (data.success) setFolders(data.folders || []);
+      if (data.success) {
+        setFolders(data.folders || []);
+        refreshUnread();
+      }
     } catch (e) {
       setFolders([]);
     }
-  }, []);
+  }, [refreshUnread]);
 
   const loadMessages = useCallback(async () => {
     setLoading(true);
@@ -122,18 +130,33 @@ function MailLayout({ mailAddress, folder: initialFolder, onFolderChange, isComp
   }, [loadMessages]);
 
   useEffect(() => {
+    const handleNewMail = () => {
+      loadFolders();
+      if (folderRef.current === 'inbox') loadMessages();
+    };
+    const unsub = socketService.on('mail:new', handleNewMail);
+    return unsub;
+  }, [loadFolders, loadMessages]);
+
+  useEffect(() => {
     if (id) {
       setSelected(parseInt(id, 10));
       setDetail(null);
       fetch(`/api/mail/messages/${id}`, { credentials: 'include' })
         .then((r) => r.json())
-        .then((d) => d.success && setDetail(d.message))
+        .then((d) => {
+          if (d.success) {
+            setDetail(d.message);
+            loadFolders();
+            loadMessages();
+          }
+        })
         .catch(() => setDetail(null));
     } else {
       setSelected(null);
       setDetail(null);
     }
-  }, [id]);
+  }, [id, loadFolders, loadMessages]);
 
   const openMessage = (msgId) => {
     navigate(`/mail/folder/${folder}/read/${msgId}`);

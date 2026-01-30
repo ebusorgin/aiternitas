@@ -141,6 +141,18 @@
   flex: 1;
 }
 
+.sidebar-nav-badge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  background: #667eea;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+
 /* Logout button */
 .sidebar-nav-item.logout-item {
   margin-top: auto;

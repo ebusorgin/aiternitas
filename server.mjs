@@ -167,7 +167,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 initDatabase()
   .then(() => {
     setupSocketHandlers(io, sessionStore);
-    startMailReceiver();
+    startMailReceiver(io);
     
     server.listen(PORT, HOST, () => {
       console.log(`✅ Aiternitas сервер запущен на порту ${PORT}`);
