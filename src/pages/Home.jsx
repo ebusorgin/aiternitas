@@ -5,7 +5,7 @@ import './Home.css';
 import './Auth.css';
 
 function Home() {
-  const { user, loading, login, register, loginWithGoogle } = useAuth();
+  const { user, loading, login, register, loginWithGoogle, checkAuth } = useAuth();
   const navigate = useNavigate();
   const [authMode, setAuthMode] = useState('login');
   
@@ -27,6 +27,7 @@ function Home() {
     if (emailVerified === 'true') {
       setSuccess('Email успешно подтвержден!');
       window.history.replaceState({}, document.title, window.location.pathname);
+      checkAuth(); // обновляем user в контексте (email_verified уже true в БД)
     } else if (errorParam === 'invalid_token') {
       setError('Неверная ссылка подтверждения');
     } else if (errorParam === 'token_expired') {
@@ -34,7 +35,7 @@ function Home() {
     } else if (errorParam === 'verification_failed') {
       setError('Ошибка подтверждения email. Попробуйте позже.');
     }
-  }, []);
+  }, [checkAuth]);
 
   const handleLogin = async (e) => {
     e.preventDefault();

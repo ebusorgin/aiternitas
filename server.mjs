@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
@@ -144,6 +145,10 @@ app.use('/api/mail', mailRouter);
 const distPath = path.join(__dirname, 'dist');
 const uploadsPath = path.join(__dirname, 'uploads');
 
+if (!fs.existsSync(path.join(distPath, 'index.html'))) {
+  console.warn('⚠️  dist/index.html не найден. SPA-маршруты (/profile, /mail и др.) не будут работать.');
+}
+
 // Раздаем статические файлы из dist (index.html без кеша — чтобы браузер всегда подхватывал новый бандл)
 app.use(express.static(distPath, {
   setHeaders: (res, filePath) => {
@@ -154,10 +159,17 @@ app.use(express.static(distPath, {
 }));
 app.use('/uploads', express.static(uploadsPath));
 
-// SPA роутинг: все маршруты возвращают index.html
-app.get('*', (req, res) => {
+// SPA роутинг: все не-API GET запросы возвращают index.html (клиентский роутинг)
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
+  const indexFile = path.join(distPath, 'index.html');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  res.sendFile(path.join(distPath, 'index.html'));
+  res.sendFile(indexFile, (err) => {
+    if (err) {
+      console.error('SPA fallback: index.html not found at', indexFile, err.message);
+      res.status(404).send('Приложение не найдено. Проверьте развёртывание.');
+    }
+  });
 });
 
 const PORT = parseInt(process.env.PORT || '3001', 10);

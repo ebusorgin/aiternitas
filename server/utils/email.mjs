@@ -1,7 +1,6 @@
 import nodemailer from 'nodemailer';
 import pool from '../db.mjs';
 import { getBaseUrl } from './url.mjs';
-import { getBaseUrl } from './url.mjs';
 
 // Логирование письма в базу данных.
 // folder: inbox|sent|drafts|spam|trash. user_id: владелец письма (для фильтра по папкам).

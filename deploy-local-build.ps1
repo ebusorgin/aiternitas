@@ -28,9 +28,18 @@ Write-Host "`n[3/6] Загрузка файлов на сервер..." -Foregro
 
 # Загружаем dist папку
 Write-Host "  Загрузка dist/..." -ForegroundColor Cyan
+if (-not (Test-Path "$LOCAL_PATH\dist\index.html")) {
+    Write-Host "❌ dist/index.html не найден! Сначала выполните npm run build" -ForegroundColor Red
+    exit 1
+}
 scp -i $SSH_KEY -r "$LOCAL_PATH\dist\*" "${SERVER}:${REPO_PATH}/dist/"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Ошибка загрузки dist!" -ForegroundColor Red
+    exit 1
+}
+ssh -i $SSH_KEY $SERVER "test -f $REPO_PATH/dist/index.html" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ dist/index.html не появился на сервере после загрузки!" -ForegroundColor Red
     exit 1
 }
 

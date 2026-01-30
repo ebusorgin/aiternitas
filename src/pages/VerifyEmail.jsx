@@ -6,7 +6,7 @@ import './Auth.css';
 function VerifyEmail() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, checkAuth } = useAuth();
   const [status, setStatus] = useState('loading');
   const [message, setMessage] = useState('');
   const [resendLoading, setResendLoading] = useState(false);
@@ -33,9 +33,9 @@ function VerifyEmail() {
           if (url.searchParams.get('email_verified') === 'true') {
             setStatus('success');
             setMessage('Email успешно подтвержден!');
-            setTimeout(() => {
-              navigate('/');
-            }, 2000);
+            checkAuth().then(() => {
+              setTimeout(() => navigate('/'), 800);
+            });
           } else if (url.searchParams.get('error')) {
             setStatus('error');
             const error = url.searchParams.get('error');
@@ -57,7 +57,7 @@ function VerifyEmail() {
         setStatus('error');
         setMessage('Ошибка подключения к серверу');
       });
-  }, [searchParams, navigate]);
+  }, [searchParams, navigate, checkAuth]);
 
   return (
     <div className="auth-page">
