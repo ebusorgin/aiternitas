@@ -302,7 +302,8 @@ export async function sendPasswordResetEmail(email, name, resetToken, clientIp =
  * fromEmail/fromName — от кого, to — кому, subject/body — тема и тело, sentByUserId — для раздела «Исходящие».
  */
 export async function sendUserEmail(fromEmail, fromName, to, subject, body, sentByUserId, clientIp = null) {
-  const from = process.env.SMTP_FROM || fromEmail || process.env.SMTP_USER || 'noreply@aiternitas.ru';
+  // Для писем от пользователя приоритет — введённый адрес (mail_login@domain), а не SMTP_FROM
+  const from = fromEmail || process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@aiternitas.ru';
   const mailOptions = {
     from: fromName ? `"${fromName.replace(/"/g, '')}" <${from}>` : from,
     to: to,
