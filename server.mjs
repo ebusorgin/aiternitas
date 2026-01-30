@@ -112,9 +112,16 @@ const sessionStore = new PgSession({
   pruneSessionInterval: 60, // Очистка устаревших сессий каждые 60 секунд
 });
 
+// В production SESSION_SECRET обязателен (без fallback)
+const sessionSecret = process.env.SESSION_SECRET || (isProduction ? null : 'aiternitas-secret-key-change-in-production');
+if (isProduction && !sessionSecret) {
+  console.error('❌ В production необходимо задать переменную окружения SESSION_SECRET');
+  process.exit(1);
+}
+
 app.use(session({
   store: sessionStore,
-  secret: process.env.SESSION_SECRET || 'aiternitas-secret-key-change-in-production',
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
   name: 'aiternitas.sid',

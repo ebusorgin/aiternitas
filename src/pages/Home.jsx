@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Home.css';
 import './Auth.css';
@@ -77,8 +77,8 @@ function Home() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Пароль должен быть не менее 6 символов');
+    if (password.length < 8) {
+      setError('Пароль должен быть не менее 8 символов');
       setFormLoading(false);
       return;
     }
@@ -226,7 +226,11 @@ function Home() {
               <button type="submit" className="btn-primary" disabled={formLoading}>
                 {formLoading ? 'Вход...' : 'Войти'}
               </button>
-              
+              <p style={{ marginTop: '12px', fontSize: '0.9em' }}>
+                <Link to="/forgot-password" style={{ color: '#667eea', textDecoration: 'none' }}>
+                  Забыли пароль?
+                </Link>
+              </p>
               <div className="auth-divider">
                 <span>или</span>
               </div>
@@ -284,8 +288,8 @@ function Home() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  placeholder="Минимум 6 символов"
-                  minLength="6"
+                  placeholder="Минимум 8 символов"
+                  minLength="8"
                 />
               </div>
 

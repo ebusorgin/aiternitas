@@ -25,8 +25,8 @@ function Register() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Пароль должен быть не менее 6 символов');
+    if (password.length < 8) {
+      setError('Пароль должен быть не менее 8 символов');
       setLoading(false);
       return;
     }
@@ -85,7 +85,7 @@ function Register() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              placeholder="Минимум 6 символов"
+              placeholder="Минимум 8 символов"
               minLength="6"
             />
           </div>

@@ -7,6 +7,8 @@ import Calls from './pages/Calls';
 import Companies from './pages/Companies';
 import Tasks from './pages/Tasks';
 import VerifyEmail from './pages/VerifyEmail';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 
@@ -19,6 +21,8 @@ function App() {
           <Route path="login" element={<Navigate to="/" replace />} />
           <Route path="register" element={<Navigate to="/" replace />} />
           <Route path="verify-email" element={<VerifyEmail />} />
+          <Route path="forgot-password" element={<ForgotPassword />} />
+          <Route path="reset-password" element={<ResetPassword />} />
           <Route
             path="profile"
             element={

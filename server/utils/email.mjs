@@ -49,13 +49,14 @@ function createTransporter() {
     console.log(`   SMTP_SECURE: ${secure}`);
     console.log(`   SMTP_LOCALHOST: ${isLocalhost ? '✅ да' : '❌ нет'}`);
     
-    // Настройки транспорта
+    // В production проверяем сертификат SMTP; в dev допускаем самоподписанные
+    const isProduction = process.env.NODE_ENV === 'production';
     const transportConfig = {
       host: smtpHost,
       port: smtpPort,
       secure: secure,
       tls: {
-        rejectUnauthorized: false // Для самоподписанных сертификатов
+        rejectUnauthorized: isProduction
       }
     };
     
@@ -256,4 +257,80 @@ export async function sendVerificationEmail(email, name, verificationToken, clie
   }
 }
 
+// Отправка письма для сброса пароля
+export async function sendPasswordResetEmail(email, name, resetToken, clientIp = null) {
+  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/reset-password?token=${resetToken}`;
+
+  const mailOptions = {
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@aiternitas.ru',
+    to: email,
+    subject: 'Сброс пароля - Aiternitas',
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+          .container { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px; color: white; }
+          .content { background: white; padding: 30px; border-radius: 10px; margin-top: 20px; color: #333; }
+          .button { display: inline-block; padding: 12px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: 600; }
+          .footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }
+        </style>
+      </head>
+      <body>
+        <div class="container"><h1 style="margin: 0;">Aiternitas</h1></div>
+        <div class="content">
+          <h2>Сброс пароля</h2>
+          <p>Здравствуйте, ${name}!</p>
+          <p>Вы запросили сброс пароля. Нажмите кнопку ниже, чтобы задать новый пароль:</p>
+          <a href="${resetUrl}" class="button">Сбросить пароль</a>
+          <p>Или скопируйте ссылку в браузер:</p>
+          <p style="word-break: break-all; color: #667eea;">${resetUrl}</p>
+          <p>Ссылка действительна 1 час. Если вы не запрашивали сброс, проигнорируйте это письмо.</p>
+          <div class="footer"><p>© 2025 Aiternitas.</p></div>
+        </div>
+      </body>
+      </html>
+    `,
+    text: `Здравствуйте, ${name}!\n\nСброс пароля: ${resetUrl}\n\nСсылка действительна 1 час.\n\n© 2025 Aiternitas.`
+  };
+
+  const transporter = createTransporter();
+  if (!transporter) {
+    return { success: false, error: 'SMTP not configured' };
+  }
+  try {
+    await transporter.verify();
+    const info = await transporter.sendMail(mailOptions);
+    const emailBody = mailOptions.html || mailOptions.text || '';
+    await logEmailToDatabase({
+      sender: mailOptions.from,
+      recipient: email,
+      subject: mailOptions.subject,
+      body: emailBody.substring(0, 50000),
+      headers: JSON.stringify(info.envelope || {}),
+      size: Buffer.byteLength(emailBody, 'utf8'),
+      clientIp: clientIp || null,
+      direction: 'outgoing',
+      status: 'delivered'
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('Password reset email error:', error.message);
+    await logEmailToDatabase({
+      sender: mailOptions.from,
+      recipient: email,
+      subject: mailOptions.subject,
+      body: (mailOptions.html || '').substring(0, 50000),
+      headers: '',
+      size: 0,
+      clientIp: clientIp || null,
+      direction: 'outgoing',
+      status: 'failed',
+      errorMessage: error.message
+    });
+    return { success: false, error: error.message };
+  }
+}
 

@@ -1,13 +1,41 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import pool from '../db.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
-import { sendVerificationEmail } from '../utils/email.mjs';
+import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email.mjs';
 import { getClientIp } from '../utils/ip.mjs';
 
 const router = express.Router();
+
+// Rate limiting: login и register — до 10 попыток за 15 минут с одного IP
+const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Слишком много попыток. Попробуйте позже.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiting: resend-verification — до 5 запросов в час с одного IP
+const resendVerificationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { error: 'Слишком много запросов на повторную отправку. Попробуйте позже.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiting: forgot-password — до 5 запросов в час с одного IP
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { error: 'Слишком много запросов. Попробуйте позже.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Генерация токена для верификации email
 function generateVerificationToken() {
@@ -22,7 +50,7 @@ const googleClient = new OAuth2Client(
 );
 
 // Регистрация
-router.post('/register', async (req, res) => {
+router.post('/register', authRateLimiter, async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
@@ -30,8 +58,8 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Все поля обязательны' });
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Пароль должен быть не менее 6 символов' });
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Пароль должен быть не менее 8 символов' });
     }
 
     // Проверка существующего пользователя
@@ -106,7 +134,7 @@ router.post('/register', async (req, res) => {
 });
 
 // Авторизация
-router.post('/login', async (req, res) => {
+router.post('/login', authRateLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -208,6 +236,74 @@ router.post('/logout', (req, res) => {
     }
     res.json({ success: true, message: 'Выход выполнен' });
   });
+});
+
+// Запрос сброса пароля (всегда один и тот же ответ, чтобы не раскрывать наличие email)
+router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'Укажите email' });
+    }
+    const normalizedEmail = email.toLowerCase().trim();
+    const result = await pool.query(
+      'SELECT id, name, email, password FROM users WHERE email = $1',
+      [normalizedEmail]
+    );
+    if (result.rows.length > 0) {
+      const user = result.rows[0];
+      if (user.password) {
+        const resetToken = generateVerificationToken();
+        const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 час
+        await pool.query(
+          'UPDATE users SET password_reset_token = $1, password_reset_expires = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+          [resetToken, resetExpires, user.id]
+        );
+        const clientIp = getClientIp(req);
+        await sendPasswordResetEmail(user.email, user.name, resetToken, clientIp);
+      }
+    }
+    res.json({
+      success: true,
+      message: 'Если указанный email зарегистрирован, на него отправлена ссылка для сброса пароля.'
+    });
+  } catch (error) {
+    console.error('Ошибка forgot-password:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Сброс пароля по токену из письма
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Укажите токен и новый пароль' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Пароль должен быть не менее 8 символов' });
+    }
+    const result = await pool.query(
+      'SELECT id, password_reset_expires FROM users WHERE password_reset_token = $1',
+      [token]
+    );
+    if (result.rows.length === 0) {
+      return res.status(400).json({ error: 'Недействительный или устаревший токен' });
+    }
+    const user = result.rows[0];
+    if (new Date(user.password_reset_expires) < new Date()) {
+      return res.status(400).json({ error: 'Срок действия ссылки истёк. Запросите сброс пароля снова.' });
+    }
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      'UPDATE users SET password = $1, password_reset_token = NULL, password_reset_expires = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [hashedPassword, user.id]
+    );
+    res.json({ success: true, message: 'Пароль успешно изменён. Войдите с новым паролем.' });
+  } catch (error) {
+    console.error('Ошибка reset-password:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 });
 
 // Получение текущего пользователя (по cookie сессии)
@@ -480,7 +576,7 @@ router.get('/verify-email', async (req, res) => {
 });
 
 // Повторная отправка письма для верификации
-router.post('/resend-verification', requireAuth, async (req, res) => {
+router.post('/resend-verification', resendVerificationLimiter, requireAuth, async (req, res) => {
   try {
     const userId = req.session.userId;
     
@@ -522,15 +618,13 @@ router.post('/resend-verification', requireAuth, async (req, res) => {
       } else {
         console.error(`❌ Не удалось отправить письмо: ${emailResult.error}`);
         res.status(500).json({ 
-          error: 'Не удалось отправить письмо. Попробуйте позже.',
-          verificationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}` // Для отладки
+          error: 'Не удалось отправить письмо. Попробуйте позже.'
         });
       }
     } catch (error) {
       console.error('Ошибка при отправке email:', error);
       res.status(500).json({ 
-        error: 'Ошибка сервера при отправке письма',
-        verificationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}` // Для отладки
+        error: 'Ошибка сервера при отправке письма'
       });
     }
   } catch (error) {
@@ -577,8 +671,48 @@ router.put('/profile/name', requireAuth, async (req, res) => {
   }
 });
 
-// Тестовый endpoint для проверки отправки email (только для разработки)
+// Смена пароля (для пользователей с паролем, не только Google)
+router.put('/profile/password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Укажите текущий и новый пароль' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Новый пароль должен быть не менее 8 символов' });
+    }
+    const result = await pool.query(
+      'SELECT id, password FROM users WHERE id = $1',
+      [req.session.userId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+    const user = result.rows[0];
+    if (!user.password) {
+      return res.status(400).json({ error: 'У этого аккаунта нет пароля (вход через Google). Задайте пароль через «Забыли пароль?» после выхода.' });
+    }
+    const match = await bcrypt.compare(currentPassword, user.password);
+    if (!match) {
+      return res.status(401).json({ error: 'Неверный текущий пароль' });
+    }
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      'UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [hashedPassword, req.session.userId]
+    );
+    res.json({ success: true, message: 'Пароль успешно изменён' });
+  } catch (error) {
+    console.error('Ошибка смены пароля:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Тестовый endpoint для проверки отправки email (только для разработки; в production отключен)
 router.post('/test-email', requireAuth, async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
   try {
     const { email } = req.body;
     const testEmail = email || req.session.userEmail;

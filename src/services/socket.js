@@ -208,39 +208,7 @@ class SocketService {
     }
   }
 
-  // Login
-  async login(email, password) {
-    try {
-      const response = await this.emit('auth:login', { email, password });
-      
-      if (response.success) {
-        this.authenticated = true;
-        this.userId = response.user.id;
-      }
-      
-      return response;
-    } catch (error) {
-      console.error('Login error:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  // Register
-  async register(name, email, password) {
-    try {
-      const response = await this.emit('auth:register', { name, email, password });
-      
-      if (response.success) {
-        this.authenticated = true;
-        this.userId = response.user.id;
-      }
-      
-      return response;
-    } catch (error) {
-      console.error('Register error:', error);
-      return { success: false, error: error.message };
-    }
-  }
+  // Login/register: use HTTP only (fetch /api/auth/login, /api/auth/register). Socket only restores session from cookie.
 
   // Logout
   async logout() {

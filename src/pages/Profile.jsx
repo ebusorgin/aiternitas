@@ -10,6 +10,12 @@ function Profile() {
   const [nameValue, setNameValue] = useState('');
   const [message, setMessage] = useState({ text: '', type: '' });
   const [loading, setLoading] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState({ text: '', type: '' });
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -121,6 +127,42 @@ function Profile() {
       saveName();
     } else if (e.key === 'Escape') {
       cancelEditingName();
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (newPassword.length < 8) {
+      setPasswordMessage({ text: 'Новый пароль должен быть не менее 8 символов', type: 'error' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage({ text: 'Пароли не совпадают', type: 'error' });
+      return;
+    }
+    setPasswordLoading(true);
+    setPasswordMessage({ text: '', type: '' });
+    try {
+      const response = await fetch('/api/auth/profile/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setPasswordMessage({ text: 'Пароль успешно изменён', type: 'success' });
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setShowPasswordForm(false);
+      } else {
+        setPasswordMessage({ text: data.error || 'Ошибка смены пароля', type: 'error' });
+      }
+    } catch (err) {
+      setPasswordMessage({ text: 'Ошибка подключения к серверу', type: 'error' });
+    } finally {
+      setPasswordLoading(false);
     }
   };
 
@@ -244,6 +286,75 @@ function Profile() {
               <label>Дата регистрации</label>
               <div className="data-value">
                 <span className="display-value">{createdAt}</span>
+              </div>
+            </div>
+
+            <div className="data-item" style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+              <label>Пароль</label>
+              <div className="data-value">
+                {!showPasswordForm ? (
+                  <button
+                    type="button"
+                    className="edit-btn"
+                    onClick={() => setShowPasswordForm(true)}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid rgba(102, 126, 234, 0.5)', background: 'transparent', color: '#667eea', cursor: 'pointer' }}
+                  >
+                    Сменить пароль
+                  </button>
+                ) : (
+                  <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '320px' }}>
+                    <input
+                      type="password"
+                      placeholder="Текущий пароль"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      required
+                      autoComplete="current-password"
+                      className="edit-input"
+                      style={{ width: '100%' }}
+                    />
+                    <input
+                      type="password"
+                      placeholder="Новый пароль (мин. 8 символов)"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                      className="edit-input"
+                      style={{ width: '100%' }}
+                    />
+                    <input
+                      type="password"
+                      placeholder="Повторите новый пароль"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                      className="edit-input"
+                      style={{ width: '100%' }}
+                    />
+                    {passwordMessage.text && (
+                      <div className={passwordMessage.type === 'success' ? 'message success' : 'message error'} style={{ display: 'block' }}>
+                        {passwordMessage.text}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button type="submit" className="save-btn" disabled={passwordLoading}>
+                        {passwordLoading ? 'Сохранение...' : 'Сохранить'}
+                      </button>
+                      <button
+                        type="button"
+                        className="cancel-btn"
+                        onClick={() => { setShowPasswordForm(false); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setPasswordMessage({ text: '', type: '' }); }}
+                        disabled={passwordLoading}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             </div>
           </div>
