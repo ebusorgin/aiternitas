@@ -123,7 +123,6 @@ function MailLayout({ mailAddress, folder: initialFolder, onFolderChange, isComp
 
   useEffect(() => {
     if (id) {
-      setView('read');
       setSelected(parseInt(id, 10));
       setDetail(null);
       fetch(`/api/mail/messages/${id}`, { credentials: 'include' })
@@ -131,7 +130,6 @@ function MailLayout({ mailAddress, folder: initialFolder, onFolderChange, isComp
         .then((d) => d.success && setDetail(d.message))
         .catch(() => setDetail(null));
     } else {
-      setView('list');
       setSelected(null);
       setDetail(null);
     }

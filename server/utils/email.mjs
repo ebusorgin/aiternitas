@@ -218,9 +218,6 @@ export async function sendVerificationEmail(email, name, verificationToken, clie
       // В случае ошибки отправки, логируем ссылку для отладки
       console.log(`⚠️  Email не отправлен. Verification link for ${email}: ${verificationUrl}`);
       return { success: false, error: error.message, details: error };
-    }
-  } catch (e) {
-    return { success: false, error: e?.message || 'Ошибка отправки' };
   }
 }
 
