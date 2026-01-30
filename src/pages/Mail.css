@@ -365,8 +365,16 @@
   grid-template-columns: 320px 1fr;
   min-height: 560px;
 }
-.mail-list-item.unread .mail-list-from {
+/* Непрочитанные письма — индикатор и выделение */
+.mail-list-item.unread {
+  background: rgba(102, 126, 234, 0.12);
+  border-left: 4px solid #667eea;
+}
+
+.mail-list-item.unread .mail-list-from,
+.mail-list-item.unread .mail-list-subject {
   font-weight: 600;
+  color: #fff;
 }
 .mail-list-preview {
   font-size: 12px;

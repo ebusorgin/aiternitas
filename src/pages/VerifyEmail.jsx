@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import './Auth.css';
 
 function VerifyEmail() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [status, setStatus] = useState('loading');
   const [message, setMessage] = useState('');
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -85,11 +89,50 @@ function VerifyEmail() {
               <div className="error-message" style={{ display: 'block' }}>
                 {message}
               </div>
-              <div className="auth-footer">
+              {resendMessage && (
+                <div className={resendMessage.startsWith('Письмо') ? 'success-message' : 'error-message'} style={{ display: 'block', marginTop: '12px' }}>
+                  {resendMessage}
+                </div>
+              )}
+              <div className="verify-actions">
+                {user && (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={async () => {
+                      setResendLoading(true);
+                      setResendMessage('');
+                      try {
+                        const res = await fetch('/api/auth/resend-verification', {
+                          method: 'POST',
+                          credentials: 'include'
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                          setResendMessage(data.message || 'Письмо отправлено. Проверьте почту.');
+                        } else {
+                          setResendMessage(data.error || 'Ошибка отправки');
+                        }
+                      } catch {
+                        setResendMessage('Ошибка подключения к серверу');
+                      } finally {
+                        setResendLoading(false);
+                      }
+                    }}
+                    disabled={resendLoading}
+                  >
+                    {resendLoading ? 'Отправка...' : 'Отправить письмо повторно'}
+                  </button>
+                )}
+                {!user && (
+                  <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', marginBottom: '12px' }}>
+                    Войдите в аккаунт и в разделе «Личный кабинет» нажмите «Отправить письмо повторно».
+                  </p>
+                )}
                 <p>
-                  <a href="/" style={{ color: '#667eea', textDecoration: 'none' }}>
+                  <Link to="/" style={{ color: '#667eea', textDecoration: 'none' }}>
                     ← На главную
-                  </a>
+                  </Link>
                 </p>
               </div>
             </div>

@@ -16,6 +16,7 @@ function Profile() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState({ text: '', type: '' });
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -118,6 +119,27 @@ function Profile() {
       setMessage({ text: 'Ошибка подключения к серверу', type: 'error' });
     } finally {
       e.target.value = '';
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setResendLoading(true);
+    setMessage({ text: '', type: '' });
+    try {
+      const res = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        credentials: 'include'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ text: data.message || 'Письмо отправлено. Проверьте почту.', type: 'success' });
+      } else {
+        setMessage({ text: data.error || 'Ошибка отправки', type: 'error' });
+      }
+    } catch {
+      setMessage({ text: 'Ошибка подключения к серверу', type: 'error' });
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -276,7 +298,17 @@ function Profile() {
                   {user.email_verified ? (
                     <span style={{ color: '#10b981', marginLeft: '10px', fontSize: '0.9em' }}>✓ Подтвержден</span>
                   ) : (
-                    <span style={{ color: '#f59e0b', marginLeft: '10px', fontSize: '0.9em' }}>⚠ Не подтвержден</span>
+                    <>
+                      <span style={{ color: '#f59e0b', marginLeft: '10px', fontSize: '0.9em' }}>⚠ Не подтвержден</span>
+                      <button
+                        type="button"
+                        className="profile-resend-btn"
+                        onClick={handleResendVerification}
+                        disabled={resendLoading}
+                      >
+                        {resendLoading ? 'Отправка...' : 'Отправить письмо повторно'}
+                      </button>
+                    </>
                   )}
                 </span>
               </div>

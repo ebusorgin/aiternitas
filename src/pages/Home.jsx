@@ -124,6 +124,11 @@ function Home() {
   if (user && !loading) {
     return (
       <div className="home-dashboard">
+        {!user.email_verified && (
+          <div className="email-verification-banner">
+            <p>Email не подтверждён. Проверьте почту или <Link to="/profile" className="banner-link">отправьте письмо повторно</Link> в личном кабинете.</p>
+          </div>
+        )}
         <div className="dashboard-welcome">
           <h1>Добро пожаловать, {user.name}!</h1>
           <p>Выберите раздел в меню слева для начала работы</p>
