@@ -6,15 +6,21 @@ dotenv.config();
 
 const { Pool } = pg;
 
+const resolvedDbUser =
+  process.env.DB_USER || process.env.PGUSER || process.env.USER;
+
 const dbConfig = {
   host: process.env.DB_HOST || '127.127.126.56', // Дефолт для Open Server
   port: parseInt(process.env.DB_PORT || '5432', 10),
-  user: process.env.DB_USER || 'severomorets',
   database: process.env.DB_NAME || 'aiternitas',
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 };
+
+if (resolvedDbUser) {
+  dbConfig.user = resolvedDbUser;
+}
 
 // Не передаем password если он не определен или пустой
 // PostgreSQL будет использовать peer authentication для localhost
@@ -31,9 +37,12 @@ export async function initDatabase() {
     const adminDbConfig = {
       host: process.env.DB_HOST || '127.127.126.56', // Дефолт для Open Server
       port: parseInt(process.env.DB_PORT || '5432', 10),
-      user: process.env.DB_USER || 'severomorets',
       database: 'postgres',
     };
+
+    if (resolvedDbUser) {
+      adminDbConfig.user = resolvedDbUser;
+    }
     
     // Добавляем password только если он определен и не пустой
     if (process.env.DB_PASSWORD && process.env.DB_PASSWORD.trim() !== '') {
