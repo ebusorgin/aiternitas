@@ -47,7 +47,8 @@ bash scripts/setup-server.sh
 | FRONTEND_URL     | Рекомендуется | `https://aiternitas.ru` |
 | BASE_URL         | Рекомендуется | `https://aiternitas.ru` |
 | PORT             | Нет         | По умолчанию 3001 |
-| SMTP_*           | Нет         | Для писем (верификация, сброс пароля) |
+| SMTP_*           | Нет         | Для отправки писем (верификация, сброс пароля) |
+| MAIL_PORT        | Нет         | Порт приёма входящей почты (по умолчанию 2525). Все входящие сохраняются в БД. |
 | GOOGLE_CLIENT_*   | Нет         | Для входа через Google |
 
 ---
@@ -62,3 +63,27 @@ sudo journalctl -u aiternitas-main.service -f
 Сайт: https://aiternitas.ru
 
 Если 502 Bad Gateway — смотрите логи (`journalctl`). Частые причины: приложение не стартует (ошибка БД, неверные переменные) или nginx не может достучаться до порта приложения.
+
+---
+
+## Почта не приходит (подтверждение email, сброс пароля)
+
+Письма отправляются только если на сервере настроен SMTP. Проверьте:
+
+1. **В `.env.production` заданы переменные:**
+   - `SMTP_HOST` — хост SMTP (например `smtp.gmail.com`, `smtp.yandex.ru`, `smtp.mail.ru`).
+   - `SMTP_PORT` — обычно 587 (TLS) или 465 (SSL).
+   - `SMTP_USER` — логин (часто полный email).
+   - `SMTP_PASS` — пароль. Для Gmail нужен **пароль приложения** (не обычный пароль): Google-аккаунт → Безопасность → Двухэтапная аутентификация → Пароли приложений.
+   - `SMTP_FROM` — адрес отправителя (по умолчанию берётся из SMTP_USER или `noreply@aiternitas.ru`).
+
+2. **После изменений перезапустите сервис:**
+   ```bash
+   sudo systemctl restart aiternitas-main.service
+   ```
+
+3. **Проверка в логах:** при попытке отправить письмо в логах будет строка вида:
+   - `SMTP_HOST не установлен` — SMTP не настроен.
+   - `Ошибка отправки email:` и текст ошибки — неверный хост/порт/логин/пароль или блокировка порта.
+
+4. **Таблица `emails` в БД:** приложение пишет туда каждую попытку отправки (статус `delivered` или `failed`, при ошибке — `error_message`). Можно проверить: `SELECT recipient, status, error_message, created_at FROM emails ORDER BY created_at DESC LIMIT 10;`

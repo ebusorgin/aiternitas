@@ -1,14 +1,14 @@
 import nodemailer from 'nodemailer';
 import pool from '../db.mjs';
 
-// Логирование письма в базу данных
-async function logEmailToDatabase(emailData) {
+// Логирование письма в базу данных (sentByUserId — для исходящих, id пользователя, от имени которого отправлено)
+export async function logEmailToDatabase(emailData) {
   try {
-    const { sender, recipient, subject, body, headers, size, direction, status, errorMessage, clientIp } = emailData;
+    const { sender, recipient, subject, body, headers, size, direction, status, errorMessage, clientIp, sentByUserId } = emailData;
     
     await pool.query(
-      `INSERT INTO emails (sender, recipient, subject, body, headers, size, client_ip, direction, status, error_message, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+      `INSERT INTO emails (sender, recipient, subject, body, headers, size, client_ip, direction, status, error_message, sent_by_user_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
       [
         sender || 'unknown',
         recipient || 'unknown',
@@ -19,13 +19,13 @@ async function logEmailToDatabase(emailData) {
         clientIp || null,
         direction || 'outgoing',
         status || 'delivered',
-        errorMessage || null
+        errorMessage || null,
+        sentByUserId ?? null
       ]
     );
     console.log(`✅ Письмо записано в БД: ${direction} от ${sender} к ${recipient}`);
   } catch (error) {
     console.error('❌ Ошибка записи письма в БД:', error.message);
-    // Не прерываем выполнение, если логирование не удалось
   }
 }
 
@@ -85,8 +85,8 @@ function createTransporter() {
   return null;
 }
 
-// Отправка письма для верификации email
-export async function sendVerificationEmail(email, name, verificationToken, clientIp = null) {
+// Отправка письма для верификации email (sentByUserId — для раздела «Исходящие»)
+export async function sendVerificationEmail(email, name, verificationToken, clientIp = null, sentByUserId = null) {
   const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${verificationToken}`;
   
   const mailOptions = {
@@ -204,7 +204,8 @@ export async function sendVerificationEmail(email, name, verificationToken, clie
         size: emailSize,
         clientIp: clientIp || null,
         direction: 'outgoing',
-        status: 'delivered'
+        status: 'delivered',
+        sentByUserId
       });
       
       return { success: true, messageId: info.messageId };
@@ -238,7 +239,8 @@ export async function sendVerificationEmail(email, name, verificationToken, clie
         clientIp: clientIp || null,
         direction: 'outgoing',
         status: 'failed',
-        errorMessage: error.message
+        errorMessage: error.message,
+        sentByUserId
       });
       
       // В случае ошибки отправки, логируем ссылку для отладки
@@ -257,8 +259,8 @@ export async function sendVerificationEmail(email, name, verificationToken, clie
   }
 }
 
-// Отправка письма для сброса пароля
-export async function sendPasswordResetEmail(email, name, resetToken, clientIp = null) {
+// Отправка письма для сброса пароля (sentByUserId опционально — для раздела «Исходящие»)
+export async function sendPasswordResetEmail(email, name, resetToken, clientIp = null, sentByUserId = null) {
   const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/reset-password?token=${resetToken}`;
 
   const mailOptions = {
@@ -313,7 +315,8 @@ export async function sendPasswordResetEmail(email, name, resetToken, clientIp =
       size: Buffer.byteLength(emailBody, 'utf8'),
       clientIp: clientIp || null,
       direction: 'outgoing',
-      status: 'delivered'
+      status: 'delivered',
+      sentByUserId
     });
     return { success: true, messageId: info.messageId };
   } catch (error) {
@@ -328,7 +331,61 @@ export async function sendPasswordResetEmail(email, name, resetToken, clientIp =
       clientIp: clientIp || null,
       direction: 'outgoing',
       status: 'failed',
-      errorMessage: error.message
+      errorMessage: error.message,
+      sentByUserId
+    });
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Отправка произвольного письма от пользователя (раздел «Написать письмо»).
+ * fromEmail/fromName — от кого, to — кому, subject/body — тема и тело, sentByUserId — для раздела «Исходящие».
+ */
+export async function sendUserEmail(fromEmail, fromName, to, subject, body, sentByUserId, clientIp = null) {
+  const from = process.env.SMTP_FROM || fromEmail || process.env.SMTP_USER || 'noreply@aiternitas.ru';
+  const mailOptions = {
+    from: fromName ? `"${fromName.replace(/"/g, '')}" <${from}>` : from,
+    to: to,
+    subject: subject || '(без темы)',
+    text: body || '',
+    html: body ? body.replace(/\n/g, '<br>') : ''
+  };
+
+  const transporter = createTransporter();
+  if (!transporter) {
+    return { success: false, error: 'SMTP не настроен' };
+  }
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    const emailBody = mailOptions.html || mailOptions.text || '';
+    await logEmailToDatabase({
+      sender: from,
+      recipient: to.toLowerCase().trim(),
+      subject: mailOptions.subject,
+      body: emailBody.substring(0, 50000),
+      headers: JSON.stringify(info.envelope || {}),
+      size: Buffer.byteLength(emailBody, 'utf8'),
+      clientIp,
+      direction: 'outgoing',
+      status: 'delivered',
+      sentByUserId
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('Ошибка отправки письма:', error.message);
+    await logEmailToDatabase({
+      sender: from,
+      recipient: to,
+      subject: mailOptions.subject,
+      body: (mailOptions.html || '').substring(0, 50000),
+      headers: '',
+      size: 0,
+      clientIp,
+      direction: 'outgoing',
+      status: 'failed',
+      errorMessage: error.message,
+      sentByUserId
     });
     return { success: false, error: error.message };
   }

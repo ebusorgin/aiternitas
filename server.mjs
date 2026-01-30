@@ -11,7 +11,9 @@ import pool from './server/db.mjs';
 import authRouter from './server/routes/auth.mjs';
 import uploadRouter from './server/routes/upload.mjs';
 import statsRouter from './server/routes/stats.mjs';
+import emailsRouter from './server/routes/emails.mjs';
 import { setupSocketHandlers } from './server/socket/index.mjs';
+import { startMailReceiver } from './server/mail/receiver.mjs';
 
 // Загружаем .env всегда для локальной разработки
 // В продакшене переменные должны быть установлены через systemd и будут иметь приоритет
@@ -133,6 +135,7 @@ app.use(session({
 app.use('/api/auth', authRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/stats', statsRouter);
+app.use('/api/emails', emailsRouter);
 // NOTE: /api/flowchart removed - all flowchart operations now via Socket.IO
 
 // Статические файлы из собранного React приложения
@@ -161,8 +164,8 @@ const HOST = process.env.HOST || '0.0.0.0';
 // Инициализация БД и запуск сервера
 initDatabase()
   .then(() => {
-    // Setup Socket.IO handlers for auth and flowchart
     setupSocketHandlers(io, sessionStore);
+    startMailReceiver();
     
     server.listen(PORT, HOST, () => {
       console.log(`✅ Aiternitas сервер запущен на порту ${PORT}`);

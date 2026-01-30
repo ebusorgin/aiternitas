@@ -95,11 +95,10 @@ router.post('/register', authRateLimiter, async (req, res) => {
     // Отправка email с ссылкой для подтверждения
     const clientIp = getClientIp(req);
     console.log(`📧 Отправка письма для верификации email пользователю ${user.email}...`);
-    const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken, clientIp);
+    const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken, clientIp, user.id);
     if (!emailResult.success) {
       console.error(`❌ Не удалось отправить письмо: ${emailResult.error}`);
-      // Продолжаем регистрацию даже если email не отправился
-      // Пользователь может запросить новое письмо позже
+      // Продолжаем регистрацию; в ответе помечаем, что письмо не ушло — пользователь может запросить повторно
     }
 
     // Автоматический вход после регистрации (но email не подтвержден)
@@ -116,8 +115,11 @@ router.post('/register', authRateLimiter, async (req, res) => {
       
       res.status(201).json({
         success: true,
-        message: 'Регистрация успешна. Пожалуйста, проверьте вашу почту и подтвердите email.',
+        message: emailResult.success
+          ? 'Регистрация успешна. Пожалуйста, проверьте вашу почту и подтвердите email.'
+          : 'Регистрация успешна, но письмо с подтверждением не удалось отправить. Используйте «Отправить письмо повторно» в профиле или обратитесь к администратору.',
         emailVerificationRequired: true,
+        emailSendFailed: !emailResult.success,
         user: {
           id: user.id,
           name: user.name,
@@ -185,7 +187,7 @@ router.post('/login', authRateLimiter, async (req, res) => {
       // Отправляем новое письмо с токеном
       const clientIp = getClientIp(req);
       console.log(`📧 Отправка письма для верификации email пользователю ${user.email}...`);
-      const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken, clientIp);
+      const emailResult = await sendVerificationEmail(user.email, user.name, verificationToken, clientIp, user.id);
       if (!emailResult.success) {
         console.error(`❌ Не удалось отправить письмо: ${emailResult.error}`);
       }
@@ -608,7 +610,7 @@ router.post('/resend-verification', resendVerificationLimiter, requireAuth, asyn
     const clientIp = getClientIp(req);
     console.log(`📧 Отправка письма для верификации email пользователю ${user.email}...`);
     try {
-      const emailResult = await sendVerificationEmail(user.email, user.name || 'Пользователь', verificationToken, clientIp);
+      const emailResult = await sendVerificationEmail(user.email, user.name || 'Пользователь', verificationToken, clientIp, userId);
       
       if (emailResult.success) {
         res.json({
@@ -724,7 +726,7 @@ router.post('/test-email', requireAuth, async (req, res) => {
     const testToken = generateVerificationToken();
     const clientIp = getClientIp(req);
     console.log('🧪 Тестовая отправка email...');
-    const result = await sendVerificationEmail(testEmail, 'Test User', testToken, clientIp);
+    const result = await sendVerificationEmail(testEmail, 'Test User', testToken, clientIp, req.session.userId);
     
     if (result.success) {
       res.json({

@@ -161,7 +161,9 @@ export function AuthProvider({ children }) {
         await socketService.connect();
         return { 
           success: true,
-          emailVerificationRequired: result.emailVerificationRequired || false
+          emailVerificationRequired: result.emailVerificationRequired || false,
+          message: result.message,
+          emailSendFailed: result.emailSendFailed || false
         };
       } else {
         return { success: false, error: result.error || 'Ошибка регистрации' };

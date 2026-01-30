@@ -87,12 +87,11 @@ function Home() {
 
     if (result.success) {
       if (result.emailVerificationRequired) {
-        setSuccess('Регистрация успешна! Пожалуйста, проверьте вашу почту и подтвердите email.');
-        if (result.verificationUrl) {
-          console.log('Email verification URL:', result.verificationUrl);
-        }
+        setSuccess(result.message || (result.emailSendFailed
+          ? 'Регистрация успешна, но письмо не удалось отправить. Используйте «Отправить письмо повторно» в профиле.'
+          : 'Регистрация успешна! Пожалуйста, проверьте вашу почту и подтвердите email.'));
       } else {
-        setSuccess('Регистрация успешна!');
+        setSuccess(result.message || 'Регистрация успешна!');
       }
       // Не перезагружаем — user уже установлен в AuthContext
     } else {

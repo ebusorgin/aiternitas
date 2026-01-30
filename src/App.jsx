@@ -6,6 +6,8 @@ import Messages from './pages/Messages';
 import Calls from './pages/Calls';
 import Companies from './pages/Companies';
 import Tasks from './pages/Tasks';
+import MailInbox from './pages/MailInbox';
+import MailSent from './pages/MailSent';
 import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
@@ -60,6 +62,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <Tasks />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="mail/inbox"
+            element={
+              <ProtectedRoute>
+                <MailInbox />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="mail/sent"
+            element={
+              <ProtectedRoute>
+                <MailSent />
               </ProtectedRoute>
             }
           />

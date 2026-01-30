@@ -205,6 +205,22 @@ export async function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_emails_created_at ON emails(created_at)
     `).catch(() => {});
 
+    // Колонка «отправитель по пользователю» для раздела «Исходящие»
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'emails' AND column_name = 'sent_by_user_id'
+        ) THEN
+          ALTER TABLE emails ADD COLUMN sent_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `).catch(() => {});
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_emails_sent_by_user_id ON emails(sent_by_user_id)
+    `).catch(() => {});
+
     // Функция для автоматического обновления updated_at
     await pool.query(`
       CREATE OR REPLACE FUNCTION update_updated_at_column()
