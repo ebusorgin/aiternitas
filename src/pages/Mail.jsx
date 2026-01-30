@@ -148,6 +148,50 @@ function MailLayout({ mailAddress, folder: initialFolder, onFolderChange, isComp
     navigate('/mail/compose');
   };
 
+  const deleteMessage = async (msgId, permanent = false) => {
+    const id = msgId ?? selected;
+    if (!id) return;
+    try {
+      const url = permanent
+        ? `/api/mail/messages/${id}?permanent=1`
+        : `/api/mail/messages/${id}`;
+      const res = await fetch(url, { method: 'DELETE', credentials: 'include' });
+      const data = await res.json();
+      if (data.success) {
+        setSelected(null);
+        setDetail(null);
+        navigate(`/mail/folder/${folder}`);
+        loadMessages();
+        loadFolders();
+      }
+    } catch (e) {
+      console.error('Ошибка удаления:', e);
+    }
+  };
+
+  const restoreMessage = async () => {
+    if (!selected || !detail) return;
+    const targetFolder = detail.direction === 'outgoing' ? 'sent' : 'inbox';
+    try {
+      const res = await fetch(`/api/mail/messages/${selected}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ folder: targetFolder })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSelected(null);
+        setDetail(null);
+        navigate(`/mail/folder/${targetFolder}`);
+        loadMessages();
+        loadFolders();
+      }
+    } catch (e) {
+      console.error('Ошибка восстановления:', e);
+    }
+  };
+
   return (
     <div className="mail-page">
       <div className="mail-sidebar">
@@ -195,10 +239,23 @@ function MailLayout({ mailAddress, folder: initialFolder, onFolderChange, isComp
                     onClick={() => openMessage(m.id)}
                     onKeyDown={(e) => e.key === 'Enter' && openMessage(m.id)}
                   >
-                    <div className="mail-list-from">{folder === 'sent' ? m.recipient : m.sender}</div>
-                    <div className="mail-list-subject">{m.subject || '(без темы)'}</div>
-                    <div className="mail-list-preview">{m.body_preview || ''}</div>
-                    <div className="mail-list-date">{formatDate(m.created_at)}</div>
+                    <div className="mail-list-item-content">
+                      <div className="mail-list-from">{folder === 'sent' ? m.recipient : m.sender}</div>
+                      <div className="mail-list-subject">{m.subject || '(без темы)'}</div>
+                      <div className="mail-list-preview">{m.body_preview || ''}</div>
+                      <div className="mail-list-date">{formatDate(m.created_at)}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="mail-list-delete-btn"
+                      title={folder === 'trash' ? 'Удалить навсегда' : 'В корзину'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteMessage(m.id, folder === 'trash');
+                      }}
+                    >
+                      🗑️
+                    </button>
                   </div>
                 ))
               )}
@@ -206,6 +263,22 @@ function MailLayout({ mailAddress, folder: initialFolder, onFolderChange, isComp
             <div className="mail-detail-panel">
               {detail ? (
                 <>
+                  <div className="mail-detail-actions">
+                    {folder === 'trash' ? (
+                      <>
+                        <button type="button" className="mail-action-btn" onClick={restoreMessage}>
+                          Восстановить
+                        </button>
+                        <button type="button" className="mail-action-btn mail-action-btn-danger" onClick={() => deleteMessage(null, true)}>
+                          Удалить навсегда
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button" className="mail-action-btn mail-action-btn-danger" onClick={() => deleteMessage(null, false)}>
+                        В корзину
+                      </button>
+                    )}
+                  </div>
                   <div className="mail-detail-header">
                     <strong>От:</strong> {detail.sender} · <strong>Кому:</strong> {detail.recipient}
                   </div>
