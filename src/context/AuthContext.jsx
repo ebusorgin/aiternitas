@@ -163,7 +163,8 @@ export function AuthProvider({ children }) {
           success: true,
           emailVerificationRequired: result.emailVerificationRequired || false,
           message: result.message,
-          emailSendFailed: result.emailSendFailed || false
+          emailSendFailed: result.emailSendFailed || false,
+          emailSendError: result.emailSendError
         };
       } else {
         return { success: false, error: result.error || 'Ошибка регистрации' };

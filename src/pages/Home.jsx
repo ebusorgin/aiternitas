@@ -87,9 +87,13 @@ function Home() {
 
     if (result.success) {
       if (result.emailVerificationRequired) {
-        setSuccess(result.message || (result.emailSendFailed
+        let msg = result.message || (result.emailSendFailed
           ? 'Регистрация успешна, но письмо не удалось отправить. Используйте «Отправить письмо повторно» в профиле.'
-          : 'Регистрация успешна! Пожалуйста, проверьте вашу почту и подтвердите email.'));
+          : 'Регистрация успешна! Пожалуйста, проверьте вашу почту и подтвердите email.');
+        if (result.emailSendFailed && result.emailSendError) {
+          msg += ` Причина: ${result.emailSendError}`;
+        }
+        setSuccess(msg);
       } else {
         setSuccess(result.message || 'Регистрация успешна!');
       }

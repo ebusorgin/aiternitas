@@ -12,6 +12,7 @@ import authRouter from './server/routes/auth.mjs';
 import uploadRouter from './server/routes/upload.mjs';
 import statsRouter from './server/routes/stats.mjs';
 import emailsRouter from './server/routes/emails.mjs';
+import mailRouter from './server/routes/mail.mjs';
 import { setupSocketHandlers } from './server/socket/index.mjs';
 import { startMailReceiver } from './server/mail/receiver.mjs';
 
@@ -136,6 +137,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/emails', emailsRouter);
+app.use('/api/mail', mailRouter);
 // NOTE: /api/flowchart removed - all flowchart operations now via Socket.IO
 
 // Статические файлы из собранного React приложения

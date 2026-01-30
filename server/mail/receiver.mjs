@@ -43,8 +43,19 @@ export function startMailReceiver() {
           recipients = Array.isArray(toVal) ? toVal.map((t) => t?.address || t) : [parsed.to?.text || 'unknown'];
         }
         if (recipients.length === 0) recipients = ['unknown'];
+        const mailDomain = (process.env.MAIL_DOMAIN || 'aiternitas.ru').toLowerCase();
         for (const recipient of recipients) {
           const normalized = (recipient && typeof recipient === 'string' ? recipient : recipient?.address || 'unknown').toLowerCase().trim();
+          let userId = null;
+          if (normalized.endsWith('@' + mailDomain)) {
+            const localPart = normalized.slice(0, normalized.length - mailDomain.length - 1);
+            const u = await pool.query('SELECT id FROM users WHERE LOWER(mail_login) = $1', [localPart]);
+            if (u.rows[0]) userId = u.rows[0].id;
+          }
+          if (userId == null) {
+            const u = await pool.query('SELECT id FROM users WHERE LOWER(email) = $1', [normalized]);
+            if (u.rows[0]) userId = u.rows[0].id;
+          }
           await logEmailToDatabase({
             sender: from,
             recipient: normalized,
@@ -55,7 +66,9 @@ export function startMailReceiver() {
             clientIp: session.remoteAddress || null,
             direction: 'incoming',
             status: 'delivered',
-            sentByUserId: null
+            sentByUserId: null,
+            folder: 'inbox',
+            user_id: userId
           });
         }
         callback();

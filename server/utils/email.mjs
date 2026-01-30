@@ -1,14 +1,18 @@
 import nodemailer from 'nodemailer';
 import pool from '../db.mjs';
 
-// Логирование письма в базу данных (sentByUserId — для исходящих, id пользователя, от имени которого отправлено)
+// Логирование письма в базу данных.
+// folder: inbox|sent|drafts|spam|trash. user_id: владелец письма (для фильтра по папкам).
 export async function logEmailToDatabase(emailData) {
   try {
-    const { sender, recipient, subject, body, headers, size, direction, status, errorMessage, clientIp, sentByUserId } = emailData;
-    
+    const { sender, recipient, subject, body, headers, size, direction, status, errorMessage, clientIp, sentByUserId, folder, user_id: userId, read_at } = emailData;
+    const dir = direction || 'outgoing';
+    const defaultFolder = dir === 'incoming' ? 'inbox' : 'sent';
+    const f = folder ?? defaultFolder;
+    const uid = userId ?? (dir === 'outgoing' ? sentByUserId : null);
     await pool.query(
-      `INSERT INTO emails (sender, recipient, subject, body, headers, size, client_ip, direction, status, error_message, sent_by_user_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
+      `INSERT INTO emails (sender, recipient, subject, body, headers, size, client_ip, direction, status, error_message, sent_by_user_id, folder, user_id, read_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())`,
       [
         sender || 'unknown',
         recipient || 'unknown',
@@ -17,72 +21,42 @@ export async function logEmailToDatabase(emailData) {
         headers || '',
         size || 0,
         clientIp || null,
-        direction || 'outgoing',
+        dir,
         status || 'delivered',
         errorMessage || null,
-        sentByUserId ?? null
+        sentByUserId ?? null,
+        f,
+        uid,
+        read_at ?? null
       ]
     );
-    console.log(`✅ Письмо записано в БД: ${direction} от ${sender} к ${recipient}`);
+    console.log(`✅ Письмо записано в БД: ${dir} от ${sender} к ${recipient}`);
   } catch (error) {
     console.error('❌ Ошибка записи письма в БД:', error.message);
   }
 }
 
-// Создание транспорта для отправки email
+// Создание транспорта для отправки email.
+// Без SMTP_HOST используется локальный Postfix (localhost:25) — свой почтовый сервер.
 function createTransporter() {
-  // Проверяем наличие настроек SMTP
-  const smtpHost = process.env.SMTP_HOST;
+  const smtpHost = process.env.SMTP_HOST || 'localhost';
   const smtpUser = process.env.SMTP_USER;
   const smtpPass = process.env.SMTP_PASS;
-  const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
-  
-  console.log('📧 Проверка настроек SMTP:');
-  console.log(`   SMTP_HOST: ${smtpHost ? '✅ установлен' : '❌ не установлен'}`);
-  console.log(`   SMTP_PORT: ${smtpPort}`);
-  
-  // Если указан хост, создаем транспорт
-  if (smtpHost) {
-    const secure = smtpPort === 465;
-    const isLocalhost = smtpHost === 'localhost' || smtpHost === '127.0.0.1';
-    
-    console.log(`   SMTP_SECURE: ${secure}`);
-    console.log(`   SMTP_LOCALHOST: ${isLocalhost ? '✅ да' : '❌ нет'}`);
-    
-    // В production проверяем сертификат SMTP; в dev допускаем самоподписанные
-    const isProduction = process.env.NODE_ENV === 'production';
-    const transportConfig = {
-      host: smtpHost,
-      port: smtpPort,
-      secure: secure,
-      tls: {
-        rejectUnauthorized: isProduction
-      }
-    };
-    
-    // Для localhost на порту 25 аутентификация не требуется
-    if (isLocalhost && smtpPort === 25) {
-      console.log(`   SMTP_USER: не требуется для localhost:25`);
-      console.log(`   SMTP_PASS: не требуется для localhost:25`);
-      // Не добавляем auth для localhost
-    } else if (smtpUser && smtpPass) {
-      console.log(`   SMTP_USER: ✅ установлен`);
-      console.log(`   SMTP_PASS: ✅ установлен`);
-      transportConfig.auth = {
-        user: smtpUser,
-        pass: smtpPass
-      };
-    } else {
-      console.log(`   SMTP_USER: ⚠️  не установлен (используется без аутентификации)`);
-      console.log(`   SMTP_PASS: ⚠️  не установлен (используется без аутентификации)`);
-    }
-    
-    return nodemailer.createTransport(transportConfig);
+  const smtpPort = parseInt(process.env.SMTP_PORT || (smtpHost === 'localhost' ? '25' : '587'), 10);
+
+  const isLocalhost = smtpHost === 'localhost' || smtpHost === '127.0.0.1';
+  const secure = smtpPort === 465;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const transportConfig = {
+    host: smtpHost,
+    port: smtpPort,
+    secure,
+    tls: { rejectUnauthorized: isProduction && !isLocalhost }
+  };
+  if (!isLocalhost && smtpPort !== 25 && smtpUser && smtpPass) {
+    transportConfig.auth = { user: smtpUser, pass: smtpPass };
   }
-  
-  // Если нет хоста, возвращаем null
-  console.log('⚠️  SMTP_HOST не установлен. Письма не будут отправляться.');
-  return null;
+  return nodemailer.createTransport(transportConfig);
 }
 
 // Отправка письма для верификации email (sentByUserId — для раздела «Исходящие»)
@@ -175,9 +149,7 @@ export async function sendVerificationEmail(email, name, verificationToken, clie
   };
 
   const transporter = createTransporter();
-  
-  if (transporter) {
-    try {
+  try {
       console.log(`📧 Попытка отправки письма на ${email}...`);
       
       // Проверяем подключение к SMTP серверу
@@ -247,15 +219,8 @@ export async function sendVerificationEmail(email, name, verificationToken, clie
       console.log(`⚠️  Email не отправлен. Verification link for ${email}: ${verificationUrl}`);
       return { success: false, error: error.message, details: error };
     }
-  } else {
-    // Если SMTP не настроен, логируем ссылку
-    console.log(`⚠️  SMTP не настроен. Verification link for ${email}: ${verificationUrl}`);
-    console.log(`   Для настройки SMTP добавьте в .env или переменные окружения:`);
-    console.log(`   SMTP_HOST=smtp.gmail.com`);
-    console.log(`   SMTP_PORT=587`);
-    console.log(`   SMTP_USER=your-email@gmail.com`);
-    console.log(`   SMTP_PASS=your-app-password`);
-    return { success: false, error: 'SMTP not configured' };
+  } catch (e) {
+    return { success: false, error: e?.message || 'Ошибка отправки' };
   }
 }
 
@@ -299,9 +264,6 @@ export async function sendPasswordResetEmail(email, name, resetToken, clientIp =
   };
 
   const transporter = createTransporter();
-  if (!transporter) {
-    return { success: false, error: 'SMTP not configured' };
-  }
   try {
     await transporter.verify();
     const info = await transporter.sendMail(mailOptions);
@@ -353,9 +315,6 @@ export async function sendUserEmail(fromEmail, fromName, to, subject, body, sent
   };
 
   const transporter = createTransporter();
-  if (!transporter) {
-    return { success: false, error: 'SMTP не настроен' };
-  }
   try {
     const info = await transporter.sendMail(mailOptions);
     const emailBody = mailOptions.html || mailOptions.text || '';

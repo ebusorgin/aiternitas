@@ -120,6 +120,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
           : 'Регистрация успешна, но письмо с подтверждением не удалось отправить. Используйте «Отправить письмо повторно» в профиле или обратитесь к администратору.',
         emailVerificationRequired: true,
         emailSendFailed: !emailResult.success,
+        emailSendError: !emailResult.success ? (emailResult.error || 'Неизвестная ошибка') : undefined,
         user: {
           id: user.id,
           name: user.name,

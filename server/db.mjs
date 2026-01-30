@@ -150,6 +150,19 @@ export async function initDatabase() {
       END $$;
     `);
 
+    // Почтовый логин для @aiternitas.ru (local part: user@aiternitas.ru)
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name = 'mail_login'
+        ) THEN
+          ALTER TABLE users ADD COLUMN mail_login VARCHAR(100) UNIQUE;
+        END IF;
+      END $$;
+    `).catch(() => {});
+
     console.log('✅ Таблица users создана/проверена');
 
     // Создаем таблицу для сессий (для connect-pg-simple)
@@ -219,6 +232,58 @@ export async function initDatabase() {
     `).catch(() => {});
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_emails_sent_by_user_id ON emails(sent_by_user_id)
+    `).catch(() => {});
+
+    // Папка письма: inbox, sent, drafts, spam, trash
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'emails' AND column_name = 'folder'
+        ) THEN
+          ALTER TABLE emails ADD COLUMN folder VARCHAR(20) DEFAULT 'inbox';
+        END IF;
+      END $$;
+    `).catch(() => {});
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'emails' AND column_name = 'read_at'
+        ) THEN
+          ALTER TABLE emails ADD COLUMN read_at TIMESTAMP;
+        END IF;
+      END $$;
+    `).catch(() => {});
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'emails' AND column_name = 'user_id'
+        ) THEN
+          ALTER TABLE emails ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+        END IF;
+      END $$;
+    `).catch(() => {});
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_emails_folder ON emails(folder)
+    `).catch(() => {});
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_emails_user_id ON emails(user_id)
+    `).catch(() => {});
+
+    // Заполняем folder и user_id для существующих строк
+    await pool.query(`
+      UPDATE emails SET folder = CASE WHEN direction = 'incoming' THEN 'inbox' ELSE 'sent' END WHERE folder IS NULL OR folder = '';
+    `).catch(() => {});
+    await pool.query(`
+      UPDATE emails e SET user_id = u.id FROM users u WHERE e.direction = 'incoming' AND e.user_id IS NULL AND LOWER(e.recipient) = LOWER(u.email);
+    `).catch(() => {});
+    await pool.query(`
+      UPDATE emails e SET user_id = e.sent_by_user_id WHERE e.direction = 'outgoing' AND e.user_id IS NULL AND e.sent_by_user_id IS NOT NULL;
     `).catch(() => {});
 
     // Функция для автоматического обновления updated_at

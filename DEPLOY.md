@@ -47,8 +47,9 @@ bash scripts/setup-server.sh
 | FRONTEND_URL     | Рекомендуется | `https://aiternitas.ru` |
 | BASE_URL         | Рекомендуется | `https://aiternitas.ru` |
 | PORT             | Нет         | По умолчанию 3001 |
-| SMTP_*           | Нет         | Для отправки писем (верификация, сброс пароля) |
-| MAIL_PORT        | Нет         | Порт приёма входящей почты (по умолчанию 2525). Все входящие сохраняются в БД. |
+| SMTP_*           | Нет         | По умолчанию отправка идёт через **localhost:25** (локальный Postfix). Задайте SMTP_HOST/SMTP_USER/SMTP_PASS только при использовании стороннего SMTP. |
+| MAIL_DOMAIN      | Нет         | Домен почты (по умолчанию `aiternitas.ru`). Адреса ящиков: логин@MAIL_DOMAIN. |
+| MAIL_PORT        | Нет         | Порт приёма входящей почты (по умолчанию 2525). Postfix передаёт письма для @aiternitas.ru на этот порт. |
 | GOOGLE_CLIENT_*   | Нет         | Для входа через Google |
 
 ---
@@ -66,9 +67,11 @@ sudo journalctl -u aiternitas-main.service -f
 
 ---
 
-## Почта не приходит (подтверждение email, сброс пароля)
+## Почта (отправка и приём)
 
-Письма отправляются только если на сервере настроен SMTP. Проверьте:
+По умолчанию приложение отправляет письма через **localhost:25** (локальный Postfix). Настройте Postfix для приёма и отправки (см. **docs/MAIL_SERVER_SETUP.md** и **docs/MAIL_ARCHITECTURE.md**).
+
+Если используете сторонний SMTP (Gmail и т.п.), проверьте:
 
 1. **В `.env.production` заданы переменные:**
    - `SMTP_HOST` — хост SMTP (например `smtp.gmail.com`, `smtp.yandex.ru`, `smtp.mail.ru`).
@@ -87,3 +90,9 @@ sudo journalctl -u aiternitas-main.service -f
    - `Ошибка отправки email:` и текст ошибки — неверный хост/порт/логин/пароль или блокировка порта.
 
 4. **Таблица `emails` в БД:** приложение пишет туда каждую попытку отправки (статус `delivered` или `failed`, при ошибке — `error_message`). Можно проверить: `SELECT recipient, status, error_message, created_at FROM emails ORDER BY created_at DESC LIMIT 10;`
+
+5. **Письмо не приходит в Gmail (или не видно):**
+   - Проверьте папку **«Спам»** в Gmail — письма подтверждения часто попадают туда.
+   - Для отправки **через Gmail** в `.env.production` нужны: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USER=ваш@gmail.com`, `SMTP_PASS=пароль_приложения` (не обычный пароль). Пароль приложения: Google-аккаунт → Безопасность → Двухэтапная аутентификация → Пароли приложений.
+   - Если после регистрации на сайте показывается «Причина: SMTP не настроен…» — на сервере не заданы `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` в `.env.production`; задайте их и перезапустите сервис.
+   - Если письмо в логах уходит успешно (`Email успешно отправлен`), но в Gmail его нет — проверьте Спам и задержки доставки (иногда до минуты).
