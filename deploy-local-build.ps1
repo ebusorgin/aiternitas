@@ -58,16 +58,11 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "`n[5/6] Перезапуск сервиса..." -ForegroundColor Yellow
 ssh -i $SSH_KEY $SERVER "systemctl restart $SERVICE_NAME && sleep 3 && systemctl status $SERVICE_NAME | head -15"
 
-# Шаг 6: Обновление nginx (конфиг из репозитория → сервер)
+# Шаг 6: Обновление nginx (конфиг из репозитория на сервер)
 Write-Host "`n[6/6] Обновление nginx..." -ForegroundColor Yellow
 scp -i $SSH_KEY "$LOCAL_PATH\nginx-main.conf" "${SERVER}:/tmp/nginx-aiternitas.conf"
 ssh -i $SSH_KEY $SERVER "cp /tmp/nginx-aiternitas.conf /etc/nginx/sites-available/aiternitas.ru && nginx -t && systemctl reload nginx"
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✅ Nginx обновлён и перезагружен" -ForegroundColor Green
-} else {
-    Write-Host "⚠️ Nginx не перезагружен (проверьте конфиг)" -ForegroundColor Yellow
-}
 
-Write-Host "`n=== ✅ Развёртывание завершено! ===" -ForegroundColor Green
-Write-Host "Сайт: https://aiternitas.ru" -ForegroundColor Cyan
+Write-Host "`n=== Deploy OK ===" -ForegroundColor Green
+Write-Host "Site: https://aiternitas.ru" -ForegroundColor Cyan
 
