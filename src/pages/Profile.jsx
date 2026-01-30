@@ -321,71 +321,91 @@ function Profile() {
               </div>
             </div>
 
-            <div className="data-item" style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            <div className="data-item password-section">
               <label>Пароль</label>
               <div className="data-value">
                 {!showPasswordForm ? (
                   <button
                     type="button"
-                    className="edit-btn"
+                    className="password-toggle-btn"
                     onClick={() => setShowPasswordForm(true)}
-                    style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid rgba(102, 126, 234, 0.5)', background: 'transparent', color: '#667eea', cursor: 'pointer' }}
                   >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
                     Сменить пароль
                   </button>
                 ) : (
-                  <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '320px' }}>
-                    <input
-                      type="password"
-                      placeholder="Текущий пароль"
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      required
-                      autoComplete="current-password"
-                      className="edit-input"
-                      style={{ width: '100%' }}
-                    />
-                    <input
-                      type="password"
-                      placeholder="Новый пароль (мин. 8 символов)"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      required
-                      minLength={8}
-                      autoComplete="new-password"
-                      className="edit-input"
-                      style={{ width: '100%' }}
-                    />
-                    <input
-                      type="password"
-                      placeholder="Повторите новый пароль"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
-                      minLength={8}
-                      autoComplete="new-password"
-                      className="edit-input"
-                      style={{ width: '100%' }}
-                    />
-                    {passwordMessage.text && (
-                      <div className={passwordMessage.type === 'success' ? 'message success' : 'message error'} style={{ display: 'block' }}>
-                        {passwordMessage.text}
+                  <div className="password-form-card">
+                    <form onSubmit={handleChangePassword} className="password-form">
+                      <div className="field-group">
+                        <label htmlFor="current-password">Текущий пароль</label>
+                        <input
+                          id="current-password"
+                          type="password"
+                          placeholder="Введите текущий пароль"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          required
+                          autoComplete="current-password"
+                          className="edit-input"
+                        />
                       </div>
-                    )}
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button type="submit" className="save-btn" disabled={passwordLoading}>
-                        {passwordLoading ? 'Сохранение...' : 'Сохранить'}
-                      </button>
-                      <button
-                        type="button"
-                        className="cancel-btn"
-                        onClick={() => { setShowPasswordForm(false); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setPasswordMessage({ text: '', type: '' }); }}
-                        disabled={passwordLoading}
-                      >
-                        Отмена
-                      </button>
-                    </div>
-                  </form>
+                      <div className="field-group">
+                        <label htmlFor="new-password-profile">Новый пароль</label>
+                        <input
+                          id="new-password-profile"
+                          type="password"
+                          placeholder="Минимум 8 символов"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          required
+                          minLength={8}
+                          autoComplete="new-password"
+                          className="edit-input"
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label htmlFor="confirm-password-profile">Повторите новый пароль</label>
+                        <input
+                          id="confirm-password-profile"
+                          type="password"
+                          placeholder="Повторите новый пароль"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          required
+                          minLength={8}
+                          autoComplete="new-password"
+                          className="edit-input"
+                        />
+                      </div>
+                      {passwordMessage.text && (
+                        <div className={passwordMessage.type === 'success' ? 'message success' : 'message error'}>
+                          {passwordMessage.text}
+                        </div>
+                      )}
+                      <div className="password-form-actions">
+                        <button type="submit" className="save-btn" disabled={passwordLoading}>
+                          {passwordLoading ? 'Сохранение...' : 'Сохранить'}
+                        </button>
+                        <button
+                          type="button"
+                          className="cancel-btn"
+                          onClick={() => { setShowPasswordForm(false); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setPasswordMessage({ text: '', type: '' }); }}
+                          disabled={passwordLoading}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </form>
+                    <p className="password-hint">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                      </svg>
+                      После смены пароля на вашу почту <strong>{user?.email}</strong> придёт уведомление.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>

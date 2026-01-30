@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import pool from '../db.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
-import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email.mjs';
+import { sendVerificationEmail, sendPasswordResetEmail, sendPasswordChangedEmail } from '../utils/email.mjs';
 import { getClientIp } from '../utils/ip.mjs';
 import { getBaseUrl } from '../utils/url.mjs';
 
@@ -34,6 +34,15 @@ const forgotPasswordLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
   message: { error: 'Слишком много запросов. Попробуйте позже.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiting: reset-password — до 10 попыток за 15 минут с одного IP
+const resetPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Слишком много попыток. Попробуйте позже.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -277,8 +286,32 @@ router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
   }
 });
 
-// Сброс пароля по токену из письма
-router.post('/reset-password', async (req, res) => {
+// Проверка токена сброса пароля (без изменения состояния). Для UX: показать форму только при valid.
+router.get('/reset-password/validate', async (req, res) => {
+  try {
+    const token = req.query.token;
+    if (!token || typeof token !== 'string') {
+      return res.json({ valid: false, reason: 'invalid' });
+    }
+    const result = await pool.query(
+      'SELECT password_reset_expires FROM users WHERE password_reset_token = $1',
+      [token.trim()]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ valid: false, reason: 'invalid' });
+    }
+    if (new Date(result.rows[0].password_reset_expires) < new Date()) {
+      return res.json({ valid: false, reason: 'expired' });
+    }
+    res.json({ valid: true });
+  } catch (error) {
+    console.error('Ошибка reset-password/validate:', error);
+    res.status(500).json({ valid: false, reason: 'invalid' });
+  }
+});
+
+// Сброс пароля по токену из письма. На почту уходит уведомление о смене пароля.
+router.post('/reset-password', resetPasswordLimiter, async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {
@@ -288,7 +321,7 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ error: 'Пароль должен быть не менее 8 символов' });
     }
     const result = await pool.query(
-      'SELECT id, password_reset_expires FROM users WHERE password_reset_token = $1',
+      'SELECT id, name, email, password_reset_expires FROM users WHERE password_reset_token = $1',
       [token]
     );
     if (result.rows.length === 0) {
@@ -303,7 +336,15 @@ router.post('/reset-password', async (req, res) => {
       'UPDATE users SET password = $1, password_reset_token = NULL, password_reset_expires = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
       [hashedPassword, user.id]
     );
-    res.json({ success: true, message: 'Пароль успешно изменён. Войдите с новым паролем.' });
+
+    const clientIp = getClientIp(req);
+    console.log(`📧 Отправка уведомления о смене пароля (сброс) на ${user.email}...`);
+    const emailResult = await sendPasswordChangedEmail(user.email, user.name || 'Пользователь', clientIp);
+    if (!emailResult.success) {
+      console.error(`❌ Не удалось отправить уведомление: ${emailResult.error}`);
+    }
+
+    res.json({ success: true, message: 'Пароль успешно изменён. Войдите с новым паролем. На вашу почту отправлено уведомление.' });
   } catch (error) {
     console.error('Ошибка reset-password:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
@@ -675,7 +716,7 @@ router.put('/profile/name', requireAuth, async (req, res) => {
   }
 });
 
-// Смена пароля (для пользователей с паролем, не только Google)
+// Смена пароля (для пользователей с паролем, не только Google). На почту уходит уведомление.
 router.put('/profile/password', requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -686,7 +727,7 @@ router.put('/profile/password', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Новый пароль должен быть не менее 8 символов' });
     }
     const result = await pool.query(
-      'SELECT id, password FROM users WHERE id = $1',
+      'SELECT id, name, email, password FROM users WHERE id = $1',
       [req.session.userId]
     );
     if (result.rows.length === 0) {
@@ -705,7 +746,15 @@ router.put('/profile/password', requireAuth, async (req, res) => {
       'UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
       [hashedPassword, req.session.userId]
     );
-    res.json({ success: true, message: 'Пароль успешно изменён' });
+
+    const clientIp = getClientIp(req);
+    console.log(`📧 Отправка уведомления о смене пароля на ${user.email}...`);
+    const emailResult = await sendPasswordChangedEmail(user.email, user.name || 'Пользователь', clientIp);
+    if (!emailResult.success) {
+      console.error(`❌ Не удалось отправить уведомление о смене пароля: ${emailResult.error}`);
+    }
+
+    res.json({ success: true, message: 'Пароль успешно изменён. На вашу почту отправлено уведомление.' });
   } catch (error) {
     console.error('Ошибка смены пароля:', error);
     res.status(500).json({ error: 'Ошибка сервера' });

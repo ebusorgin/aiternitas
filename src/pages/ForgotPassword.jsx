@@ -40,8 +40,8 @@ function ForgotPassword() {
       <div className="auth-container">
         <div className="auth-card">
           <div className="auth-header">
-            <h1>Сброс пароля</h1>
-            <p>Введите email, указанный при регистрации. Мы отправим ссылку для сброса пароля.</p>
+            <h1>Восстановление пароля</h1>
+            <p>Введите email, указанный при регистрации. Мы отправим ссылку для восстановления пароля.</p>
           </div>
           <form onSubmit={handleSubmit} className="auth-form">
             <div className="form-group">
