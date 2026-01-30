@@ -3,15 +3,23 @@ import socketService from '../../services/socket';
 import { useFlowchartStore } from '../../store/flowchartStore';
 import './GenerateCompanyModal.css';
 
-const STEPS = [
-  { id: 1, name: 'Анализ', icon: '🔍' },
-  { id: 2, name: 'Топ-менеджмент', icon: '👔' },
-  { id: 3, name: 'Департаменты', icon: '🏢' },
-  { id: 4, name: 'Руководители', icon: '👤' },
-  { id: 5, name: 'Сотрудники', icon: '👥' },
-  { id: 6, name: 'Связи', icon: '🔗' },
-  { id: 7, name: 'Проверка', icon: '✅' }
-];
+const STEP_ICONS = {
+  executives: '👔',
+  departments: '🏢',
+  department_heads: '👤',
+  workers: '👥'
+};
+
+// Фиксированные шаги: Анализ, Связи, Проверка. Остальные — плавающие (приходят в плане).
+function buildStepsList(dynamicSteps = [], totalSteps = 3) {
+  const middle = (dynamicSteps || []).map(s => ({ name: s.label, icon: STEP_ICONS[s.id] || '📌' }));
+  return [
+    { name: 'Анализ', icon: '🔍' },
+    ...middle,
+    { name: 'Связи', icon: '🔗' },
+    { name: 'Проверка', icon: '✅' }
+  ];
+}
 
 function GenerateCompanyModal({ onClose }) {
   const [name, setName] = useState('');
@@ -22,6 +30,9 @@ function GenerateCompanyModal({ onClose }) {
   const [progress, setProgress] = useState(null);
   const [statusHistory, setStatusHistory] = useState([]);
   const [clarification, setClarification] = useState(null);
+  const [clarificationCustomText, setClarificationCustomText] = useState('');
+  const [dynamicSteps, setDynamicSteps] = useState([]);
+  const [totalSteps, setTotalSteps] = useState(3);
 
   const setElements = useFlowchartStore((state) => state.setElements);
   const setConnections = useFlowchartStore((state) => state.setConnections);
@@ -52,15 +63,32 @@ function GenerateCompanyModal({ onClose }) {
   useEffect(() => {
     const handleClarification = (payload) => {
       setClarification(payload);
+      setClarificationCustomText('');
     };
     const unsubscribe = socketService.on('flowchart:clarification-needed', handleClarification);
     return () => unsubscribe?.();
   }, []);
 
+  // План плавающих шагов (приходит после анализа) — обновляем список шагов для отображения
+  useEffect(() => {
+    const handleStepsPlan = (payload) => {
+      if (payload?.steps) setDynamicSteps(payload.steps);
+      if (payload?.totalSteps) setTotalSteps(payload.totalSteps);
+    };
+    const unsubscribe = socketService.on('flowchart:generate-steps-plan', handleStepsPlan);
+    return () => unsubscribe?.();
+  }, []);
+
   const handleClarificationChoice = (optionId) => {
     if (!clarification?.clarificationId) return;
-    socketService.sendClarificationResponse(clarification.clarificationId, optionId);
+    socketService.sendClarificationResponse(clarification.clarificationId, optionId, clarificationCustomText);
     setClarification(null);
+    setClarificationCustomText('');
+  };
+
+  const handleAbortGeneration = () => {
+    socketService.sendAbortGeneration();
+    setError('Останавливаем…');
   };
 
   const handleOverlayClick = (e) => {
@@ -80,15 +108,17 @@ function GenerateCompanyModal({ onClose }) {
     setIsGenerating(true);
     setIsSuccess(false);
     setError(null);
-    setProgress({ step: 0, total: 7, message: 'Инициализация...' });
-    setStatusHistory([{ step: 0, message: 'Запуск генерации...', time: new Date() }]);
+    setDynamicSteps([]);
+    setTotalSteps(3);
+    setProgress({ stepIndex: 0, totalSteps: 3, message: 'Инициализация...' });
+    setStatusHistory([{ stepIndex: 0, message: 'Запуск генерации...', time: new Date() }]);
 
     try {
       const result = await socketService.generateCompany(name.trim(), description.trim());
 
       if (result.success) {
-        setProgress({ step: 7, total: 7, message: 'Компания создана!' });
-        setStatusHistory(prev => [...prev, { step: 7, message: '✨ Готово!', time: new Date() }]);
+        setProgress(prev => ({ ...prev, stepIndex: totalSteps, totalSteps, message: 'Компания создана!' }));
+        setStatusHistory(prev => [...prev, { stepIndex: totalSteps, message: '✨ Готово!', time: new Date() }]);
         
         // Update store with generated elements
         setElements(result.elements || []);
@@ -118,10 +148,14 @@ function GenerateCompanyModal({ onClose }) {
     }
   };
 
-  const getStepStatus = (stepId) => {
+  const stepsList = buildStepsList(dynamicSteps, totalSteps);
+  const currentStepIndex = progress?.stepIndex ?? 0;
+
+  const getStepStatus = (index0) => {
     if (!progress) return 'pending';
-    if (progress.step > stepId) return 'completed';
-    if (progress.step === stepId) return 'active';
+    const stepNum = index0 + 1;
+    if (currentStepIndex > stepNum) return 'completed';
+    if (currentStepIndex === stepNum) return 'active';
     return 'pending';
   };
 
@@ -208,13 +242,13 @@ function GenerateCompanyModal({ onClose }) {
             </div>
           ) : (
             <div className="generation-progress">
-              {/* Step indicators - compact grid */}
+              {/* Step indicators: Анализ + плавающие шаги + Связи + Проверка */}
               <div className="progress-steps-grid">
-                {STEPS.map((step) => (
-                  <div key={step.id} className={`step-item ${getStepStatus(step.id)}`}>
+                {stepsList.map((step, index) => (
+                  <div key={index} className={`step-item ${getStepStatus(index)}`}>
                     <span className="step-icon">
-                      {getStepStatus(step.id) === 'completed' ? '✓' : 
-                       getStepStatus(step.id) === 'active' ? '⏳' : step.icon}
+                      {getStepStatus(index) === 'completed' ? '✓' : 
+                       getStepStatus(index) === 'active' ? '⏳' : step.icon}
                     </span>
                     <span className="step-name">{step.name}</span>
                   </div>
@@ -225,9 +259,11 @@ function GenerateCompanyModal({ onClose }) {
               <div className="progress-bar-container">
                 <div 
                   className="progress-bar-fill" 
-                  style={{ width: `${((progress?.step || 0) / 7) * 100}%` }}
+                  style={{ width: `${totalSteps ? ((currentStepIndex / totalSteps) * 100) : 0}%` }}
                 />
-                <span className="progress-percent">{Math.round(((progress?.step || 0) / 7) * 100)}%</span>
+                <span className="progress-percent">
+                  {totalSteps ? Math.round((currentStepIndex / totalSteps) * 100) : 0}%
+                </span>
               </div>
 
               {/* Current status */}
@@ -241,7 +277,7 @@ function GenerateCompanyModal({ onClose }) {
                 <div className="log-header">Лог генерации:</div>
                 <div className="log-entries">
                   {statusHistory.map((entry, index) => (
-                    <div key={index} className={`log-entry ${entry.step === progress?.step ? 'current' : ''}`}>
+                    <div key={index} className={`log-entry ${entry.stepIndex === currentStepIndex ? 'current' : ''}`}>
                       <span className="log-time">
                         {entry.time.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                       </span>
@@ -260,6 +296,16 @@ function GenerateCompanyModal({ onClose }) {
                     {clarification.summary && (
                       <p className="clarification-summary">Сейчас: {clarification.summary}</p>
                     )}
+                    <div className="clarification-custom-text-wrap">
+                      <label className="clarification-custom-text-label">Дополнительные уточнения (необязательно)</label>
+                      <textarea
+                        className="clarification-custom-text"
+                        value={clarificationCustomText}
+                        onChange={(e) => setClarificationCustomText(e.target.value)}
+                        placeholder="Например: только барберы, без финансового отдела…"
+                        rows={3}
+                      />
+                    </div>
                     <div className="clarification-options">
                       {clarification.options?.map((opt) => (
                         <button
@@ -316,6 +362,13 @@ function GenerateCompanyModal({ onClose }) {
                 <span className="hint-icon">⏳</span>
                 Генерация занимает 30-60 секунд
               </div>
+              <button
+                type="button"
+                className="generate-btn abort"
+                onClick={handleAbortGeneration}
+              >
+                Остановить процесс
+              </button>
             </div>
           )}
         </div>

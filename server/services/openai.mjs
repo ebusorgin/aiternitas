@@ -97,12 +97,15 @@ async function step1_analyzeCompany(companyName, description) {
  * STEP 2: Create C-Level / Top Management (outside departments)
  */
 async function step2_createTopManagement(companyName, analysis) {
+  const userClarificationBlock = analysis.userClarification
+    ? `\nУточнение от пользователя (обязательно учесть): ${analysis.userClarification}\n`
+    : '';
   const prompt = `Создай топ-менеджмент компании "${companyName}" — оптимально по размеру (для микро — один владелец/руководитель).
 
 Тип компании: ${analysis.companySize}
 Отрасль: ${analysis.industry}
 Тип структуры: ${analysis.structureType}
-Рекомендуемые роли: ${analysis.requiredCLevelRoles?.join(', ')}
+Рекомендуемые роли: ${analysis.requiredCLevelRoles?.join(', ')}${userClarificationBlock}
 
 Топ-менеджеры размещаются на одном уровне с департаментами. Количество и детализацию подбирай под размер компании.
 
@@ -145,13 +148,16 @@ async function step2_createTopManagement(companyName, analysis) {
  * STEP 3: Create departments — оптимально по размеру компании.
  */
 async function step3_createDepartments(companyName, analysis, executives) {
+  const userClarificationBlock = analysis.userClarification
+    ? `\nУточнение от пользователя (обязательно учесть): ${analysis.userClarification}\n`
+    : '';
   const prompt = `Создай департаменты компании "${companyName}" — оптимально по размеру (для микро — один, например Услуги/Салон).
 
 Анализ:
 - Размер: ${analysis.companySize}
 - Отрасль: ${analysis.industry}
 - Структура: ${analysis.structureType}
-- Необходимые департаменты: ${analysis.requiredDepartments?.join(', ')}
+- Необходимые департаменты: ${analysis.requiredDepartments?.join(', ')}${userClarificationBlock}
 
 Создай описание для каждого департамента: миссия, ключевые функции, KPI. Классификация: core / support / management.
 
@@ -197,7 +203,10 @@ async function step4_createDepartmentHeads(companyName, analysis, executives, de
   };
   flatten(departments.departments);
 
-  const prompt = `Создай руководителей департаментов для "${companyName}" — по одному на департамент (для микро — один руководитель смены/салона).
+  const userClarificationBlock = analysis.userClarification
+    ? `\nУточнение от пользователя (обязательно учесть): ${analysis.userClarification}\n`
+    : '';
+  const prompt = `Создай руководителей департаментов для "${companyName}" — по одному на департамент (для микро — один руководитель смены/салона).${userClarificationBlock}
 
 Департаменты:
 ${flatDepts.map(d => `- [${d.id}] ${d.name} (${d.type})`).join('\n')}
@@ -261,9 +270,12 @@ async function step5_createWorkers(companyName, analysis, departments) {
   };
   flatten(departments.departments);
 
+  const userClarificationBlock = analysis.userClarification
+    ? `\nУточнение от пользователя (обязательно учесть): ${analysis.userClarification}\n`
+    : '';
   const prompt = `Создай сотрудников для компании "${companyName}" — оптимально по размеру. Для микро (один департамент) — 3–5 исполнителей (барберы/мастера и т.п.), без лишних HR/финансов. Для среднего/крупного — по 3–4+ на департамент.
 
-Размер: ${analysis.companySize}, примерно сотрудников: ${analysis.estimatedEmployees}
+Размер: ${analysis.companySize}, примерно сотрудников: ${analysis.estimatedEmployees}${userClarificationBlock}
 
 Департаменты:
 ${flatDepts.map(d => `- [${d.id}] ${d.name}: ${d.functions?.slice(0, 3).join(', ')}`).join('\n')}
@@ -454,8 +466,46 @@ ${deptsWithoutWorkers.length > 0 ? `- Департаменты БЕЗ сотру
 }
 
 /**
- * Main function: 7-step generation
+ * Планирование плавающих шагов: нейросеть выбирает, какие шаги и в каком порядке выполнять.
+ * Фиксированы только: Анализ (уже сделан), Связи, Проверка.
+ * Плавающие: executives, departments, department_heads, workers — могут быть подмножество, свой порядок и названия.
  */
+async function step_planSteps(companyName, analysis) {
+  const userClarificationBlock = analysis.userClarification
+    ? `\nУточнение от пользователя (обязательно учесть): ${analysis.userClarification}\n`
+    : '';
+  const prompt = `На основе анализа компании определи, какие промежуточные шаги нужны для построения оргструктуры.
+
+Название: ${companyName}
+Анализ: ${analysis.companySize}, ~${analysis.estimatedEmployees} чел., департаменты: ${(analysis.requiredDepartments || []).join(', ') || '—'}${userClarificationBlock}
+
+Доступные типы шагов (id и пример названия):
+- executives — топ/руководство (например "Топ-менеджмент", "Руководство")
+- departments — подразделения (например "Департаменты", "Услуги")
+- department_heads — руководители отделов (например "Руководители")
+- workers — сотрудники (например "Сотрудники", "Мастера", "Команда")
+
+Выбери ОПТИМАЛЬНЫЙ набор и порядок шагов под размер и тип компании. Можно использовать подмножество и свои короткие названия (label). Для микро-бизнеса достаточно 1–2 шагов (например только departments и workers). Для среднего/крупного — полный набор в логичном порядке.
+
+Ответь JSON:
+{
+  "steps": [
+    { "id": "executives", "label": "Топ-менеджмент" },
+    { "id": "departments", "label": "Департаменты" },
+    { "id": "department_heads", "label": "Руководители" },
+    { "id": "workers", "label": "Сотрудники" }
+  ]
+}`;
+
+  const result = await callGPT(prompt, 1500);
+  const steps = result.steps || [];
+  const order = ['executives', 'departments', 'department_heads', 'workers'];
+  const sorted = steps
+    .filter(s => order.includes(s.id))
+    .sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  return { steps: sorted };
+}
+
 /**
  * Apply user clarification choice to analysis (simplify / expand / keep).
  */
@@ -483,19 +533,29 @@ function applyClarificationChoice(analysis, choice) {
   return analysis;
 }
 
-export async function generateCompanyStructure(companyName, description, onProgress, onClarification) {
-  console.log(`🤖 Starting 7-step generation for: ${companyName}`);
-  
-  try {
-    // STEP 1: Analyze company
-    onProgress?.({ step: 1, total: 7, message: 'Анализирую компанию...' });
-    let analysis = await step1_analyzeCompany(companyName, description);
-    console.log(`📊 Step 1: ${analysis.companySize}, ${analysis.industry}, ${analysis.structureType}`);
+const ABORT_MESSAGE = 'Генерация остановлена пользователем';
 
-    // Уточнение у пользователя (масштаб структуры)
+const STEP_IDS = ['executives', 'departments', 'department_heads', 'workers'];
+
+export async function generateCompanyStructure(companyName, description, onProgress, onClarification, getAborted, onStepsPlan) {
+  console.log(`🤖 Starting generation for: ${companyName}`);
+  
+  const checkAborted = () => {
+    if (getAborted?.()) throw new Error(ABORT_MESSAGE);
+  };
+
+  try {
+    // === ФИКСИРОВАННЫЙ ШАГ 1: Анализ ===
+    checkAborted();
+    onProgress?.({ stepIndex: 1, totalSteps: 0, stepLabel: 'Анализ', message: 'Анализирую компанию...' });
+    let analysis = await step1_analyzeCompany(companyName, description);
+    checkAborted();
+    console.log(`📊 Анализ: ${analysis.companySize}, ${analysis.industry}, ${analysis.structureType}`);
+
+    // Уточнение у пользователя (масштаб структуры + ручной текст)
     if (onClarification) {
       const summary = `${analysis.companySize}, ~${analysis.estimatedEmployees} чел., департаменты: ${(analysis.requiredDepartments || []).join(', ') || '—'}`;
-      const choice = await onClarification({
+      const result = await onClarification({
         step: 1,
         question: 'Подтвердите или скорректируйте масштаб структуры',
         summary,
@@ -505,42 +565,83 @@ export async function generateCompanyStructure(companyName, description, onProgr
           { id: 'expand', label: 'Расширить', description: 'Больше департаментов и ролей' }
         ]
       });
+      checkAborted();
+      const choice = typeof result === 'object' ? (result.choice || 'keep') : result;
+      const customText = typeof result === 'object' ? (result.customText || '') : '';
       analysis = applyClarificationChoice(analysis, choice);
-      onProgress?.({ step: 1, total: 7, message: 'Масштаб учтён, продолжаю...' });
+      if (customText && typeof customText === 'string' && customText.trim()) {
+        analysis.userClarification = customText.trim();
+      }
+      onProgress?.({ stepIndex: 1, totalSteps: 0, stepLabel: 'Анализ', message: 'Масштаб учтён...' });
     }
-    
-    // STEP 2: Create top management
-    onProgress?.({ step: 2, total: 7, message: analysis.statusMessage || 'Формирую топ-менеджмент...' });
-    const executives = await step2_createTopManagement(companyName, analysis);
-    console.log(`👔 Step 2: ${executives.executives?.length || 0} executives created`);
-    
-    // STEP 3: Create departments
-    onProgress?.({ step: 3, total: 7, message: executives.statusMessage || 'Создаю департаменты...' });
-    const departments = await step3_createDepartments(companyName, analysis, executives);
-    console.log(`🏢 Step 3: ${departments.departments?.length || 0} departments created`);
-    
-    // STEP 4: Create department heads
-    onProgress?.({ step: 4, total: 7, message: departments.statusMessage || 'Назначаю руководителей...' });
-    const departmentHeads = await step4_createDepartmentHeads(companyName, analysis, executives, departments);
-    console.log(`👤 Step 4: ${departmentHeads.departmentHeads?.length || 0} heads created`);
-    
-    // STEP 5: Create workers
-    onProgress?.({ step: 5, total: 7, message: departmentHeads.statusMessage || 'Формирую команды...' });
-    const workers = await step5_createWorkers(companyName, analysis, departments);
-    console.log(`👥 Step 5: Workers created for ${workers.departmentWorkers?.length || 0} departments`);
-    
-    // STEP 6: Create connections
-    onProgress?.({ step: 6, total: 7, message: workers.statusMessage || 'Выстраиваю связи...' });
+
+    // === ПЛАНИРОВАНИЕ ПЛАВАЮЩИХ ШАГОВ ===
+    checkAborted();
+    const plan = await step_planSteps(companyName, analysis);
+    const plannedSteps = plan.steps || [];
+    const totalSteps = 1 + plannedSteps.length + 2; // Анализ + плавающие + Связи + Проверка
+    onStepsPlan?.({ steps: plannedSteps, totalSteps });
+    onProgress?.({ stepIndex: 1, totalSteps, stepLabel: 'Анализ', message: 'План шагов готов...' });
+
+    const plannedIds = plannedSteps.map(s => s.id);
+    let executives = null;
+    let departments = null;
+    let departmentHeads = { departmentHeads: [], headToDeptConnections: [] };
+    let workers = { departmentWorkers: [] };
+
+    // Дефолты для пропущенных шагов (чтобы связи и проверка работали)
+    if (!plannedIds.includes('executives')) {
+      checkAborted();
+      executives = await step2_createTopManagement(companyName, analysis);
+      console.log(`👔 Дефолт: 1 executive`);
+    }
+    if (!plannedIds.includes('departments')) {
+      checkAborted();
+      departments = await step3_createDepartments(companyName, analysis, executives || { executives: [] });
+      console.log(`🏢 Дефолт: 1 department`);
+    }
+
+    // === ПЛАВАЮЩИЕ ШАГИ ===
+    for (let i = 0; i < plannedSteps.length; i++) {
+      checkAborted();
+      const step = plannedSteps[i];
+      const stepIndex = 2 + i;
+      onProgress?.({ stepIndex, totalSteps, stepLabel: step.label, message: `${step.label}...` });
+
+      if (step.id === 'executives') {
+        executives = await step2_createTopManagement(companyName, analysis);
+        console.log(`👔 ${step.label}: ${executives.executives?.length || 0}`);
+      } else if (step.id === 'departments') {
+        departments = await step3_createDepartments(companyName, analysis, executives || { executives: [] });
+        console.log(`🏢 ${step.label}: ${departments.departments?.length || 0}`);
+      } else if (step.id === 'department_heads') {
+        departmentHeads = await step4_createDepartmentHeads(companyName, analysis, executives || { executives: [] }, departments || { departments: [] });
+        console.log(`👤 ${step.label}: ${departmentHeads.departmentHeads?.length || 0}`);
+      } else if (step.id === 'workers') {
+        workers = await step5_createWorkers(companyName, analysis, departments || { departments: [] });
+        console.log(`👥 ${step.label}: ${workers.departmentWorkers?.length || 0} depts`);
+      }
+    }
+
+    // Дефолты, если шаги не планировались
+    if (!executives) executives = await step2_createTopManagement(companyName, analysis);
+    if (!departments) departments = await step3_createDepartments(companyName, analysis, executives);
+
+    // === ФИКСИРОВАННЫЙ ШАГ: Связи ===
+    checkAborted();
+    const connectionsIndex = totalSteps - 2;
+    onProgress?.({ stepIndex: connectionsIndex, totalSteps, stepLabel: 'Связи', message: 'Выстраиваю связи...' });
     const connections = await step6_createConnections(companyName, executives, departmentHeads, departments);
-    console.log(`🔗 Step 6: ${connections.connections?.length || 0} connections created`);
-    
-    // STEP 7: Validate
-    onProgress?.({ step: 7, total: 7, message: connections.statusMessage || 'Проверяю структуру...' });
+    checkAborted();
+    console.log(`🔗 Связи: ${connections.connections?.length || 0}`);
+
+    // === ФИКСИРОВАННЫЙ ШАГ: Проверка ===
+    checkAborted();
+    onProgress?.({ stepIndex: totalSteps, totalSteps, stepLabel: 'Проверка', message: 'Проверяю структуру...' });
     const validation = await step7_validateStructure(companyName, executives, departmentHeads, departments, workers, connections);
-    console.log(`✅ Step 7: Validation ${validation.isValid ? 'PASSED' : 'needs fixes'}`);
-    
-    onProgress?.({ step: 7, total: 7, message: validation.statusMessage || 'Готово!' });
-    
+    onProgress?.({ stepIndex: totalSteps, totalSteps, stepLabel: 'Проверка', message: validation.statusMessage || 'Готово!' });
+    console.log(`✅ Проверка: ${validation.isValid ? 'PASSED' : 'needs fixes'}`);
+
     return {
       analysis,
       executives,

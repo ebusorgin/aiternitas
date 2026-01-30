@@ -635,7 +635,10 @@
 .generating-footer {
   width: 100%;
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .generating-hint {
@@ -644,6 +647,18 @@
   gap: 8px;
   font-size: 13px;
   color: rgba(255, 255, 255, 0.4);
+}
+
+.generate-btn.abort {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.generate-btn.abort:hover {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
 }
 
 .hint-icon {
@@ -695,6 +710,42 @@
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.06);
   border-radius: 8px;
+}
+
+.clarification-custom-text-wrap {
+  margin: 0 0 16px;
+}
+
+.clarification-custom-text-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 6px;
+}
+
+.clarification-custom-text {
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.clarification-custom-text::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.clarification-custom-text:focus {
+  outline: none;
+  border-color: rgba(147, 51, 234, 0.4);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .clarification-options {

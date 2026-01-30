@@ -172,7 +172,8 @@ class SocketService {
       'flowchart:saved',
       'flowchart:generated',
       'flowchart:generate-progress',
-      'flowchart:clarification-needed'
+      'flowchart:clarification-needed',
+      'flowchart:generate-steps-plan'
     ];
 
     flowchartEvents.forEach(event => {
@@ -370,9 +371,16 @@ class SocketService {
   }
 
   // Ответ на уточнение по ходу генерации (всплывающее окно)
-  sendClarificationResponse(clarificationId, choice) {
+  sendClarificationResponse(clarificationId, choice, customText = '') {
     if (this.socket?.connected) {
-      this.socket.emit('flowchart:clarification-response', { clarificationId, choice });
+      this.socket.emit('flowchart:clarification-response', { clarificationId, choice, customText: customText || '' });
+    }
+  }
+
+  // Остановить процесс генерации компании
+  sendAbortGeneration() {
+    if (this.socket?.connected) {
+      this.socket.emit('flowchart:generate-abort');
     }
   }
 
