@@ -88,20 +88,23 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = useCallback(async (email, password) => {
-    if (!socketService.isConnected) {
-      try {
-        await socketService.connect();
-        setSocketConnected(true);
-      } catch (error) {
-        return { success: false, error: 'Ошибка подключения к серверу' };
-      }
-    }
-
     try {
-      const result = await socketService.login(email, password);
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      
+      const result = await response.json();
       
       if (result.success && result.user) {
         setUser(result.user);
+        
+        // Reconnect socket to authenticate with new session cookie
+        socketService.disconnect();
+        await socketService.connect();
+        await socketService.checkAuth();
+        
         return { success: true };
       } else {
         return { 
@@ -111,25 +114,30 @@ export function AuthProvider({ children }) {
         };
       }
     } catch (error) {
-      return { success: false, error: error.message || 'Ошибка подключения к серверу' };
+      console.error('Login error:', error);
+      return { success: false, error: 'Ошибка подключения к серверу' };
     }
   }, []);
 
   const register = useCallback(async (name, email, password) => {
-    if (!socketService.isConnected) {
-      try {
-        await socketService.connect();
-        setSocketConnected(true);
-      } catch (error) {
-        return { success: false, error: 'Ошибка подключения к серверу' };
-      }
-    }
-
     try {
-      const result = await socketService.register(name, email, password);
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password }),
+      });
+      
+      const result = await response.json();
       
       if (result.success && result.user) {
+        // If registration logs the user in automatically
         setUser(result.user);
+        
+        // Reconnect socket to authenticate with new session cookie
+        socketService.disconnect();
+        await socketService.connect();
+        await socketService.checkAuth();
+
         return { 
           success: true,
           emailVerificationRequired: result.emailVerificationRequired || false
@@ -138,18 +146,27 @@ export function AuthProvider({ children }) {
         return { success: false, error: result.error || 'Ошибка регистрации' };
       }
     } catch (error) {
-      return { success: false, error: error.message || 'Ошибка подключения к серверу' };
+      console.error('Register error:', error);
+      return { success: false, error: 'Ошибка подключения к серверу' };
     }
   }, []);
 
   const logout = useCallback(async () => {
     try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      
+      // Logout from socket too
       await socketService.logout();
       setUser(null);
+      
+      // Reconnect as anonymous
+      socketService.disconnect();
+      await socketService.connect();
     } catch (error) {
       console.error('Logout error:', error);
       // Clear user anyway
       setUser(null);
+      socketService.disconnect();
     }
   }, []);
 
