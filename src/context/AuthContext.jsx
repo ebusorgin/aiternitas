@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import socketService from '../services/socket';
 
 const AuthContext = createContext();
@@ -7,44 +7,52 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [socketConnected, setSocketConnected] = useState(false);
+  // Сессия установлена через HTTP (cookie) — сокет не может её сбросить
+  const httpSessionRef = useRef(false);
 
-  // Initialize socket connection and check auth
   useEffect(() => {
-    const initSocket = async () => {
+    const init = async () => {
       setLoading(true);
-      
       try {
-        // Connect to socket
+        // Сначала проверяем сессию по HTTP (cookie) — так надёжно и на проде, и после перезагрузки
+        const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+        if (meRes.ok) {
+          const data = await meRes.json();
+          if (data.user) {
+            setUser(data.user);
+            httpSessionRef.current = true;
+          }
+        }
+
         await socketService.connect();
         setSocketConnected(true);
-        
-        // Check authentication status
+
         const result = await socketService.checkAuth();
-        
         if (result.authenticated && result.user) {
           setUser(result.user);
-        } else {
+          httpSessionRef.current = true;
+        } else if (!httpSessionRef.current) {
           setUser(null);
         }
       } catch (error) {
-        console.error('Socket init error:', error);
+        console.error('Auth init error:', error);
         setSocketConnected(false);
-        setUser(null);
+        if (!httpSessionRef.current) setUser(null);
       } finally {
         setLoading(false);
       }
     };
 
-    initSocket();
+    init();
 
-    // Handle reconnection
     const unsubReconnect = socketService.on('reconnected:authenticated', (user) => {
       setUser(user);
+      httpSessionRef.current = true;
       setSocketConnected(true);
     });
 
     const unsubReconnectAnon = socketService.on('reconnected:anonymous', () => {
-      setUser(null);
+      if (!httpSessionRef.current) setUser(null);
       setSocketConnected(true);
     });
 
@@ -60,12 +68,28 @@ export function AuthProvider({ children }) {
   }, []);
 
   const checkAuth = useCallback(async () => {
+    try {
+      const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+      if (meRes.ok) {
+        const data = await meRes.json();
+        if (data.user) {
+          setUser(data.user);
+          httpSessionRef.current = true;
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error('Auth check (HTTP) error:', e);
+    }
+
     if (!socketService.isConnected) {
       try {
         await socketService.connect();
         setSocketConnected(true);
       } catch (error) {
         console.error('Socket connect error:', error);
+        if (!httpSessionRef.current) setUser(null);
         return;
       }
     }
@@ -73,15 +97,15 @@ export function AuthProvider({ children }) {
     setLoading(true);
     try {
       const result = await socketService.checkAuth();
-      
       if (result.authenticated && result.user) {
         setUser(result.user);
-      } else {
+        httpSessionRef.current = true;
+      } else if (!httpSessionRef.current) {
         setUser(null);
       }
     } catch (error) {
       console.error('Auth check error:', error);
-      setUser(null);
+      if (!httpSessionRef.current) setUser(null);
     } finally {
       setLoading(false);
     }
@@ -92,6 +116,7 @@ export function AuthProvider({ children }) {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
       
@@ -99,12 +124,10 @@ export function AuthProvider({ children }) {
       
       if (result.success && result.user) {
         setUser(result.user);
-        
-        // Reconnect socket to authenticate with new session cookie
+        httpSessionRef.current = true;
         socketService.disconnect();
+        await new Promise((r) => setTimeout(r, 150));
         await socketService.connect();
-        await socketService.checkAuth();
-        
         return { success: true };
       } else {
         return { 
@@ -124,20 +147,18 @@ export function AuthProvider({ children }) {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name, email, password }),
       });
       
       const result = await response.json();
       
       if (result.success && result.user) {
-        // If registration logs the user in automatically
         setUser(result.user);
-        
-        // Reconnect socket to authenticate with new session cookie
+        httpSessionRef.current = true;
         socketService.disconnect();
+        await new Promise((r) => setTimeout(r, 150));
         await socketService.connect();
-        await socketService.checkAuth();
-
         return { 
           success: true,
           emailVerificationRequired: result.emailVerificationRequired || false
@@ -153,18 +174,15 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      
-      // Logout from socket too
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      httpSessionRef.current = false;
       await socketService.logout();
       setUser(null);
-      
-      // Reconnect as anonymous
       socketService.disconnect();
       await socketService.connect();
     } catch (error) {
       console.error('Logout error:', error);
-      // Clear user anyway
+      httpSessionRef.current = false;
       setUser(null);
       socketService.disconnect();
     }

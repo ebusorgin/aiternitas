@@ -173,6 +173,8 @@ router.post('/login', async (req, res) => {
     req.session.userName = user.name;
     req.session.userEmail = user.email;
     
+    console.log(`✅ Пользователь вошел через HTTP: ${user.email} (id: ${user.id})`);
+
     // Сохраняем сессию перед отправкой ответа
     req.session.save((err) => {
       if (err) {
@@ -208,55 +210,25 @@ router.post('/logout', (req, res) => {
   });
 });
 
-// Получение текущего пользователя
-router.get('/me', (req, res) => {
-  // Логируем информацию о сессии для отладки
-  console.log('Session check:', {
-    hasSession: !!req.session,
-    userId: req.session?.userId,
-    sessionId: req.sessionID,
-    cookies: req.headers.cookie,
-    origin: req.headers.origin,
-    referer: req.headers.referer,
-    host: req.headers.host,
-    protocol: req.protocol,
-    secure: req.secure
-  });
-  
-  // Проверяем сессию без middleware для более детальной обработки
+// Получение текущего пользователя (по cookie сессии)
+router.get('/me', async (req, res) => {
   if (!req.session || !req.session.userId) {
-    console.log('❌ Не авторизован: нет сессии или userId');
-    return res.status(401).json({ 
-      error: 'Требуется авторизация',
-      success: false 
-    });
+    return res.status(401).json({ error: 'Требуется авторизация', success: false });
   }
-
-  (async () => {
-    try {
+  try {
     const result = await pool.query(
       'SELECT id, name, email, avatar, email_verified, created_at FROM users WHERE id = $1',
       [req.session.userId]
     );
-
-      if (result.rows.length === 0) {
-        // Если пользователь не найден, очищаем сессию
-        req.session.destroy();
-        return res.status(401).json({ 
-          error: 'Пользователь не найден',
-          success: false 
-        });
-      }
-
-      res.json({
-        success: true,
-        user: result.rows[0]
-      });
-    } catch (error) {
-      console.error('Ошибка получения пользователя:', error);
-      res.status(500).json({ error: 'Ошибка сервера' });
+    if (result.rows.length === 0) {
+      req.session.destroy(() => {});
+      return res.status(401).json({ error: 'Пользователь не найден', success: false });
     }
-  })();
+    res.json({ success: true, user: result.rows[0] });
+  } catch (error) {
+    console.error('Ошибка /api/auth/me:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 });
 
 // Google OAuth - получение URL для авторизации

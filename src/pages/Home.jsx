@@ -50,7 +50,7 @@ function Home() {
     const result = await login(email, password);
 
     if (result.success) {
-      window.location.reload();
+      // Не перезагружаем страницу — AuthContext уже обновил user, дашборд покажется сам
     } else {
       if (result.emailVerificationRequired) {
         setError(result.error || 'Email не подтвержден');
@@ -91,15 +91,10 @@ function Home() {
         if (result.verificationUrl) {
           console.log('Email verification URL:', result.verificationUrl);
         }
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
       } else {
         setSuccess('Регистрация успешна!');
-        setTimeout(() => {
-          window.location.reload();
-        }, 1000);
       }
+      // Не перезагружаем — user уже установлен в AuthContext
     } else {
       setError(result.error);
       setFormLoading(false);

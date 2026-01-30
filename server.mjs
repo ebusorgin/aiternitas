@@ -81,15 +81,17 @@ const PgSession = connectPgSimple(session);
 
 // Сессии с постоянным хранилищем в PostgreSQL
 // Определяем, работаем ли мы в production (HTTPS)
+// Default to production if on Linux or if NODE_ENV is explicitly production
 const isProduction = process.env.NODE_ENV === 'production' || 
+                     (process.platform === 'linux' && process.env.NODE_ENV !== 'development') ||
                      process.env.BASE_URL?.includes('https://') ||
                      process.env.BASE_URL?.includes('aiternitas.ru');
 
-// Настройка cookies для сессий
+// Настройка cookies для сессий (SameSite=Lax достаточно для того же домена)
 const cookieConfig = {
-  secure: isProduction, // Требует HTTPS в production
+  secure: isProduction,
   httpOnly: true,
-  sameSite: isProduction ? 'none' : 'lax', // Для работы через HTTPS нужен 'none'
+  sameSite: 'lax', // same-origin запросы — Lax надёжнее, None часто блокируется
   maxAge: 30 * 24 * 60 * 60 * 1000 // 30 дней
 };
 
@@ -115,8 +117,9 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'aiternitas-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
-  name: 'aiternitas.sid', // Имя cookie для сессии
-  cookie: cookieConfig
+  name: 'aiternitas.sid',
+  cookie: cookieConfig,
+  proxy: true // учитывать X-Forwarded-Proto за nginx, иначе secure-cookie не ставится
 }));
 
 // API Routes (должны быть до статических файлов)
@@ -130,12 +133,19 @@ app.use('/api/stats', statsRouter);
 const distPath = path.join(__dirname, 'dist');
 const uploadsPath = path.join(__dirname, 'uploads');
 
-// Раздаем статические файлы из dist
-app.use(express.static(distPath));
+// Раздаем статические файлы из dist (index.html без кеша — чтобы браузер всегда подхватывал новый бандл)
+app.use(express.static(distPath, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+  }
+}));
 app.use('/uploads', express.static(uploadsPath));
 
 // SPA роутинг: все маршруты возвращают index.html
 app.get('*', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
