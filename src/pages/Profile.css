@@ -153,6 +153,31 @@
   font-size: 1.1em;
   color: #e0e0e0;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.profile-resend-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(102, 126, 234, 0.5);
+  background: rgba(102, 126, 234, 0.15);
+  color: #667eea;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.profile-resend-btn:hover:not(:disabled) {
+  background: rgba(102, 126, 234, 0.25);
+  border-color: #667eea;
+}
+
+.profile-resend-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .edit-btn {
@@ -282,6 +307,117 @@
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
   color: #fca5a5;
+}
+
+/* Блок смены пароля */
+.password-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.password-section .data-value {
+  align-items: stretch;
+  flex-direction: column;
+  min-height: auto;
+}
+
+.password-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 1px solid rgba(102, 126, 234, 0.4);
+  background: rgba(102, 126, 234, 0.08);
+  color: #a5b4fc;
+  font-size: 0.95em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  align-self: flex-start;
+}
+
+.password-toggle-btn:hover {
+  background: rgba(102, 126, 234, 0.15);
+  border-color: rgba(102, 126, 234, 0.6);
+  color: #c7d2fe;
+}
+
+.password-form-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  border-radius: 14px;
+  margin-top: 12px;
+}
+
+.password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.password-form .field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.password-form .field-group label {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.password-form .edit-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.password-form .message {
+  margin-top: 4px;
+  margin-bottom: 0;
+  text-align: left;
+}
+
+.password-form-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.password-form-actions .save-btn,
+.password-form-actions .cancel-btn {
+  width: auto;
+  height: auto;
+  padding: 10px 20px;
+  font-size: 0.95em;
+}
+
+.password-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: rgba(102, 126, 234, 0.06);
+  border: 1px solid rgba(102, 126, 234, 0.15);
+  border-radius: 8px;
+  font-size: 0.9em;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.password-hint svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #667eea;
 }
 
 @media (max-width: 768px) {

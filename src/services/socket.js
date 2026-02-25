@@ -171,7 +171,9 @@ class SocketService {
       'flowchart:navigated:root',
       'flowchart:saved',
       'flowchart:generated',
-      'flowchart:generate-progress'
+      'flowchart:generate-progress',
+      'flowchart:clarification-needed',
+      'flowchart:generate-steps-plan'
     ];
 
     flowchartEvents.forEach(event => {
@@ -208,39 +210,7 @@ class SocketService {
     }
   }
 
-  // Login
-  async login(email, password) {
-    try {
-      const response = await this.emit('auth:login', { email, password });
-      
-      if (response.success) {
-        this.authenticated = true;
-        this.userId = response.user.id;
-      }
-      
-      return response;
-    } catch (error) {
-      console.error('Login error:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  // Register
-  async register(name, email, password) {
-    try {
-      const response = await this.emit('auth:register', { name, email, password });
-      
-      if (response.success) {
-        this.authenticated = true;
-        this.userId = response.user.id;
-      }
-      
-      return response;
-    } catch (error) {
-      console.error('Register error:', error);
-      return { success: false, error: error.message };
-    }
-  }
+  // Login/register: use HTTP only (fetch /api/auth/login, /api/auth/register). Socket only restores session from cookie.
 
   // Logout
   async logout() {
@@ -397,6 +367,20 @@ class SocketService {
     } catch (error) {
       console.error('Generate company error:', error);
       return { success: false, error: error.message };
+    }
+  }
+
+  // Ответ на уточнение по ходу генерации (всплывающее окно)
+  sendClarificationResponse(clarificationId, choice, customText = '') {
+    if (this.socket?.connected) {
+      this.socket.emit('flowchart:clarification-response', { clarificationId, choice, customText: customText || '' });
+    }
+  }
+
+  // Остановить процесс генерации компании
+  sendAbortGeneration() {
+    if (this.socket?.connected) {
+      this.socket.emit('flowchart:generate-abort');
     }
   }
 

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Home.css';
 import './Auth.css';
 
 function Home() {
-  const { user, loading, login, register, loginWithGoogle } = useAuth();
+  const { user, loading, login, register, loginWithGoogle, checkAuth } = useAuth();
   const navigate = useNavigate();
   const [authMode, setAuthMode] = useState('login');
   
@@ -27,6 +27,7 @@ function Home() {
     if (emailVerified === 'true') {
       setSuccess('Email успешно подтвержден!');
       window.history.replaceState({}, document.title, window.location.pathname);
+      checkAuth(); // обновляем user в контексте (email_verified уже true в БД)
     } else if (errorParam === 'invalid_token') {
       setError('Неверная ссылка подтверждения');
     } else if (errorParam === 'token_expired') {
@@ -34,7 +35,7 @@ function Home() {
     } else if (errorParam === 'verification_failed') {
       setError('Ошибка подтверждения email. Попробуйте позже.');
     }
-  }, []);
+  }, [checkAuth]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -50,7 +51,7 @@ function Home() {
     const result = await login(email, password);
 
     if (result.success) {
-      window.location.reload();
+      // Не перезагружаем страницу — AuthContext уже обновил user, дашборд покажется сам
     } else {
       if (result.emailVerificationRequired) {
         setError(result.error || 'Email не подтвержден');
@@ -77,8 +78,8 @@ function Home() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Пароль должен быть не менее 6 символов');
+    if (password.length < 8) {
+      setError('Пароль должен быть не менее 8 символов');
       setFormLoading(false);
       return;
     }
@@ -87,19 +88,17 @@ function Home() {
 
     if (result.success) {
       if (result.emailVerificationRequired) {
-        setSuccess('Регистрация успешна! Пожалуйста, проверьте вашу почту и подтвердите email.');
-        if (result.verificationUrl) {
-          console.log('Email verification URL:', result.verificationUrl);
+        let msg = result.message || (result.emailSendFailed
+          ? 'Регистрация успешна, но письмо не удалось отправить. Используйте «Отправить письмо повторно» в профиле.'
+          : 'Регистрация успешна! Пожалуйста, проверьте вашу почту и подтвердите email.');
+        if (result.emailSendFailed && result.emailSendError) {
+          msg += ` Причина: ${result.emailSendError}`;
         }
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
+        setSuccess(msg);
       } else {
-        setSuccess('Регистрация успешна!');
-        setTimeout(() => {
-          window.location.reload();
-        }, 1000);
+        setSuccess(result.message || 'Регистрация успешна!');
       }
+      // Не перезагружаем — user уже установлен в AuthContext
     } else {
       setError(result.error);
       setFormLoading(false);
@@ -126,6 +125,11 @@ function Home() {
   if (user && !loading) {
     return (
       <div className="home-dashboard">
+        {!user.email_verified && (
+          <div className="email-verification-banner">
+            <p>Email не подтверждён. Проверьте почту или <Link to="/profile" className="banner-link">отправьте письмо повторно</Link> в личном кабинете.</p>
+          </div>
+        )}
         <div className="dashboard-welcome">
           <h1>Добро пожаловать, {user.name}!</h1>
           <p>Выберите раздел в меню слева для начала работы</p>
@@ -231,7 +235,11 @@ function Home() {
               <button type="submit" className="btn-primary" disabled={formLoading}>
                 {formLoading ? 'Вход...' : 'Войти'}
               </button>
-              
+              <p style={{ marginTop: '12px', fontSize: '0.9em' }}>
+                <Link to="/forgot-password" style={{ color: '#667eea', textDecoration: 'none' }}>
+                  Забыли пароль?
+                </Link>
+              </p>
               <div className="auth-divider">
                 <span>или</span>
               </div>
@@ -289,8 +297,8 @@ function Home() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  placeholder="Минимум 6 символов"
-                  minLength="6"
+                  placeholder="Минимум 8 символов"
+                  minLength="8"
                 />
               </div>
 

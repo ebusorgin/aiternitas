@@ -5,7 +5,26 @@ import pool from '../db.mjs';
 import { userRooms } from './auth.mjs';
 import { generateCompanyStructure, convertToFlowchartElements } from '../services/openai.mjs';
 
+// Ожидающие ответы на уточнения: clarificationId -> resolve(choice)
+const pendingClarifications = new Map();
+// Флаг отмены генерации по socket.id (пользователь нажал «Остановить процесс»)
+const generationAborted = new Map();
+
 export function setupFlowchartHandlers(io, socket) {
+  // Отмена генерации по запросу пользователя
+  socket.on('flowchart:generate-abort', () => {
+    generationAborted.set(socket.id, true);
+  });
+
+  // Ответ пользователя на уточнение по ходу генерации
+  socket.on('flowchart:clarification-response', (data) => {
+    const { clarificationId, choice, customText } = data || {};
+    const resolve = pendingClarifications.get(clarificationId);
+    if (resolve) {
+      resolve({ choice: choice || 'keep', customText: customText || '' });
+      pendingClarifications.delete(clarificationId);
+    }
+  });
   
   // Helper: broadcast to all user's connected clients except sender
   const broadcastToUser = (event, data) => {
@@ -457,9 +476,27 @@ export function setupFlowchartHandlers(io, socket) {
         console.log(`📊 Progress: Step ${progress.step}/${progress.total} - ${progress.message}`);
       };
 
-      // Call OpenAI multi-step generation
+      // Уточнение у пользователя по ходу генерации (всплывающее окно с вариантами)
+      const onClarification = (payload) => {
+        return new Promise((resolve) => {
+          const clarificationId = `clar-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+          pendingClarifications.set(clarificationId, resolve);
+          socket.emit('flowchart:clarification-needed', { clarificationId, ...payload });
+        });
+      };
+
+      // Проверка отмены пользователем (кнопка «Остановить процесс»)
+      const getAborted = () => generationAborted.get(socket.id) === true;
+
+      // План плавающих шагов — отправляем на фронт для отображения
+      const onStepsPlan = (payload) => {
+        socket.emit('flowchart:generate-steps-plan', payload);
+      };
+
+      generationAborted.set(socket.id, false);
+      // Call OpenAI multi-step generation (plan + dynamic steps + clarification + abort)
       console.log('🔄 Starting multi-step generation...');
-      const structure = await generateCompanyStructure(name, description || '', onProgress);
+      const structure = await generateCompanyStructure(name, description || '', onProgress, onClarification, getAborted, onStepsPlan);
       console.log('✅ Multi-step generation complete');
       
       // Convert GPT response to flowchart elements (with root company element)
@@ -498,7 +535,10 @@ export function setupFlowchartHandlers(io, socket) {
 
     } catch (error) {
       console.error('Company generation error:', error);
-      callback?.({ success: false, error: error.message || 'Ошибка генерации компании' });
+      const isAborted = error.message === 'Генерация остановлена пользователем';
+      callback?.({ success: false, error: isAborted ? error.message : (error.message || 'Ошибка генерации компании') });
+    } finally {
+      generationAborted.delete(socket.id);
     }
   });
 

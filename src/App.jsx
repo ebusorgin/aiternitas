@@ -6,22 +6,26 @@ import Messages from './pages/Messages';
 import Calls from './pages/Calls';
 import Companies from './pages/Companies';
 import Tasks from './pages/Tasks';
-import Settings from './pages/Settings';
+import Mail from './pages/Mail';
 import VerifyEmail from './pages/VerifyEmail';
-import Admin from './pages/Admin';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import ProtectedRoute from './components/ProtectedRoute';
-import AdminRoute from './components/AdminRoute';
 import { AuthProvider } from './context/AuthContext';
+import { MailProvider } from './context/MailContext';
 
 function App() {
   return (
     <AuthProvider>
+      <MailProvider>
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Home />} />
           <Route path="login" element={<Navigate to="/" replace />} />
           <Route path="register" element={<Navigate to="/" replace />} />
           <Route path="verify-email" element={<VerifyEmail />} />
+          <Route path="forgot-password" element={<ForgotPassword />} />
+          <Route path="reset-password" element={<ResetPassword />} />
           <Route
             path="profile"
             element={
@@ -62,24 +66,13 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="settings"
-            element={
-              <ProtectedRoute>
-                <Settings />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="admin"
-            element={
-              <AdminRoute>
-                <Admin />
-              </AdminRoute>
-            }
-          />
+          <Route path="mail" element={<ProtectedRoute><Mail /></ProtectedRoute>} />
+          <Route path="mail/compose" element={<ProtectedRoute><Mail /></ProtectedRoute>} />
+          <Route path="mail/folder/:folder" element={<ProtectedRoute><Mail /></ProtectedRoute>} />
+          <Route path="mail/folder/:folder/read/:id" element={<ProtectedRoute><Mail /></ProtectedRoute>} />
         </Route>
       </Routes>
+      </MailProvider>
     </AuthProvider>
   );
 }

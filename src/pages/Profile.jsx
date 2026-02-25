@@ -10,6 +10,13 @@ function Profile() {
   const [nameValue, setNameValue] = useState('');
   const [message, setMessage] = useState({ text: '', type: '' });
   const [loading, setLoading] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState({ text: '', type: '' });
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -115,12 +122,69 @@ function Profile() {
     }
   };
 
+  const handleResendVerification = async () => {
+    setResendLoading(true);
+    setMessage({ text: '', type: '' });
+    try {
+      const res = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        credentials: 'include'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ text: data.message || 'Письмо отправлено. Проверьте почту.', type: 'success' });
+      } else {
+        setMessage({ text: data.error || 'Ошибка отправки', type: 'error' });
+      }
+    } catch {
+      setMessage({ text: 'Ошибка подключения к серверу', type: 'error' });
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       saveName();
     } else if (e.key === 'Escape') {
       cancelEditingName();
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (newPassword.length < 8) {
+      setPasswordMessage({ text: 'Новый пароль должен быть не менее 8 символов', type: 'error' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage({ text: 'Пароли не совпадают', type: 'error' });
+      return;
+    }
+    setPasswordLoading(true);
+    setPasswordMessage({ text: '', type: '' });
+    try {
+      const response = await fetch('/api/auth/profile/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setPasswordMessage({ text: 'Пароль успешно изменён', type: 'success' });
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setShowPasswordForm(false);
+      } else {
+        setPasswordMessage({ text: data.error || 'Ошибка смены пароля', type: 'error' });
+      }
+    } catch (err) {
+      setPasswordMessage({ text: 'Ошибка подключения к серверу', type: 'error' });
+    } finally {
+      setPasswordLoading(false);
     }
   };
 
@@ -234,7 +298,17 @@ function Profile() {
                   {user.email_verified ? (
                     <span style={{ color: '#10b981', marginLeft: '10px', fontSize: '0.9em' }}>✓ Подтвержден</span>
                   ) : (
-                    <span style={{ color: '#f59e0b', marginLeft: '10px', fontSize: '0.9em' }}>⚠ Не подтвержден</span>
+                    <>
+                      <span style={{ color: '#f59e0b', marginLeft: '10px', fontSize: '0.9em' }}>⚠ Не подтвержден</span>
+                      <button
+                        type="button"
+                        className="profile-resend-btn"
+                        onClick={handleResendVerification}
+                        disabled={resendLoading}
+                      >
+                        {resendLoading ? 'Отправка...' : 'Отправить письмо повторно'}
+                      </button>
+                    </>
                   )}
                 </span>
               </div>
@@ -244,6 +318,95 @@ function Profile() {
               <label>Дата регистрации</label>
               <div className="data-value">
                 <span className="display-value">{createdAt}</span>
+              </div>
+            </div>
+
+            <div className="data-item password-section">
+              <label>Пароль</label>
+              <div className="data-value">
+                {!showPasswordForm ? (
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowPasswordForm(true)}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    Сменить пароль
+                  </button>
+                ) : (
+                  <div className="password-form-card">
+                    <form onSubmit={handleChangePassword} className="password-form">
+                      <div className="field-group">
+                        <label htmlFor="current-password">Текущий пароль</label>
+                        <input
+                          id="current-password"
+                          type="password"
+                          placeholder="Введите текущий пароль"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          required
+                          autoComplete="current-password"
+                          className="edit-input"
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label htmlFor="new-password-profile">Новый пароль</label>
+                        <input
+                          id="new-password-profile"
+                          type="password"
+                          placeholder="Минимум 8 символов"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          required
+                          minLength={8}
+                          autoComplete="new-password"
+                          className="edit-input"
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label htmlFor="confirm-password-profile">Повторите новый пароль</label>
+                        <input
+                          id="confirm-password-profile"
+                          type="password"
+                          placeholder="Повторите новый пароль"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          required
+                          minLength={8}
+                          autoComplete="new-password"
+                          className="edit-input"
+                        />
+                      </div>
+                      {passwordMessage.text && (
+                        <div className={passwordMessage.type === 'success' ? 'message success' : 'message error'}>
+                          {passwordMessage.text}
+                        </div>
+                      )}
+                      <div className="password-form-actions">
+                        <button type="submit" className="save-btn" disabled={passwordLoading}>
+                          {passwordLoading ? 'Сохранение...' : 'Сохранить'}
+                        </button>
+                        <button
+                          type="button"
+                          className="cancel-btn"
+                          onClick={() => { setShowPasswordForm(false); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setPasswordMessage({ text: '', type: '' }); }}
+                          disabled={passwordLoading}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </form>
+                    <p className="password-hint">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                      </svg>
+                      После смены пароля на вашу почту <strong>{user?.email}</strong> придёт уведомление.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -138,25 +138,19 @@ jobs:
             fi
           done
           
-          # Устанавливаем только production зависимости и перезапускаем сервис
+          # Настройка сервера (при первом запуске создаёт .env.production и systemd), установка зависимостей, перезапуск
           ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} <<EOSSH
             set -e
             cd $REPO_DIR
-            
+            chmod +x scripts/setup-server.sh 2>/dev/null || true
+            bash scripts/setup-server.sh $REPO_DIR
             echo ""
-            echo "=== Installing production dependencies ==="
-            npm install --omit=dev
-            
+            echo "=== Проверка TOR (для обхода 403 OpenAI) ==="
+            chmod +x scripts/check-tor.sh 2>/dev/null || true
+            bash scripts/check-tor.sh $REPO_DIR || true
             echo ""
-            echo "=== Restarting service ==="
-            if systemctl restart aiternitas-main.service; then
-              echo "✅ Service restarted"
-              sleep 2
-              systemctl status aiternitas-main.service --no-pager | head -10 || true
-            else
-              echo "⚠️  Service restart failed or service not found"
-            fi
-            echo ""
+            echo "=== Логи приложения (TOR/OpenAI) ==="
+            journalctl -u aiternitas-main.service -n 15 --no-pager 2>/dev/null | grep -E 'TOR|OpenAI|403|Error' || echo "(нет совпадений)"
           EOSSH
 
       - name: Verify deployment
@@ -165,32 +159,39 @@ jobs:
           set -e
           SSH_HOST="${{ env.SSH_HOST }}"
           SSH_USER="${{ env.SSH_USER }}"
-          
           SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3"
-          ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} <<'EOSSH'
+          # После перезапуска сервиса сервер может сбрасывать SSH — даём осесть и повторяем
+          sleep 5
+          for attempt in 1 2 3 4 5; do
+            echo "Verify attempt $attempt..."
+            if ssh $SSH_OPTS ${SSH_USER}@${SSH_HOST} <<'EOSSH'; then
             set -e
-            
             echo "=== Aiternitas Main Service Status ==="
             systemctl status aiternitas-main.service --no-pager | head -10 || echo "Service not found"
-            
             echo ""
             echo "=== Deployment Directory ==="
             cd /opt/aiternitas-main
             echo "Directory: $(pwd)"
             echo "Package version: $(cat package.json | grep '"version"' | head -1 || echo 'unknown')"
             echo "Dist directory exists: $([ -d dist ] && echo 'yes' || echo 'no')"
-            
             echo ""
             echo "=== Service Health ==="
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001 || echo "000")
             echo "Aiternitas Main HTTP status: $HTTP_CODE"
-            
             if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ]; then
               echo "✅ Aiternitas Main service is responding"
             else
               echo "⚠️ Aiternitas Main service may not be responding correctly"
             fi
           EOSSH
+              echo "✅ Verify succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "⚠️ Attempt $attempt failed (SSH reset?), retrying in 10s..."
+            sleep 10
+          done
+          echo "❌ Verify failed after 5 attempts"
+          exit 1
 
       - name: Skip notice
         if: steps.secrets_check.outputs.skip_deploy == 'true'

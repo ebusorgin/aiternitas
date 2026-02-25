@@ -44,19 +44,24 @@ echo "  Загрузка public/images..."
 ssh -i "$SSH_KEY" $SERVER "mkdir -p $REPO_PATH/public/images"
 scp -i "$SSH_KEY" -r "$SCRIPT_DIR/public/images/"* "$SERVER:$REPO_PATH/public/images/"
 
+echo "  Загрузка scripts/ (примеры конфигов, генератор SESSION_SECRET)..."
+ssh -i "$SSH_KEY" $SERVER "mkdir -p $REPO_PATH/scripts"
+scp -i "$SSH_KEY" -r "$SCRIPT_DIR/scripts/"* "$SERVER:$REPO_PATH/scripts/" 2>/dev/null || true
+
 echo "✅ Файлы загружены"
 
-# Шаг 4: Установка зависимостей
+# Шаг 4: Настройка сервера (создаёт .env.production и systemd при первом запуске, ставит зависимости, перезапускает сервис)
 echo ""
-echo "[4/5] Установка зависимостей на сервере (только production)..."
-ssh -i "$SSH_KEY" $SERVER "cd $REPO_PATH && npm install --omit=dev"
+echo "[4/5] Настройка и запуск на сервере..."
+ssh -i "$SSH_KEY" $SERVER "cd $REPO_PATH && chmod +x scripts/setup-server.sh 2>/dev/null; bash scripts/setup-server.sh $REPO_PATH"
 
-# Шаг 5: Перезапуск сервиса
+# Шаг 5: Проверка
 echo ""
-echo "[5/5] Перезапуск сервиса..."
-ssh -i "$SSH_KEY" $SERVER "systemctl restart $SERVICE_NAME && sleep 3 && systemctl status $SERVICE_NAME | head -15"
+echo "[5/5] Проверка..."
+ssh -i "$SSH_KEY" $SERVER "systemctl is-active --quiet $SERVICE_NAME && echo 'Сервис запущен' || echo 'Сервис не запущен'"
 
 echo ""
 echo "=== ✅ Развёртывание завершено! ==="
 echo "Сайт: https://aiternitas.ru"
+echo "При первом деплое проверьте на сервере .env.production (DB_PASSWORD и др.)."
 

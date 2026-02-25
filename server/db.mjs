@@ -6,15 +6,21 @@ dotenv.config();
 
 const { Pool } = pg;
 
+const resolvedDbUser =
+  process.env.DB_USER || process.env.PGUSER || process.env.USER;
+
 const dbConfig = {
   host: process.env.DB_HOST || '127.127.126.56', // Дефолт для Open Server
   port: parseInt(process.env.DB_PORT || '5432', 10),
-  user: process.env.DB_USER || 'severomorets',
   database: process.env.DB_NAME || 'aiternitas',
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 };
+
+if (resolvedDbUser) {
+  dbConfig.user = resolvedDbUser;
+}
 
 // Не передаем password если он не определен или пустой
 // PostgreSQL будет использовать peer authentication для localhost
@@ -31,9 +37,12 @@ export async function initDatabase() {
     const adminDbConfig = {
       host: process.env.DB_HOST || '127.127.126.56', // Дефолт для Open Server
       port: parseInt(process.env.DB_PORT || '5432', 10),
-      user: process.env.DB_USER || 'severomorets',
       database: 'postgres',
     };
+
+    if (resolvedDbUser) {
+      adminDbConfig.user = resolvedDbUser;
+    }
     
     // Добавляем password только если он определен и не пустой
     if (process.env.DB_PASSWORD && process.env.DB_PASSWORD.trim() !== '') {
@@ -122,6 +131,38 @@ export async function initDatabase() {
       END $$;
     `);
 
+    // Колонки для сброса пароля
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name = 'password_reset_token'
+        ) THEN
+          ALTER TABLE users ADD COLUMN password_reset_token VARCHAR(255);
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name = 'password_reset_expires'
+        ) THEN
+          ALTER TABLE users ADD COLUMN password_reset_expires TIMESTAMP;
+        END IF;
+      END $$;
+    `);
+
+    // Почтовый логин для @aiternitas.ru (local part: user@aiternitas.ru)
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name = 'mail_login'
+        ) THEN
+          ALTER TABLE users ADD COLUMN mail_login VARCHAR(100) UNIQUE;
+        END IF;
+      END $$;
+    `).catch(() => {});
+
     console.log('✅ Таблица users создана/проверена');
 
     // Создаем таблицу для сессий (для connect-pg-simple)
@@ -177,6 +218,74 @@ export async function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_emails_created_at ON emails(created_at)
     `).catch(() => {});
 
+    // Колонка «отправитель по пользователю» для раздела «Исходящие»
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'emails' AND column_name = 'sent_by_user_id'
+        ) THEN
+          ALTER TABLE emails ADD COLUMN sent_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `).catch(() => {});
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_emails_sent_by_user_id ON emails(sent_by_user_id)
+    `).catch(() => {});
+
+    // Папка письма: inbox, sent, drafts, spam, trash
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'emails' AND column_name = 'folder'
+        ) THEN
+          ALTER TABLE emails ADD COLUMN folder VARCHAR(20) DEFAULT 'inbox';
+        END IF;
+      END $$;
+    `).catch(() => {});
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'emails' AND column_name = 'read_at'
+        ) THEN
+          ALTER TABLE emails ADD COLUMN read_at TIMESTAMP;
+        END IF;
+      END $$;
+    `).catch(() => {});
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'emails' AND column_name = 'user_id'
+        ) THEN
+          ALTER TABLE emails ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+        END IF;
+      END $$;
+    `).catch(() => {});
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_emails_folder ON emails(folder)
+    `).catch(() => {});
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_emails_user_id ON emails(user_id)
+    `).catch(() => {});
+
+    // Заполняем folder и user_id для существующих строк
+    await pool.query(`
+      UPDATE emails SET folder = CASE WHEN direction = 'incoming' THEN 'inbox' ELSE 'sent' END WHERE folder IS NULL OR folder = '';
+    `).catch(() => {});
+    await pool.query(`
+      UPDATE emails e SET user_id = u.id FROM users u WHERE e.direction = 'incoming' AND e.user_id IS NULL AND LOWER(e.recipient) = LOWER(u.email);
+    `).catch(() => {});
+    await pool.query(`
+      UPDATE emails e SET user_id = e.sent_by_user_id WHERE e.direction = 'outgoing' AND e.user_id IS NULL AND e.sent_by_user_id IS NOT NULL;
+    `).catch(() => {});
+
     // Функция для автоматического обновления updated_at
     await pool.query(`
       CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -194,7 +303,7 @@ export async function initDatabase() {
       CREATE TRIGGER update_emails_updated_at
           BEFORE UPDATE ON emails
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE PROCEDURE update_updated_at_column();
     `).catch(() => {});
 
     console.log('✅ Таблица emails создана/проверена');
@@ -246,7 +355,7 @@ export async function initDatabase() {
       CREATE TRIGGER update_elements_updated_at
           BEFORE UPDATE ON elements
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE PROCEDURE update_updated_at_column();
     `).catch(() => {});
 
     console.log('✅ Таблица elements создана/проверена');
@@ -287,7 +396,7 @@ export async function initDatabase() {
       CREATE TRIGGER update_elements_connections_updated_at
           BEFORE UPDATE ON elements_connections
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE PROCEDURE update_updated_at_column();
     `).catch(() => {});
 
     console.log('✅ Таблица elements_connections создана/проверена');
@@ -318,7 +427,7 @@ export async function initDatabase() {
       CREATE TRIGGER update_flowcharts_updated_at
           BEFORE UPDATE ON flowcharts
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE PROCEDURE update_updated_at_column();
     `).catch(() => {});
 
     console.log('✅ Таблица flowcharts создана/проверена');
@@ -353,7 +462,7 @@ export async function initDatabase() {
       CREATE TRIGGER update_task_columns_updated_at
           BEFORE UPDATE ON task_columns
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE PROCEDURE update_updated_at_column();
     `).catch(() => {});
 
     console.log('✅ Таблица task_columns создана/проверена');
@@ -417,7 +526,7 @@ export async function initDatabase() {
       CREATE TRIGGER update_tasks_updated_at
           BEFORE UPDATE ON tasks
           FOR EACH ROW
-          EXECUTE FUNCTION update_updated_at_column();
+          EXECUTE PROCEDURE update_updated_at_column();
     `).catch(() => {});
 
     console.log('✅ Таблица tasks создана/проверена');

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import socketService from '../services/socket';
 
 const AuthContext = createContext();
@@ -7,44 +7,52 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [socketConnected, setSocketConnected] = useState(false);
+  // Сессия установлена через HTTP (cookie) — сокет не может её сбросить
+  const httpSessionRef = useRef(false);
 
-  // Initialize socket connection and check auth
   useEffect(() => {
-    const initSocket = async () => {
+    const init = async () => {
       setLoading(true);
-
       try {
-        // Connect to socket
+        // Сначала проверяем сессию по HTTP (cookie) — так надёжно и на проде, и после перезагрузки
+        const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+        if (meRes.ok) {
+          const data = await meRes.json();
+          if (data.user) {
+            setUser(data.user);
+            httpSessionRef.current = true;
+          }
+        }
+
         await socketService.connect();
         setSocketConnected(true);
 
-        // Check authentication status
         const result = await socketService.checkAuth();
-
         if (result.authenticated && result.user) {
           setUser(result.user);
-        } else {
+          httpSessionRef.current = true;
+        } else if (!httpSessionRef.current) {
           setUser(null);
         }
       } catch (error) {
-        console.error('Socket init error:', error);
+        console.error('Auth init error:', error);
         setSocketConnected(false);
-        setUser(null);
+        if (!httpSessionRef.current) setUser(null);
       } finally {
         setLoading(false);
       }
     };
 
-    initSocket();
+    init();
 
-    // Handle reconnection
     const unsubReconnect = socketService.on('reconnected:authenticated', (user) => {
       setUser(user);
+      httpSessionRef.current = true;
       setSocketConnected(true);
     });
 
     const unsubReconnectAnon = socketService.on('reconnected:anonymous', () => {
-      setUser(null);
+      if (!httpSessionRef.current) setUser(null);
       setSocketConnected(true);
     });
 
@@ -60,12 +68,28 @@ export function AuthProvider({ children }) {
   }, []);
 
   const checkAuth = useCallback(async () => {
+    try {
+      const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+      if (meRes.ok) {
+        const data = await meRes.json();
+        if (data.user) {
+          setUser(data.user);
+          httpSessionRef.current = true;
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error('Auth check (HTTP) error:', e);
+    }
+
     if (!socketService.isConnected) {
       try {
         await socketService.connect();
         setSocketConnected(true);
       } catch (error) {
         console.error('Socket connect error:', error);
+        if (!httpSessionRef.current) setUser(null);
         return;
       }
     }
@@ -73,101 +97,97 @@ export function AuthProvider({ children }) {
     setLoading(true);
     try {
       const result = await socketService.checkAuth();
-
       if (result.authenticated && result.user) {
-        // Проверяем админские права через API
-        try {
-          const adminResponse = await fetch('/api/admin/check');
-          if (adminResponse.ok) {
-            result.user.isAdmin = true;
-          }
-        } catch (e) {
-          console.error('Admin check error:', e);
-        }
         setUser(result.user);
-      } else {
+        httpSessionRef.current = true;
+      } else if (!httpSessionRef.current) {
         setUser(null);
       }
     } catch (error) {
       console.error('Auth check error:', error);
-      setUser(null);
+      if (!httpSessionRef.current) setUser(null);
     } finally {
       setLoading(false);
     }
   }, []);
 
   const login = useCallback(async (email, password) => {
-    if (!socketService.isConnected) {
-      try {
-        await socketService.connect();
-        setSocketConnected(true);
-      } catch (error) {
-        return { success: false, error: 'Ошибка подключения к серверу' };
-      }
-    }
-
     try {
-      const result = await socketService.login(email, password);
-
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
+      });
+      
+      const result = await response.json();
+      
       if (result.success && result.user) {
-        // Проверяем админские права
-        try {
-          const adminResponse = await fetch('/api/admin/check');
-          if (adminResponse.ok) {
-            result.user.isAdmin = true;
-          }
-        } catch (e) {
-          console.error('Admin check error:', e);
-        }
         setUser(result.user);
+        httpSessionRef.current = true;
+        socketService.disconnect();
+        await new Promise((r) => setTimeout(r, 150));
+        await socketService.connect();
         return { success: true };
       } else {
-        return {
-          success: false,
+        return { 
+          success: false, 
           error: result.error || 'Ошибка входа',
           emailVerificationRequired: result.emailVerificationRequired || false
         };
       }
     } catch (error) {
-      return { success: false, error: error.message || 'Ошибка подключения к серверу' };
+      console.error('Login error:', error);
+      return { success: false, error: 'Ошибка подключения к серверу' };
     }
   }, []);
 
   const register = useCallback(async (name, email, password) => {
-    if (!socketService.isConnected) {
-      try {
-        await socketService.connect();
-        setSocketConnected(true);
-      } catch (error) {
-        return { success: false, error: 'Ошибка подключения к серверу' };
-      }
-    }
-
     try {
-      const result = await socketService.register(name, email, password);
-
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name, email, password }),
+      });
+      
+      const result = await response.json();
+      
       if (result.success && result.user) {
         setUser(result.user);
-        return {
+        httpSessionRef.current = true;
+        socketService.disconnect();
+        await new Promise((r) => setTimeout(r, 150));
+        await socketService.connect();
+        return { 
           success: true,
-          emailVerificationRequired: result.emailVerificationRequired || false
+          emailVerificationRequired: result.emailVerificationRequired || false,
+          message: result.message,
+          emailSendFailed: result.emailSendFailed || false,
+          emailSendError: result.emailSendError
         };
       } else {
         return { success: false, error: result.error || 'Ошибка регистрации' };
       }
     } catch (error) {
-      return { success: false, error: error.message || 'Ошибка подключения к серверу' };
+      console.error('Register error:', error);
+      return { success: false, error: 'Ошибка подключения к серверу' };
     }
   }, []);
 
   const logout = useCallback(async () => {
     try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      httpSessionRef.current = false;
       await socketService.logout();
       setUser(null);
+      socketService.disconnect();
+      await socketService.connect();
     } catch (error) {
       console.error('Logout error:', error);
-      // Clear user anyway
+      httpSessionRef.current = false;
       setUser(null);
+      socketService.disconnect();
     }
   }, []);
 
@@ -202,11 +222,11 @@ export function AuthProvider({ children }) {
 
     try {
       const result = await socketService.updateName(name);
-
+      
       if (result.success && result.user) {
         setUser(result.user);
       }
-
+      
       return result;
     } catch (error) {
       return { success: false, error: error.message || 'Ошибка обновления имени' };
@@ -214,17 +234,17 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      loading,
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
       socketConnected,
-      login,
-      register,
-      logout,
-      updateUser,
+      login, 
+      register, 
+      logout, 
+      updateUser, 
       updateName,
-      checkAuth,
-      loginWithGoogle
+      checkAuth, 
+      loginWithGoogle 
     }}>
       {children}
     </AuthContext.Provider>

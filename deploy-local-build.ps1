@@ -9,8 +9,9 @@ $LOCAL_PATH = $PSScriptRoot
 
 Write-Host "=== Развёртывание с локальной сборкой ===" -ForegroundColor Green
 
-# Шаг 1: Локальная сборка
-Write-Host "`n[1/5] Сборка приложения локально..." -ForegroundColor Yellow
+# Шаг 1: Локальная сборка (очищаем кеш Vite, чтобы хеш бандла обновился)
+Write-Host "`n[1/6] Сборка приложения локально..." -ForegroundColor Yellow
+if (Test-Path "node_modules\.vite") { Remove-Item -Recurse -Force "node_modules\.vite" }
 npm run build
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Ошибка сборки!" -ForegroundColor Red
@@ -19,17 +20,26 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "✅ Сборка завершена успешно" -ForegroundColor Green
 
 # Шаг 2: Создание временной папки на сервере и очистка старых файлов
-Write-Host "`n[2/5] Подготовка сервера..." -ForegroundColor Yellow
+Write-Host "`n[2/6] Подготовка сервера..." -ForegroundColor Yellow
 ssh -i $SSH_KEY $SERVER "mkdir -p $REPO_PATH/dist && rm -rf $REPO_PATH/dist/*"
 
 # Шаг 3: Загрузка собранных файлов на сервер
-Write-Host "`n[3/5] Загрузка файлов на сервер..." -ForegroundColor Yellow
+Write-Host "`n[3/6] Загрузка файлов на сервер..." -ForegroundColor Yellow
 
 # Загружаем dist папку
 Write-Host "  Загрузка dist/..." -ForegroundColor Cyan
+if (-not (Test-Path "$LOCAL_PATH\dist\index.html")) {
+    Write-Host "❌ dist/index.html не найден! Сначала выполните npm run build" -ForegroundColor Red
+    exit 1
+}
 scp -i $SSH_KEY -r "$LOCAL_PATH\dist\*" "${SERVER}:${REPO_PATH}/dist/"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Ошибка загрузки dist!" -ForegroundColor Red
+    exit 1
+}
+ssh -i $SSH_KEY $SERVER "test -f $REPO_PATH/dist/index.html" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ dist/index.html не появился на сервере после загрузки!" -ForegroundColor Red
     exit 1
 }
 
@@ -47,16 +57,21 @@ scp -i $SSH_KEY -r "$LOCAL_PATH\public\images\*" "${SERVER}:${REPO_PATH}/public/
 Write-Host "✅ Файлы загружены" -ForegroundColor Green
 
 # Шаг 4: Установка только production зависимостей на сервере
-Write-Host "`n[4/5] Установка зависимостей на сервере (только production)..." -ForegroundColor Yellow
+Write-Host "`n[4/6] Установка зависимостей на сервере (только production)..." -ForegroundColor Yellow
 ssh -i $SSH_KEY $SERVER "cd $REPO_PATH && npm install --omit=dev"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "⚠️ Предупреждение при установке зависимостей" -ForegroundColor Yellow
 }
 
 # Шаг 5: Перезапуск сервиса
-Write-Host "`n[5/5] Перезапуск сервиса..." -ForegroundColor Yellow
+Write-Host "`n[5/6] Перезапуск сервиса..." -ForegroundColor Yellow
 ssh -i $SSH_KEY $SERVER "systemctl restart $SERVICE_NAME && sleep 3 && systemctl status $SERVICE_NAME | head -15"
 
-Write-Host "`n=== ✅ Развёртывание завершено! ===" -ForegroundColor Green
-Write-Host "Сайт: https://aiternitas.ru" -ForegroundColor Cyan
+# Шаг 6: Обновление nginx (конфиг из репозитория на сервер)
+Write-Host "`n[6/6] Обновление nginx..." -ForegroundColor Yellow
+scp -i $SSH_KEY "$LOCAL_PATH\nginx-main.conf" "${SERVER}:/tmp/nginx-aiternitas.conf"
+ssh -i $SSH_KEY $SERVER "cp /tmp/nginx-aiternitas.conf /etc/nginx/sites-available/aiternitas.ru && nginx -t && systemctl reload nginx"
+
+Write-Host "`n=== Deploy OK ===" -ForegroundColor Green
+Write-Host "Site: https://aiternitas.ru" -ForegroundColor Cyan
 

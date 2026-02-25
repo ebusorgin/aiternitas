@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
@@ -11,10 +12,10 @@ import pool from './server/db.mjs';
 import authRouter from './server/routes/auth.mjs';
 import uploadRouter from './server/routes/upload.mjs';
 import statsRouter from './server/routes/stats.mjs';
-import settingsRouter from './server/routes/settings.mjs';
-import adminRouter from './server/routes/admin.mjs';
+import emailsRouter from './server/routes/emails.mjs';
+import mailRouter from './server/routes/mail.mjs';
 import { setupSocketHandlers } from './server/socket/index.mjs';
-import { initTorSettings } from './server/services/tor.mjs';
+import { startMailReceiver } from './server/mail/receiver.mjs';
 
 // Загружаем .env всегда для локальной разработки
 // В продакшене переменные должны быть установлены через systemd и будут иметь приоритет
@@ -59,19 +60,19 @@ app.use((req, res, next) => {
     'http://localhost:3001',
     'http://localhost:5173'
   ];
-
+  
   if (origin && allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
-
+  
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
+  
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
-
+  
   next();
 });
 
@@ -84,15 +85,17 @@ const PgSession = connectPgSimple(session);
 
 // Сессии с постоянным хранилищем в PostgreSQL
 // Определяем, работаем ли мы в production (HTTPS)
-const isProduction = process.env.NODE_ENV === 'production' ||
-  process.env.BASE_URL?.includes('https://') ||
-  process.env.BASE_URL?.includes('aiternitas.ru');
+// Default to production if on Linux or if NODE_ENV is explicitly production
+const isProduction = process.env.NODE_ENV === 'production' || 
+                     (process.platform === 'linux' && process.env.NODE_ENV !== 'development') ||
+                     process.env.BASE_URL?.includes('https://') ||
+                     process.env.BASE_URL?.includes('aiternitas.ru');
 
-// Настройка cookies для сессий
+// Настройка cookies для сессий (SameSite=Lax достаточно для того же домена)
 const cookieConfig = {
-  secure: isProduction, // Требует HTTPS в production
+  secure: isProduction,
   httpOnly: true,
-  sameSite: isProduction ? 'none' : 'lax', // Для работы через HTTPS нужен 'none'
+  sameSite: 'lax', // same-origin запросы — Lax надёжнее, None часто блокируется
   maxAge: 30 * 24 * 60 * 60 * 1000 // 30 дней
 };
 
@@ -113,13 +116,20 @@ const sessionStore = new PgSession({
   pruneSessionInterval: 60, // Очистка устаревших сессий каждые 60 секунд
 });
 
+// Секрет для подписи сессий. В production лучше задать SESSION_SECRET в окружении (systemd, .env).
+const sessionSecret = process.env.SESSION_SECRET || 'aiternitas-secret-key-change-in-production';
+if (isProduction && !process.env.SESSION_SECRET) {
+  console.warn('⚠️  ВАЖНО: SESSION_SECRET не задан. Задайте переменную SESSION_SECRET на сервере для безопасности сессий. См. DEPLOY.md');
+}
+
 app.use(session({
   store: sessionStore,
-  secret: process.env.SESSION_SECRET || 'aiternitas-secret-key-change-in-production',
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
-  name: 'aiternitas.sid', // Имя cookie для сессии
-  cookie: cookieConfig
+  name: 'aiternitas.sid',
+  cookie: cookieConfig,
+  proxy: true // учитывать X-Forwarded-Proto за nginx, иначе secure-cookie не ставится
 }));
 
 // API Routes (должны быть до статических файлов)
@@ -127,21 +137,39 @@ app.use(session({
 app.use('/api/auth', authRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/stats', statsRouter);
-app.use('/api/settings', settingsRouter);
-app.use('/api/admin', adminRouter);
+app.use('/api/emails', emailsRouter);
+app.use('/api/mail', mailRouter);
 // NOTE: /api/flowchart removed - all flowchart operations now via Socket.IO
 
 // Статические файлы из собранного React приложения
 const distPath = path.join(__dirname, 'dist');
 const uploadsPath = path.join(__dirname, 'uploads');
 
-// Раздаем статические файлы из dist
-app.use(express.static(distPath));
+if (!fs.existsSync(path.join(distPath, 'index.html'))) {
+  console.warn('⚠️  dist/index.html не найден. SPA-маршруты (/profile, /mail и др.) не будут работать.');
+}
+
+// Раздаем статические файлы из dist (index.html без кеша — чтобы браузер всегда подхватывал новый бандл)
+app.use(express.static(distPath, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+  }
+}));
 app.use('/uploads', express.static(uploadsPath));
 
-// SPA роутинг: все маршруты возвращают index.html
-app.get('*', (req, res) => {
-  res.sendFile(path.join(distPath, 'index.html'));
+// SPA роутинг: все не-API GET запросы возвращают index.html (клиентский роутинг)
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
+  const indexFile = path.join(distPath, 'index.html');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(indexFile, (err) => {
+    if (err) {
+      console.error('SPA fallback: index.html not found at', indexFile, err.message);
+      res.status(404).send('Приложение не найдено. Проверьте развёртывание.');
+    }
+  });
 });
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -149,12 +177,10 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 // Инициализация БД и запуск сервера
 initDatabase()
-  .then(async () => {
-    // Initialize TOR settings from database
-    await initTorSettings();
-    // Setup Socket.IO handlers for auth and flowchart
+  .then(() => {
     setupSocketHandlers(io, sessionStore);
-
+    startMailReceiver(io);
+    
     server.listen(PORT, HOST, () => {
       console.log(`✅ Aiternitas сервер запущен на порту ${PORT}`);
       console.log(`📱 Главная страница: http://localhost:${PORT}`);

@@ -498,6 +498,16 @@
   font-size: 0.9em;
 }
 
+.email-verification-banner .banner-link {
+  color: #ffc107;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.email-verification-banner .banner-link:hover {
+  color: #ffe066;
+}
+
 .email-verification-banner .btn-resend-verification {
   padding: 8px 16px;
   background: rgba(255, 193, 7, 0.2);
