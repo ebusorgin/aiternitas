@@ -24,8 +24,8 @@ Aiternitas is a full-stack business management platform (Node.js/Express backend
 ### Build / lint / test
 
 - **Build:** `npm run build` — Vite production build to `dist/`.
-- **Lint:** No ESLint config present in this repo; no lint command in `package.json`.
-- **Tests:** No automated test framework is configured.
+- **Lint:** `npm run lint` — ESLint 9 flat config covering `src/` (React) and `server/` (Node.js). `npm run lint:fix` to auto-fix.
+- **Tests:** `npm test` — Vitest. Tests live in `tests/backend/` (node env) and `tests/frontend/` (jsdom env). `npm run test:watch` for watch mode.
 - **Dev:** `npm run dev` starts Vite on port 3000 with proxy to backend on port 3001.
 
 ### Socket.IO in development
