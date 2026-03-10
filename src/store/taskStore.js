@@ -1,6 +1,17 @@
 import { create } from 'zustand';
 import socketService from '../services/socket';
 
+const dedupeColumnsByPosition = (columns) => {
+  const byPosition = new Map();
+  columns.forEach((column) => {
+    const existing = byPosition.get(column.position);
+    if (!existing || column.id < existing.id) {
+      byPosition.set(column.position, column);
+    }
+  });
+  return [...byPosition.values()].sort((a, b) => a.position - b.position);
+};
+
 // Task statuses
 export const TASK_STATUSES = {
   pending: { id: 'pending', name: 'Ожидает', color: '#6b7280', icon: '⏳' },
@@ -23,9 +34,6 @@ export const TASK_PRIORITIES = {
 // Default columns for kanban board
 const DEFAULT_COLUMNS = [
   { name: 'Бэклог', color: '#6b7280' },
-  { name: 'К выполнению', color: '#3b82f6' },
-  { name: 'В работе', color: '#f59e0b' },
-  { name: 'На проверке', color: '#8b5cf6' },
   { name: 'Готово', color: '#22c55e' }
 ];
 
@@ -115,9 +123,11 @@ export const useTaskStore = create((set, get) => ({
     });
 
     // Column events
-    socketService.on('task:column:created', ({ column }) => {
+    socketService.on('task:column:created', ({ column, columns }) => {
       set((state) => ({
-        columns: [...state.columns, column].sort((a, b) => a.position - b.position)
+        columns: columns
+          ? dedupeColumnsByPosition(columns)
+          : dedupeColumnsByPosition([...state.columns, column])
       }));
     });
 
@@ -158,7 +168,7 @@ export const useTaskStore = create((set, get) => ({
       const result = await socketService.emit('task:columns:get', { departmentId });
       
       if (result.success) {
-        set({ columns: result.columns, selectedDepartmentId: departmentId });
+        set({ columns: dedupeColumnsByPosition(result.columns), selectedDepartmentId: departmentId });
       }
       
       return result;
@@ -178,7 +188,9 @@ export const useTaskStore = create((set, get) => ({
       
       if (result.success) {
         set((state) => ({
-          columns: [...state.columns, result.column].sort((a, b) => a.position - b.position)
+          columns: result.columns
+            ? dedupeColumnsByPosition(result.columns)
+            : dedupeColumnsByPosition([...state.columns, result.column])
         }));
       }
       
@@ -247,13 +259,21 @@ export const useTaskStore = create((set, get) => ({
   // TASK OPERATIONS
   // ============================================
 
-  loadTasks: async (departmentId, includeSubtasks = false) => {
+  loadTasks: async (departmentId, options = {}) => {
     if (!departmentId) return;
     
     set({ isLoading: true });
     
     try {
-      const result = await socketService.emit('task:list', { departmentId, includeSubtasks });
+      const normalizedOptions = typeof options === 'boolean'
+        ? { includeSubtasks: options }
+        : options;
+      const result = await socketService.emit('task:list', {
+        departmentId,
+        includeSubtasks: normalizedOptions.includeSubtasks ?? false,
+        departmentIds: normalizedOptions.departmentIds,
+        includeIncoming: normalizedOptions.includeIncoming ?? false
+      });
       
       if (result.success) {
         set({ tasks: result.tasks, selectedDepartmentId: departmentId });
@@ -594,4 +614,3 @@ export const useTaskStore = create((set, get) => ({
     });
   }
 }));
-

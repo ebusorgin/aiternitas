@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTaskStore, TASK_STATUSES, TASK_PRIORITIES } from '../store/taskStore';
 import { useFlowchartStore } from '../store/flowchartStore';
+import { useAuth } from '../context/AuthContext';
 import TaskBoard from '../components/tasks/TaskBoard';
 import TaskCard from '../components/tasks/TaskCard';
 import TaskModal from '../components/tasks/TaskModal';
 import './Tasks.css';
 
 function Tasks() {
+  const { user, socketConnected } = useAuth();
   const {
     tasks,
     columns,
@@ -14,12 +16,10 @@ function Tasks() {
     isLoading,
     loadAllTasks,
     loadStats,
-    loadColumns,
-    loadTasks,
     initSocketListeners
   } = useTaskStore();
 
-  const { elements } = useFlowchartStore();
+  const { elements, loadFlowchart, initSocketListeners: initFlowchartSocketListeners } = useFlowchartStore();
 
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const [viewMode, setViewMode] = useState('kanban'); // 'kanban' | 'list'
@@ -30,9 +30,32 @@ function Tasks() {
   });
   const [selectedTask, setSelectedTask] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [expandedDepartments, setExpandedDepartments] = useState({});
 
   // Get departments from flowchart elements
-  const departments = elements.filter(el => el.type === 'department');
+  const departments = useMemo(() => (
+    elements.filter(el => el.type === 'department')
+  ), [elements]);
+  const departmentsById = useMemo(() => (
+    departments.reduce((acc, department) => {
+      acc[department.id] = department;
+      return acc;
+    }, {})
+  ), [departments]);
+  const departmentsByParent = useMemo(() => (
+    departments.reduce((acc, department) => {
+      const parentId = department.parentId || 'root';
+      if (!acc[parentId]) {
+        acc[parentId] = [];
+      }
+      acc[parentId].push(department);
+      return acc;
+    }, {})
+  ), [departments]);
+
+  const rootDepartments = useMemo(() => (
+    [...(departmentsByParent.root || [])].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+  ), [departmentsByParent]);
 
   // Initialize
   useEffect(() => {
@@ -41,13 +64,43 @@ function Tasks() {
     loadStats();
   }, [initSocketListeners, loadAllTasks, loadStats]);
 
-  // Load tasks for selected department
   useEffect(() => {
-    if (selectedDepartment) {
-      loadColumns(selectedDepartment.id);
-      loadTasks(selectedDepartment.id);
+    if (socketConnected) {
+      initFlowchartSocketListeners();
     }
-  }, [selectedDepartment, loadColumns, loadTasks]);
+  }, [socketConnected, initFlowchartSocketListeners]);
+
+  useEffect(() => {
+    if (user && socketConnected) {
+      loadFlowchart();
+    }
+  }, [user, socketConnected, loadFlowchart]);
+
+  useEffect(() => {
+    if (!selectedDepartment) return;
+
+    const expandedPath = {};
+    let currentParentId = selectedDepartment.parentId;
+
+    while (currentParentId) {
+      expandedPath[currentParentId] = true;
+      currentParentId = departmentsById[currentParentId]?.parentId || null;
+    }
+
+    if (Object.keys(expandedPath).length === 0) return;
+
+    setExpandedDepartments(prev => {
+      const hasChanges = Object.entries(expandedPath).some(([departmentId, isExpanded]) => (
+        prev[departmentId] !== isExpanded
+      ));
+
+      if (!hasChanges) {
+        return prev;
+      }
+
+      return { ...prev, ...expandedPath };
+    });
+  }, [departmentsById, selectedDepartment]);
 
   // Filter tasks
   const filteredTasks = tasks.filter(task => {
@@ -83,6 +136,61 @@ function Tasks() {
   const handleTaskSelect = (task) => {
     setSelectedTask(task);
     setIsModalOpen(true);
+  };
+
+  const toggleDepartment = (departmentId) => {
+    setExpandedDepartments(prev => ({
+      ...prev,
+      [departmentId]: !prev[departmentId]
+    }));
+  };
+
+  const renderDepartmentTree = (parentId = 'root', depth = 0) => {
+    const branch = [...(departmentsByParent[parentId] || [])]
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+
+    return branch.map((dept) => {
+      const childDepartments = departmentsByParent[dept.id] || [];
+      const isExpanded = !!expandedDepartments[dept.id];
+      const deptTasks = tasks.filter(t => t.department_id === dept.id);
+
+      return (
+        <div key={dept.id} className="tasks-page__dept-node">
+          <div
+            className={`tasks-page__dept-item ${selectedDepartment?.id === dept.id ? 'active' : ''}`}
+            style={{ paddingLeft: `${12 + depth * 18}px` }}
+          >
+            {childDepartments.length > 0 ? (
+              <button
+                type="button"
+                className={`tasks-page__dept-toggle ${isExpanded ? 'expanded' : ''}`}
+                onClick={() => toggleDepartment(dept.id)}
+                aria-label={isExpanded ? 'Свернуть департамент' : 'Развернуть департамент'}
+              >
+                ▸
+              </button>
+            ) : (
+              <span className="tasks-page__dept-spacer" />
+            )}
+
+            <button
+              type="button"
+              className="tasks-page__dept-select"
+              onClick={() => setSelectedDepartment(dept)}
+            >
+              <span
+                className="dept-color"
+                style={{ backgroundColor: dept.color }}
+              />
+              <span className="dept-name">{dept.name}</span>
+              <span className="dept-count">{deptTasks.length}</span>
+            </button>
+          </div>
+
+          {childDepartments.length > 0 && isExpanded && renderDepartmentTree(dept.id, depth + 1)}
+        </div>
+      );
+    });
   };
 
   return (
@@ -175,45 +283,36 @@ function Tasks() {
               loadAllTasks();
             }}
           >
-            <span className="dept-icon">🏢</span>
-            <span className="dept-name">Все задачи</span>
-            <span className="dept-count">{tasks.length}</span>
+            <span className="tasks-page__dept-spacer" />
+            <span className="tasks-page__dept-select">
+              <span className="dept-icon">🏢</span>
+              <span className="dept-name">Все задачи</span>
+              <span className="dept-count">{tasks.length}</span>
+            </span>
           </button>
 
-          {departments.map(dept => {
-            const deptTasks = tasks.filter(t => t.department_id === dept.id);
-            return (
-              <button 
-                key={dept.id}
-                className={`tasks-page__dept-item ${selectedDepartment?.id === dept.id ? 'active' : ''}`}
-                onClick={() => setSelectedDepartment(dept)}
-              >
-                <span 
-                  className="dept-color" 
-                  style={{ backgroundColor: dept.color }}
-                />
-                <span className="dept-name">{dept.name}</span>
-                <span className="dept-count">{deptTasks.length}</span>
-              </button>
-            );
-          })}
+          {rootDepartments.length === 0 ? (
+            <div className="tasks-page__dept-empty">Нет департаментов</div>
+          ) : (
+            renderDepartmentTree()
+          )}
         </div>
 
         {/* Main content area */}
         <div className="tasks-page__main">
-          {isLoading ? (
+          {!selectedDepartment && isLoading ? (
             <div className="tasks-page__loading">
               <div className="loader-spinner"></div>
               <span>Загрузка задач...</span>
             </div>
           ) : selectedDepartment ? (
-            // Show kanban board for selected department
             <TaskBoard
               departmentId={selectedDepartment.id}
               departmentName={selectedDepartment.name}
               availableWorkers={getAvailableWorkers(selectedDepartment.id)}
               childDepartments={getChildDepartments(selectedDepartment.id)}
               parentDepartmentId={getParentDepartment(selectedDepartment.id)?.id}
+              viewMode={viewMode}
               onTaskSelect={handleTaskSelect}
             />
           ) : viewMode === 'kanban' ? (
@@ -223,7 +322,7 @@ function Tasks() {
                 <div className="tasks-page__empty">
                   <div className="empty-icon">🏢</div>
                   <h3>Нет департаментов</h3>
-                  <p>Создайте организационную структуру в разделе "Мои компании"</p>
+                  <p>Создайте организационную структуру в разделе &quot;Мои компании&quot;</p>
                 </div>
               ) : (
                 departments.map(dept => {
@@ -278,7 +377,7 @@ function Tasks() {
                 <div className="tasks-page__empty">
                   <div className="empty-icon">📋</div>
                   <h3>Нет задач</h3>
-                  <p>Выберите департамент для создания задач</p>
+                  <p>Выберите департамент слева, чтобы создать задачу</p>
                 </div>
               ) : (
                 <table className="tasks-page__table">
@@ -372,4 +471,3 @@ function Tasks() {
 }
 
 export default Tasks;
-

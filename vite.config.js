@@ -39,6 +39,11 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
+      '/socket.io': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
   publicDir: '../public',
@@ -47,4 +52,3 @@ export default defineConfig({
     include: ['react', 'react-dom', 'react-router-dom', 'zustand', 'socket.io-client'],
   },
 });
-

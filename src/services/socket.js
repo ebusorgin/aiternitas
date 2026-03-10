@@ -13,6 +13,7 @@ class SocketService {
     this.maxReconnectAttempts = 5;
     this.eventHandlers = new Map();
     this.pendingCallbacks = new Map();
+    this.connectPromise = null;
   }
 
   // Connect to server
@@ -21,69 +22,77 @@ class SocketService {
       return Promise.resolve(true);
     }
 
-    return new Promise((resolve, reject) => {
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    this.connectPromise = new Promise((resolve, reject) => {
       try {
-        // Get base URL for socket connection
-        const baseUrl = window.location.origin;
+        if (!this.socket) {
+          const baseUrl = window.location.origin;
 
-        this.socket = io(baseUrl, {
-          withCredentials: true,
-          transports: ['websocket', 'polling'],
-          reconnection: true,
-          reconnectionAttempts: this.maxReconnectAttempts,
-          reconnectionDelay: 1000,
-          reconnectionDelayMax: 5000,
-          timeout: 10000
-        });
+          this.socket = io(baseUrl, {
+            withCredentials: true,
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: this.maxReconnectAttempts,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 10000
+          });
 
-        // Connection events
-        this.socket.on('connect', () => {
-          console.log('🔌 Socket.IO connected');
-          this.connected = true;
-          this.reconnectAttempts = 0;
-          resolve(true);
-        });
+          this.socket.on('connect', () => {
+            console.log('🔌 Socket.IO connected');
+            this.connected = true;
+            this.reconnectAttempts = 0;
+            this.connectPromise = null;
+            resolve(true);
+          });
 
-        this.socket.on('disconnect', (reason) => {
-          console.log('🔌 Socket.IO disconnected:', reason);
-          this.connected = false;
-          this.authenticated = false;
-          
-          // Emit disconnect event to listeners
-          this.emitLocal('disconnected', { reason });
-        });
+          this.socket.on('disconnect', (reason) => {
+            console.log('🔌 Socket.IO disconnected:', reason);
+            this.connected = false;
+            this.authenticated = false;
+            this.connectPromise = null;
+            this.emitLocal('disconnected', { reason });
+          });
 
-        this.socket.on('connect_error', (error) => {
-          console.error('🔌 Socket.IO connection error:', error);
-          this.reconnectAttempts++;
-          
-          if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            reject(error);
-          }
-        });
+          this.socket.on('connect_error', (error) => {
+            console.error('🔌 Socket.IO connection error:', error);
+            this.reconnectAttempts++;
+            this.connectPromise = null;
 
-        this.socket.on('reconnect', (attemptNumber) => {
-          console.log('🔌 Socket.IO reconnected after', attemptNumber, 'attempts');
-          this.connected = true;
-          
-          // Re-check auth after reconnect
-          this.checkAuth().then(result => {
-            if (result.authenticated) {
-              this.emitLocal('reconnected:authenticated', result.user);
-            } else {
-              this.emitLocal('reconnected:anonymous', {});
+            if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+              reject(error);
             }
           });
-        });
 
-        // Setup global event forwarding
-        this.setupEventForwarding();
+          this.socket.on('reconnect', (attemptNumber) => {
+            console.log('🔌 Socket.IO reconnected after', attemptNumber, 'attempts');
+            this.connected = true;
+
+            this.checkAuth().then(result => {
+              if (result.authenticated) {
+                this.emitLocal('reconnected:authenticated', result.user);
+              } else {
+                this.emitLocal('reconnected:anonymous', {});
+              }
+            });
+          });
+
+          this.setupEventForwarding();
+        } else {
+          this.socket.connect();
+        }
 
       } catch (error) {
         console.error('Socket.IO init error:', error);
+        this.connectPromise = null;
         reject(error);
       }
     });
+
+    return this.connectPromise;
   }
 
   // Disconnect
@@ -100,22 +109,33 @@ class SocketService {
   // Emit event with promise-based callback
   emit(event, data = {}, timeoutMs = 10000) {
     return new Promise((resolve, reject) => {
+      const performEmit = () => {
+        if (!this.socket?.connected) {
+          return reject(new Error('Socket not connected'));
+        }
+
+        const timeout = setTimeout(() => {
+          reject(new Error(`Timeout waiting for response to ${event}`));
+        }, timeoutMs);
+
+        this.socket.emit(event, data, (response) => {
+          clearTimeout(timeout);
+          if (response?.error && !response?.success) {
+            reject(new Error(response.error));
+          } else {
+            resolve(response);
+          }
+        });
+      };
+
       if (!this.socket?.connected) {
-        return reject(new Error('Socket not connected'));
+        this.connect()
+          .then(() => performEmit())
+          .catch(reject);
+        return;
       }
 
-      const timeout = setTimeout(() => {
-        reject(new Error(`Timeout waiting for response to ${event}`));
-      }, timeoutMs);
-
-      this.socket.emit(event, data, (response) => {
-        clearTimeout(timeout);
-        if (response?.error && !response?.success) {
-          reject(new Error(response.error));
-        } else {
-          resolve(response);
-        }
-      });
+      performEmit();
     });
   }
 
@@ -411,4 +431,3 @@ class SocketService {
 const socketService = new SocketService();
 
 export default socketService;
-

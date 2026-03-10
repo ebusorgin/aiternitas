@@ -2,6 +2,35 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import socketService from '../services/socket';
 
 const AuthContext = createContext();
+const HTTP_TIMEOUT_MS = 3000;
+const SOCKET_TIMEOUT_MS = 5000;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = HTTP_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function withTimeout(promise, timeoutMs, errorMessage) {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+
+    promise
+      .then((value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -15,7 +44,7 @@ export function AuthProvider({ children }) {
       setLoading(true);
       try {
         // Сначала проверяем сессию по HTTP (cookie) — так надёжно и на проде, и после перезагрузки
-        const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+        const meRes = await fetchWithTimeout('/api/auth/me', { credentials: 'include' });
         if (meRes.ok) {
           const data = await meRes.json();
           if (data.user) {
@@ -24,7 +53,11 @@ export function AuthProvider({ children }) {
           }
         }
 
-        await socketService.connect();
+        await withTimeout(
+          socketService.connect(),
+          SOCKET_TIMEOUT_MS,
+          'Socket connection timeout'
+        );
         setSocketConnected(true);
 
         const result = await socketService.checkAuth();
@@ -69,7 +102,7 @@ export function AuthProvider({ children }) {
 
   const checkAuth = useCallback(async () => {
     try {
-      const meRes = await fetch('/api/auth/me', { credentials: 'include' });
+      const meRes = await fetchWithTimeout('/api/auth/me', { credentials: 'include' });
       if (meRes.ok) {
         const data = await meRes.json();
         if (data.user) {
@@ -85,7 +118,11 @@ export function AuthProvider({ children }) {
 
     if (!socketService.isConnected) {
       try {
-        await socketService.connect();
+        await withTimeout(
+          socketService.connect(),
+          SOCKET_TIMEOUT_MS,
+          'Socket connection timeout'
+        );
         setSocketConnected(true);
       } catch (error) {
         console.error('Socket connect error:', error);

@@ -62,6 +62,22 @@
   flex-wrap: wrap;
 }
 
+.tasks-page__create-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.25);
+}
+
+.tasks-page__create-btn:hover {
+  filter: brightness(1.05);
+}
+
 .tasks-page__view-toggle {
   display: flex;
   background: rgba(255, 255, 255, 0.05);
@@ -142,19 +158,18 @@
 .tasks-page__dept-item {
   display: flex;
   align-items: center;
-  gap: 10px;
   width: 100%;
   background: none;
   border: none;
-  padding: 10px 12px;
+  padding: 0;
   border-radius: 8px;
-  cursor: pointer;
   transition: all 0.2s ease;
   text-align: left;
   margin-bottom: 4px;
 }
 
-.tasks-page__dept-item:hover {
+.tasks-page__dept-item:hover,
+.tasks-page__dept-select:hover {
   background: rgba(255, 255, 255, 0.05);
 }
 
@@ -188,6 +203,84 @@
   background: rgba(255, 255, 255, 0.08);
   padding: 2px 8px;
   border-radius: 10px;
+}
+
+.tasks-page__dept-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.tasks-page__dept-toggle {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.58);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.tasks-page__dept-toggle.expanded {
+  transform: rotate(90deg);
+}
+
+.tasks-page__dept-toggle:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.tasks-page__dept-spacer {
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.tasks-page__dept-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 10px 12px 10px 0;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tasks-page__dept-empty {
+  padding: 10px 12px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 13px;
+}
+
+.tasks-page__dept-actions {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tasks-page__dept-actions-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.tasks-page__dept-create-btn {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 14px;
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tasks-page__dept-create-btn:hover {
+  filter: brightness(1.05);
 }
 
 /* Main content */
@@ -485,4 +578,3 @@
     min-width: 0;
   }
 }
-

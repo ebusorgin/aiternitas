@@ -6,6 +6,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
 const apiKey = process.env.OPENAI_API_KEY;
+const isOpenAIConfigured = Boolean(apiKey && apiKey !== 'missing-key');
 if (!apiKey) {
   console.warn('⚠️ OPENAI_API_KEY not found in environment variables');
 } else {
@@ -40,6 +41,10 @@ const CONNECTION_TYPES = {
 
 // Helper: call GPT and parse JSON response
 async function callGPT(prompt, maxTokens = 4000) {
+  if (!isOpenAIConfigured) {
+    throw new Error('OPENAI_API_KEY не настроен');
+  }
+
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
@@ -61,6 +66,51 @@ async function callGPT(prompt, maxTokens = 4000) {
   content = content.trim();
 
   return JSON.parse(content);
+}
+
+function buildFallbackAssigneeSuggestion(task, availableWorkers = [], childDepartments = []) {
+  const normalizedWorkers = availableWorkers.map((worker) => ({
+    type: 'worker',
+    id: worker.id,
+    name: worker.name,
+    load: Number(worker.currentTasksCount || 0)
+  }));
+
+  const normalizedDepartments = childDepartments.map((department) => ({
+    type: 'department',
+    id: department.id,
+    name: department.name,
+    load: Number(department.currentTasksCount || 0)
+  }));
+
+  const candidates = [...normalizedWorkers, ...normalizedDepartments]
+    .sort((a, b) => a.load - b.load || String(a.name).localeCompare(String(b.name), 'ru'));
+
+  const bestCandidate = candidates[0] || null;
+
+  if (!bestCandidate) {
+    return { suggestion: null, alternatives: [], recommendations: 'Нет доступных исполнителей' };
+  }
+
+  const alternatives = candidates.slice(1, 3).map((candidate) => ({
+    type: candidate.type,
+    id: candidate.id,
+    name: candidate.name,
+    confidence: 0.55,
+    reasoning: 'Резервный вариант с близкой текущей загрузкой'
+  }));
+
+  return {
+    suggestion: {
+      type: bestCandidate.type,
+      id: bestCandidate.id,
+      name: bestCandidate.name,
+      confidence: 0.65,
+      reasoning: `Выбран как самый свободный исполнитель для задачи "${task.title}".`
+    },
+    alternatives,
+    recommendations: 'Рекомендация построена локально, потому что OPENAI_API_KEY не настроен.'
+  };
 }
 
 /**
@@ -1112,6 +1162,10 @@ export async function suggestAssignee(task, availableWorkers = [], childDepartme
   
   if (availableWorkers.length === 0 && childDepartments.length === 0) {
     return { suggestion: null, message: 'Нет доступных исполнителей' };
+  }
+
+  if (!isOpenAIConfigured) {
+    return buildFallbackAssigneeSuggestion(task, availableWorkers, childDepartments);
   }
 
   const prompt = `Рекомендуй лучшего исполнителя для задачи.

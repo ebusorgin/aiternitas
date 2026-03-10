@@ -456,6 +456,20 @@ export async function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_task_columns_department_id ON task_columns(department_id)
     `).catch(() => {});
 
+    await pool.query(`
+      DELETE FROM task_columns tc
+      USING task_columns duplicate
+      WHERE tc.user_id = duplicate.user_id
+        AND tc.department_id = duplicate.department_id
+        AND tc.position = duplicate.position
+        AND tc.id > duplicate.id
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_task_columns_user_department_position
+      ON task_columns(user_id, department_id, position)
+    `).catch(() => {});
+
     // Триггер для автоматического обновления updated_at
     await pool.query(`
       DROP TRIGGER IF EXISTS update_task_columns_updated_at ON task_columns;
@@ -477,6 +491,7 @@ export async function initDatabase() {
         parent_task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
         title VARCHAR(500) NOT NULL,
         description TEXT,
+        execution_plan TEXT,
         priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
         assigned_to_worker_id VARCHAR(255),
         assigned_to_department_id VARCHAR(255),
@@ -484,12 +499,52 @@ export async function initDatabase() {
         status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'review', 'revision', 'completed', 'cancelled', 'escalated')),
         recommendations TEXT,
         due_date TIMESTAMP,
+        schedule_start_at TIMESTAMP,
+        schedule_end_at TIMESTAMP,
+        timer_started_at TIMESTAMP,
         estimated_hours DECIMAL(10,2),
         actual_hours DECIMAL(10,2),
+        attachments JSONB DEFAULT '[]',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'tasks' AND column_name = 'execution_plan'
+        ) THEN
+          ALTER TABLE tasks ADD COLUMN execution_plan TEXT;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'tasks' AND column_name = 'schedule_start_at'
+        ) THEN
+          ALTER TABLE tasks ADD COLUMN schedule_start_at TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'tasks' AND column_name = 'schedule_end_at'
+        ) THEN
+          ALTER TABLE tasks ADD COLUMN schedule_end_at TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'tasks' AND column_name = 'timer_started_at'
+        ) THEN
+          ALTER TABLE tasks ADD COLUMN timer_started_at TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'tasks' AND column_name = 'attachments'
+        ) THEN
+          ALTER TABLE tasks ADD COLUMN attachments JSONB DEFAULT '[]';
+        END IF;
+      END $$;
+    `).catch(() => {});
 
     // Индексы для tasks
     await pool.query(`
@@ -564,4 +619,3 @@ export async function initDatabase() {
 }
 
 export default pool;
-

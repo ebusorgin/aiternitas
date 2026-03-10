@@ -99,13 +99,15 @@ export function setupSocketHandlers(io, sessionStore) {
     setupTaskHandlers(io, socket);
 
     // Ping/pong for connection health
-    socket.on('ping', (callback) => {
-      callback?.({ pong: true, timestamp: Date.now() });
+    socket.on('ping', (data, callback) => {
+      const responder = typeof data === 'function' ? data : callback;
+      responder?.({ pong: true, timestamp: Date.now() });
     });
 
     // Get connection status
-    socket.on('status', (callback) => {
-      callback?.({
+    socket.on('status', (data, callback) => {
+      const responder = typeof data === 'function' ? data : callback;
+      responder?.({
         connected: true,
         authenticated: !!socket.userId,
         userId: socket.userId || null,
@@ -160,6 +162,5 @@ function getSessionFromStore(sessionStore, sessionId) {
 }
 
 export default { setupSocketHandlers };
-
 
 

@@ -8,11 +8,157 @@ import { decomposeTask, suggestAssignee } from '../services/openai.mjs';
 // Default columns for new departments
 const DEFAULT_COLUMNS = [
   { name: 'Бэклог', color: '#6b7280', position: 0 },
-  { name: 'К выполнению', color: '#3b82f6', position: 1 },
-  { name: 'В работе', color: '#f59e0b', position: 2 },
-  { name: 'На проверке', color: '#8b5cf6', position: 3 },
-  { name: 'Готово', color: '#22c55e', position: 4 }
+  { name: 'Готово', color: '#22c55e', position: 1 }
 ];
+
+async function resolveBacklogColumnId(userId, departmentId) {
+  if (!userId || !departmentId) return null;
+
+  const backlogResult = await pool.query(
+    `SELECT id
+     FROM task_columns
+     WHERE user_id = $1 AND department_id = $2 AND is_default = true AND name = 'Бэклог'
+     ORDER BY position ASC, id ASC
+     LIMIT 1`,
+    [userId, departmentId]
+  );
+  if (backlogResult.rows.length > 0) return backlogResult.rows[0].id;
+
+  const anyResult = await pool.query(
+    `SELECT id
+     FROM task_columns
+     WHERE user_id = $1 AND department_id = $2
+     ORDER BY position ASC, id ASC
+     LIMIT 1`,
+    [userId, departmentId]
+  );
+  if (anyResult.rows.length > 0) return anyResult.rows[0].id;
+
+  // No columns yet: create defaults, without overwriting anything that may appear concurrently.
+  for (const column of DEFAULT_COLUMNS) {
+    await pool.query(
+      `INSERT INTO task_columns (user_id, department_id, name, position, color, is_default)
+       VALUES ($1, $2, $3, $4, $5, true)
+       ON CONFLICT (user_id, department_id, position)
+       DO NOTHING`,
+      [userId, departmentId, column.name, column.position, column.color]
+    );
+  }
+
+  const backlogAfterResult = await pool.query(
+    `SELECT id
+     FROM task_columns
+     WHERE user_id = $1 AND department_id = $2 AND is_default = true AND name = 'Бэклог'
+     ORDER BY position ASC, id ASC
+     LIMIT 1`,
+    [userId, departmentId]
+  );
+  if (backlogAfterResult.rows.length > 0) return backlogAfterResult.rows[0].id;
+
+  const anyAfterResult = await pool.query(
+    `SELECT id
+     FROM task_columns
+     WHERE user_id = $1 AND department_id = $2
+     ORDER BY position ASC, id ASC
+     LIMIT 1`,
+    [userId, departmentId]
+  );
+  return anyAfterResult.rows[0]?.id || null;
+}
+
+async function normalizeDepartmentColumns(client, userId, departmentId) {
+  let result = await client.query(
+    `SELECT * FROM task_columns
+     WHERE user_id = $1 AND department_id = $2
+     ORDER BY position ASC, id ASC`,
+    [userId, departmentId]
+  );
+
+  if (result.rows.length === 0) {
+    for (const column of DEFAULT_COLUMNS) {
+      await client.query(
+        `INSERT INTO task_columns (user_id, department_id, name, position, color, is_default)
+         VALUES ($1, $2, $3, $4, $5, true)
+         ON CONFLICT (user_id, department_id, position)
+         DO UPDATE SET
+           name = EXCLUDED.name,
+           color = EXCLUDED.color,
+           is_default = true`,
+        [userId, departmentId, column.name, column.position, column.color]
+      );
+    }
+
+    result = await client.query(
+      `SELECT * FROM task_columns
+       WHERE user_id = $1 AND department_id = $2
+       ORDER BY position ASC, id ASC`,
+      [userId, departmentId]
+    );
+  }
+
+  const defaultColumns = result.rows.filter(column => column.is_default);
+  const customColumns = result.rows.filter(column => !column.is_default);
+  const backlogColumn = defaultColumns.find(column => column.name === 'Бэклог') || defaultColumns[0] || result.rows[0];
+  const doneColumn = defaultColumns.find(column => column.name === 'Готово') || defaultColumns.at(-1) || result.rows.at(-1);
+  const extraDefaultColumns = defaultColumns.filter(column => ![backlogColumn.id, doneColumn.id].includes(column.id));
+
+	  await client.query(
+	    `UPDATE tasks
+	     SET column_id = CASE
+	       WHEN status = 'completed' THEN $1::int
+	       ELSE $2::int
+	     END
+	     WHERE user_id = $3 AND department_id = $4 AND column_id IS NULL`,
+	    [doneColumn.id, backlogColumn.id, userId, departmentId]
+	  );
+
+  if (extraDefaultColumns.length > 0) {
+    const extraIds = extraDefaultColumns.map(column => column.id);
+	    await client.query(
+	      `UPDATE tasks
+	       SET column_id = CASE
+	         WHEN status = 'completed' THEN $1::int
+	         ELSE $2::int
+	       END
+	       WHERE user_id = $3 AND column_id = ANY($4::int[])`,
+	      [doneColumn.id, backlogColumn.id, userId, extraIds]
+	    );
+
+    await client.query(
+      `DELETE FROM task_columns
+       WHERE user_id = $1 AND department_id = $2 AND id = ANY($3::int[])`,
+      [userId, departmentId, extraIds]
+    );
+  }
+
+  const remainingCustomColumns = customColumns.filter(column => !extraDefaultColumns.some(extra => extra.id === column.id));
+  const orderedColumns = [
+    { ...backlogColumn, name: 'Бэклог', color: '#6b7280', is_default: true },
+    ...remainingCustomColumns.sort((a, b) => a.position - b.position || a.id - b.id).map(column => ({ ...column, is_default: false })),
+    { ...doneColumn, name: 'Готово', color: '#22c55e', is_default: true }
+  ].filter((column, index, array) => array.findIndex(item => item.id === column.id) === index);
+
+  for (const column of orderedColumns) {
+    await client.query(`UPDATE task_columns SET position = $1 WHERE id = $2`, [-column.id, column.id]);
+  }
+
+  for (let index = 0; index < orderedColumns.length; index++) {
+    const column = orderedColumns[index];
+    await client.query(
+      `UPDATE task_columns
+       SET name = $1, color = $2, is_default = $3, position = $4
+       WHERE id = $5`,
+      [column.name, column.color, column.is_default, index, column.id]
+    );
+  }
+
+  return client.query(
+    `SELECT * FROM task_columns
+     WHERE user_id = $1 AND department_id = $2
+     ORDER BY position ASC, id ASC`,
+    [userId, departmentId]
+  );
+}
 
 export function setupTaskHandlers(io, socket) {
   
@@ -47,33 +193,31 @@ export function setupTaskHandlers(io, socket) {
         return callback?.({ success: false, error: 'ID департамента обязателен' });
       }
 
-      // Check if columns exist, if not create defaults
-      let result = await pool.query(
-        `SELECT * FROM task_columns 
-         WHERE user_id = $1 AND department_id = $2 
-         ORDER BY position ASC`,
-        [socket.userId, departmentId]
-      );
-
-      if (result.rows.length === 0) {
-        // Create default columns
-        for (const col of DEFAULT_COLUMNS) {
-          await pool.query(
-            `INSERT INTO task_columns (user_id, department_id, name, position, color, is_default)
-             VALUES ($1, $2, $3, $4, $5, true)`,
-            [socket.userId, departmentId, col.name, col.position, col.color]
-          );
-        }
-        
-        result = await pool.query(
-          `SELECT * FROM task_columns 
-           WHERE user_id = $1 AND department_id = $2 
-           ORDER BY position ASC`,
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`task_columns:${socket.userId}:${departmentId}`]);
+        await client.query(
+          `DELETE FROM task_columns tc
+           USING task_columns duplicate
+           WHERE tc.user_id = duplicate.user_id
+             AND tc.department_id = duplicate.department_id
+             AND tc.position = duplicate.position
+             AND tc.id > duplicate.id
+             AND tc.user_id = $1
+             AND tc.department_id = $2`,
           [socket.userId, departmentId]
         );
-      }
 
-      callback?.({ success: true, columns: result.rows });
+        const result = await normalizeDepartmentColumns(client, socket.userId, departmentId);
+        await client.query('COMMIT');
+        callback?.({ success: true, columns: result.rows });
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
 
     } catch (error) {
       console.error('Get columns error:', error);
@@ -94,23 +238,57 @@ export function setupTaskHandlers(io, socket) {
         return callback?.({ success: false, error: 'Некорректные данные' });
       }
 
-      const result = await pool.query(
-        `INSERT INTO task_columns (user_id, department_id, name, position, color)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING *`,
-        [socket.userId, departmentId, name, position || 0, color || '#6b7280']
-      );
+      const insertPosition = Number.isInteger(position) ? position : 1;
 
-      const column = result.rows[0];
-      
-      console.log(`📋 Column created: ${column.name} for dept ${departmentId}`);
-      
-      broadcastToUser('task:column:created', { column });
-      callback?.({ success: true, column });
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`task_columns:${socket.userId}:${departmentId}`]);
+        await normalizeDepartmentColumns(client, socket.userId, departmentId);
+
+        await client.query(
+          `UPDATE task_columns
+           SET position = -position - 1
+           WHERE user_id = $1 AND department_id = $2 AND position >= $3`,
+          [socket.userId, departmentId, insertPosition]
+        );
+
+        await client.query(
+          `UPDATE task_columns
+           SET position = -position
+           WHERE user_id = $1 AND department_id = $2 AND position < 0`,
+          [socket.userId, departmentId]
+        );
+
+        const result = await client.query(
+          `INSERT INTO task_columns (user_id, department_id, name, position, color)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING *`,
+          [socket.userId, departmentId, name, insertPosition, color || '#6b7280']
+        );
+
+        const columnsResult = await client.query(
+          `SELECT * FROM task_columns
+           WHERE user_id = $1 AND department_id = $2
+           ORDER BY position ASC, id ASC`,
+          [socket.userId, departmentId]
+        );
+        await client.query('COMMIT');
+
+        const column = result.rows[0];
+        console.log(`📋 Column created: ${column.name} for dept ${departmentId}`);
+        broadcastToUser('task:column:created', { column, columns: columnsResult.rows });
+        callback?.({ success: true, column, columns: columnsResult.rows });
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
 
     } catch (error) {
       console.error('Create column error:', error);
-      callback?.({ success: false, error: 'Ошибка создания колонки' });
+      callback?.({ success: false, error: error.message || 'Ошибка создания колонки' });
     }
   });
 
@@ -252,11 +430,15 @@ export function setupTaskHandlers(io, socket) {
     }
 
     try {
-      const { departmentId, includeSubtasks } = data;
+      const { departmentId, includeSubtasks, departmentIds, includeIncoming } = data;
       
       if (!departmentId) {
         return callback?.({ success: false, error: 'ID департамента обязателен' });
       }
+
+      const scopedDepartmentIds = Array.isArray(departmentIds) && departmentIds.length > 0
+        ? [...new Set(departmentIds.filter(Boolean))]
+        : [departmentId];
 
       let query = `
         SELECT t.*, 
@@ -266,7 +448,11 @@ export function setupTaskHandlers(io, socket) {
                (SELECT COUNT(*) FROM tasks WHERE parent_task_id = t.id AND status = 'completed') as completed_subtask_count
         FROM tasks t
         LEFT JOIN task_columns tc ON t.column_id = tc.id
-        WHERE t.user_id = $1 AND t.department_id = $2
+        WHERE t.user_id = $1
+          AND (
+            t.department_id = ANY($2::varchar[])
+            ${includeIncoming ? 'OR t.assigned_to_department_id = $3' : ''}
+          )
       `;
       
       if (!includeSubtasks) {
@@ -275,7 +461,10 @@ export function setupTaskHandlers(io, socket) {
       
       query += ` ORDER BY t.created_at DESC`;
 
-      const result = await pool.query(query, [socket.userId, departmentId]);
+      const params = includeIncoming
+        ? [socket.userId, scopedDepartmentIds, departmentId]
+        : [socket.userId, scopedDepartmentIds];
+      const result = await pool.query(query, params);
 
       callback?.({ success: true, tasks: result.rows });
 
@@ -360,15 +549,28 @@ export function setupTaskHandlers(io, socket) {
 
       const task = taskResult.rows[0];
 
-      // Get subtasks
+      // Get all descendant subtasks so the task tree can be rendered in depth
       const subtasksResult = await pool.query(
-        `SELECT t.*, 
+        `WITH RECURSIVE task_tree AS (
+           SELECT t.id, t.parent_task_id, 0 as depth
+           FROM tasks t
+           WHERE t.parent_task_id = $1 AND t.user_id = $2
+
+           UNION ALL
+
+           SELECT child.id, child.parent_task_id, tt.depth + 1
+           FROM tasks child
+           JOIN task_tree tt ON child.parent_task_id = tt.id
+           WHERE child.user_id = $2
+         )
+         SELECT t.*, 
                 tc.name as column_name,
-                tc.color as column_color
-         FROM tasks t
+                tc.color as column_color,
+                tt.depth
+         FROM task_tree tt
+         JOIN tasks t ON t.id = tt.id
          LEFT JOIN task_columns tc ON t.column_id = tc.id
-         WHERE t.parent_task_id = $1 AND t.user_id = $2
-         ORDER BY t.created_at ASC`,
+         ORDER BY tt.depth ASC, t.created_at ASC`,
         [id, socket.userId]
       );
 
@@ -408,9 +610,15 @@ export function setupTaskHandlers(io, socket) {
         parentTaskId,
         title, 
         description, 
+        executionPlan,
         priority,
         dueDate,
+        scheduleStartAt,
+        scheduleEndAt,
         estimatedHours,
+        actualHours,
+        timerStartedAt,
+        attachments,
         createdByDepartmentId
       } = data;
       
@@ -435,15 +643,21 @@ export function setupTaskHandlers(io, socket) {
       const result = await pool.query(
         `INSERT INTO tasks (
           user_id, department_id, column_id, parent_task_id,
-          title, description, priority, due_date, estimated_hours,
-          created_by_department_id, status
+          title, description, execution_plan, priority, due_date,
+          schedule_start_at, schedule_end_at, estimated_hours, actual_hours,
+          timer_started_at, attachments, created_by_department_id, status
         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
+         VALUES (
+           $1, $2, $3, $4, $5, $6, $7, $8, $9,
+           $10, $11, $12, $13, $14, $15, $16, 'pending'
+         )
          RETURNING *`,
         [
           socket.userId, departmentId, finalColumnId, parentTaskId || null,
-          title, description || '', priority || 'medium', 
-          dueDate || null, estimatedHours || null,
+          title, description || '', executionPlan || '', priority || 'medium',
+          dueDate || null, scheduleStartAt || null, scheduleEndAt || null,
+          estimatedHours || null, actualHours || null, timerStartedAt || null,
+          JSON.stringify(Array.isArray(attachments) ? attachments : []),
           createdByDepartmentId || departmentId
         ]
       );
@@ -484,7 +698,8 @@ export function setupTaskHandlers(io, socket) {
       const allowedFields = [
         'title', 'description', 'priority', 'status', 
         'column_id', 'due_date', 'estimated_hours', 'actual_hours',
-        'recommendations'
+        'recommendations', 'execution_plan', 'schedule_start_at',
+        'schedule_end_at', 'timer_started_at', 'attachments'
       ];
 
       const updateParts = [];
@@ -495,7 +710,9 @@ export function setupTaskHandlers(io, socket) {
         const dbKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
         if (allowedFields.includes(dbKey)) {
           updateParts.push(`${dbKey} = $${paramIndex++}`);
-          values.push(value);
+          values.push(dbKey === 'attachments'
+            ? JSON.stringify(Array.isArray(value) ? value : [])
+            : value);
         }
       }
 
@@ -672,17 +889,19 @@ export function setupTaskHandlers(io, socket) {
           const decompositionResult = await decomposeTask(task, { departmentId: assignToDepartmentId });
           
           if (decompositionResult?.subtasks?.length > 0) {
+            const backlogColumnId = await resolveBacklogColumnId(socket.userId, assignToDepartmentId);
+
             // Create subtasks
             for (const subtask of decompositionResult.subtasks) {
               const subtaskResult = await pool.query(
                 `INSERT INTO tasks (
-                  user_id, department_id, parent_task_id,
+                  user_id, department_id, column_id, parent_task_id,
                   title, description, priority, estimated_hours, status
                 )
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
                  RETURNING *`,
                 [
-                  socket.userId, assignToDepartmentId, taskId,
+                  socket.userId, assignToDepartmentId, backlogColumnId, taskId,
                   subtask.title, subtask.description || '',
                   subtask.priority || task.priority,
                   subtask.estimatedHours || null
@@ -750,17 +969,18 @@ export function setupTaskHandlers(io, socket) {
       // Create subtasks
       const subtasks = [];
       const targetDepartmentId = task.assigned_to_department_id || task.department_id;
+      const backlogColumnId = await resolveBacklogColumnId(socket.userId, targetDepartmentId);
       
       for (const subtask of decompositionResult.subtasks) {
         const subtaskResult = await pool.query(
           `INSERT INTO tasks (
-            user_id, department_id, parent_task_id,
+            user_id, department_id, column_id, parent_task_id,
             title, description, priority, estimated_hours, status
           )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
            RETURNING *`,
           [
-            socket.userId, targetDepartmentId, taskId,
+            socket.userId, targetDepartmentId, backlogColumnId, taskId,
             subtask.title, subtask.description || '',
             subtask.priority || task.priority,
             subtask.estimatedHours || null
@@ -1028,4 +1248,3 @@ export function setupTaskHandlers(io, socket) {
 }
 
 export default { setupTaskHandlers };
-
