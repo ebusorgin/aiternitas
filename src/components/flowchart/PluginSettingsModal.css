@@ -1,0 +1,209 @@
+.plugin-settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: pluginFadeIn 0.2s ease;
+}
+
+@keyframes pluginFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.plugin-settings-modal {
+  background: linear-gradient(180deg, #1e293b, #0f172a);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  width: min(900px, 92vw);
+  max-height: 88vh;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: pluginSlideUp 0.25s ease;
+}
+
+@keyframes pluginSlideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.plugin-settings-header {
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.plugin-settings-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.plugin-settings-icon {
+  font-size: 26px;
+}
+
+.plugin-settings-title-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plugin-settings-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.plugin-settings-subtitle {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.plugin-settings-close {
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 22px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.plugin-settings-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.plugin-settings-content {
+  padding: 18px 20px;
+  max-height: calc(88vh - 72px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plugin-settings-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.plugin-settings-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.plugin-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plugin-test-card {
+  padding: 12px 12px;
+  background: rgba(14, 165, 233, 0.06);
+  border: 1px solid rgba(14, 165, 233, 0.18);
+  border-radius: 12px;
+}
+
+.plugin-test-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.plugin-test-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.plugin-status-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.plugin-status-badge.connected {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #86efac;
+}
+
+.plugin-status-badge.not_configured {
+  background: rgba(251, 146, 60, 0.15);
+  border-color: rgba(251, 146, 60, 0.35);
+  color: #fdba74;
+}
+
+.plugin-status-badge.invalid,
+.plugin-status-badge.connection_failed {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.32);
+  color: #fca5a5;
+}
+
+.plugin-test-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(14, 165, 233, 0.14);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  border-radius: 10px;
+  color: #7dd3fc;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.plugin-test-btn:hover:enabled {
+  background: rgba(14, 165, 233, 0.22);
+  border-color: rgba(14, 165, 233, 0.5);
+  color: #e0f2fe;
+}
+
+.plugin-test-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Кнопка подключения Telegram */
+.plugin-connect-btn {
+  width: 100%;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.plugin-connect-btn:hover {
+  background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+  transform: translateY(-1px);
+}
+
+.plugin-connect-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}

@@ -120,6 +120,7 @@ function PersonFigure({ element, position, isManager, opacity = 1, onSelect, onD
 function GenericElement3D({ element, position, opacity = 1, onSelect, onDoubleClick, onContextMenu, isSelected }) {
   const meshRef = useRef();
   const [hovered, setHovered] = useState(false);
+  const openPluginSettings = useFlowchartStore((state) => state.openPluginSettings);
   
   const elementType = ELEMENT_TYPES[element.type];
   // Use standard color from ELEMENT_TYPES for consistency
@@ -163,9 +164,34 @@ function GenericElement3D({ element, position, opacity = 1, onSelect, onDoubleCl
       
       {/* Label */}
       <Html position={[0, 1.2, 0]} center distanceFactor={10} zIndexRange={[0, 0]}>
-        <div className={`element-label ${hovered || isSelected ? 'highlighted' : ''}`} style={{ opacity }}>
+        <div className={`element-label ${element.type === 'plugin' ? 'plugin-label' : ''} ${hovered || isSelected ? 'highlighted' : ''}`} style={{ opacity }}>
           <span className="element-icon">{icon}</span>
           <span className="element-name">{element.name}</span>
+          {element.type === 'plugin' && (
+            <span
+              className={`plugin-status-dot ${element.properties?.connection?.status || 'unknown'}`}
+              title={
+                element.properties?.connection?.status === 'connected' ? 'Подключено' :
+                  element.properties?.connection?.status === 'not_configured' ? 'Не заполнено' :
+                    element.properties?.connection?.status === 'invalid' ? 'Неверные данные' :
+                      element.properties?.connection?.status === 'connection_failed' ? 'Ошибка подключения' :
+                        'Не протестировано'
+              }
+            />
+          )}
+          {element.type === 'plugin' && (
+            <button
+              className="plugin-gear-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                openPluginSettings(element.id);
+              }}
+              title="Настройки плагина"
+              type="button"
+            >
+              ⚙️
+            </button>
+          )}
         </div>
       </Html>
     </group>
@@ -263,8 +289,8 @@ function DepartmentSphere({ element, position, radius, childrenData, opacity = 1
         <mesh key={idx} position={item.pos}>
           <sphereGeometry args={[0.12, 8, 8]} />
           <meshStandardMaterial
-            color={item.type === 'worker' ? '#ec4899' : item.type === 'department' ? '#3b82f6' : '#f59e0b'}
-            emissive={item.type === 'worker' ? '#ec4899' : item.type === 'department' ? '#3b82f6' : '#f59e0b'}
+            color={ELEMENT_TYPES[item.type]?.color || '#f59e0b'}
+            emissive={ELEMENT_TYPES[item.type]?.color || '#f59e0b'}
             emissiveIntensity={0.5}
           />
         </mesh>
@@ -521,6 +547,7 @@ function SceneContent({ focusedDeptId, onContextMenu, onElementContextMenu, onSh
   const selectConnection = useFlowchartStore((state) => state.selectConnection);
   const finishConnecting = useFlowchartStore((state) => state.finishConnecting);
   const navigateInto = useFlowchartStore((state) => state.navigateInto);
+  const openPluginSettings = useFlowchartStore((state) => state.openPluginSettings);
   const updateElement = useFlowchartStore((state) => state.updateElement);
   const updateElement3DPosition = useFlowchartStore((state) => state.updateElement3DPosition);
   
@@ -696,11 +723,13 @@ function SceneContent({ focusedDeptId, onContextMenu, onElementContextMenu, onSh
       // Navigate into department
       console.log('Navigating into:', element.id);
       navigateInto(element.id);
+    } else if (element.type === 'plugin') {
+      openPluginSettings(element.id);
     } else {
       // Show info modal for non-container elements
       onShowInfo?.(element);
     }
-  }, [navigateInto, onShowInfo]);
+  }, [navigateInto, openPluginSettings, onShowInfo]);
   
   // Handle element right-click
   const handleElementContextMenu = useCallback((e, element) => {
@@ -1126,4 +1155,3 @@ function FlowchartCanvas3D() {
 }
 
 export default FlowchartCanvas3D;
-

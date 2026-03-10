@@ -14,8 +14,11 @@ import uploadRouter from './server/routes/upload.mjs';
 import statsRouter from './server/routes/stats.mjs';
 import emailsRouter from './server/routes/emails.mjs';
 import mailRouter from './server/routes/mail.mjs';
+import pluginsRouter from './server/routes/plugins.mjs';
+import telegramRouter from './server/routes/telegram.mjs';
 import { setupSocketHandlers } from './server/socket/index.mjs';
 import { startMailReceiver } from './server/mail/receiver.mjs';
+import telegramConnectionManager from './server/plugins/telegramConnectionManager.mjs';
 
 // Загружаем .env всегда для локальной разработки
 // В продакшене переменные должны быть установлены через systemd и будут иметь приоритет
@@ -33,6 +36,7 @@ const io = new Server(server, {
     origin: [
       'https://aiternitas.ru',
       'http://localhost:3001',
+      'http://localhost:3000',
       'http://localhost:5173'
     ],
     credentials: true,
@@ -58,6 +62,7 @@ app.use((req, res, next) => {
   const allowedOrigins = [
     'https://aiternitas.ru',
     'http://localhost:3001',
+    'http://localhost:3000',
     'http://localhost:5173'
   ];
   
@@ -139,6 +144,8 @@ app.use('/api/upload', uploadRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/emails', emailsRouter);
 app.use('/api/mail', mailRouter);
+app.use('/api/plugins', pluginsRouter);
+app.use('/api/telegram', telegramRouter);
 // NOTE: /api/flowchart removed - all flowchart operations now via Socket.IO
 
 // Статические файлы из собранного React приложения
@@ -177,17 +184,43 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 // Инициализация БД и запуск сервера
 initDatabase()
-  .then(() => {
+  .then(async () => {
     setupSocketHandlers(io, sessionStore);
     startMailReceiver(io);
-    
+
+    // Инициализируем Telegram подключения
+    await telegramConnectionManager.loadAndConnectAll();
+
+    // Устанавливаем обработчик входящих сообщений из Telegram
+    telegramConnectionManager.setMessageHandler(async (message, connectionInfo) => {
+      // Отправляем сообщение в Socket.IO для передачи в фронтенд
+      io.emit('telegram:message', {
+        ...message,
+        connectionInfo
+      });
+    });
+
     server.listen(PORT, HOST, () => {
       console.log(`✅ Aiternitas сервер запущен на порту ${PORT}`);
       console.log(`📱 Главная страница: http://localhost:${PORT}`);
       console.log(`🔌 Socket.IO готов к подключениям (auth + flowchart)`);
+      console.log(`📡 Telegram connections: ${telegramConnectionManager.connections.size} active`);
     });
   })
   .catch((error) => {
     console.error('❌ Ошибка запуска сервера:', error);
     process.exit(1);
   });
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\n🛑 Shutting down gracefully...');
+  await telegramConnectionManager.disconnectAll();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n🛑 Shutting down gracefully...');
+  await telegramConnectionManager.disconnectAll();
+  process.exit(0);
+});

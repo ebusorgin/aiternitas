@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import socketService from '../services/socket';
 
-// 4 типа элементов блок-схемы
+// 5 типов элементов блок-схемы
 export const ELEMENT_TYPES = {
   department: {
     id: 'department',
@@ -53,6 +53,21 @@ export const ELEMENT_TYPES = {
       price: { label: 'Цена', type: 'number', default: 0 },
       duration: { label: 'Длительность', type: 'text', default: '' },
       category: { label: 'Категория', type: 'text', default: '' }
+    }
+  },
+  plugin: {
+    id: 'plugin',
+    name: 'Плагин',
+    icon: '🔌',
+    color: '#0ea5e9',
+    description: 'Интеграция с внешними сервисами (Telegram и др.)',
+    canContain: false,
+    // ВАЖНО: конфиг конкретного плагина хранится в element.properties.config (JSON).
+    properties: {
+      pluginId: { label: 'Плагин', type: 'select', default: 'telegram', options: [
+        { value: 'telegram', label: 'Telegram' }
+      ] },
+      enabled: { label: 'Включен', type: 'boolean', default: true }
     }
   }
 };
@@ -132,6 +147,9 @@ export const useFlowchartStore = create((set, get) => ({
   connections: [],
   selectedElementId: null,
   selectedConnectionId: null,
+
+  // Plugin settings modal
+  pluginSettingsElementId: null,
   
   // Viewport состояние
   pan: { x: 0, y: 0 },
@@ -153,6 +171,13 @@ export const useFlowchartStore = create((set, get) => ({
   isLoading: false,
   lastSaved: null,
   hasUnsavedChanges: false,
+
+  openPluginSettings: (elementId) => {
+    set({ pluginSettingsElementId: elementId || null });
+  },
+  closePluginSettings: () => {
+    set({ pluginSettingsElementId: null });
+  },
 
   // Вычислить размер элемента на основе его детей
   calculateElementSize: (elementId) => {
@@ -375,6 +400,14 @@ export const useFlowchartStore = create((set, get) => ({
 
     const { elements } = get();
 
+    const baseProperties = Object.fromEntries(
+      Object.entries(elementType.properties).map(([key, prop]) => [key, prop.default])
+    );
+    if (type === 'plugin' && !baseProperties.config) {
+      baseProperties.config = { authMode: 'account' };
+      baseProperties.connection = { status: 'not_configured', testedAt: null, mode: 'account', error: '' };
+    }
+
     const newElement = {
       id: `element_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       type: type,
@@ -385,9 +418,7 @@ export const useFlowchartStore = create((set, get) => ({
       color: elementType.color,
       parentId: parentId,
       depth: 0,
-      properties: Object.fromEntries(
-        Object.entries(elementType.properties).map(([key, prop]) => [key, prop.default])
-      )
+      properties: baseProperties
     };
 
     // Если есть родитель, обновляем глубину
@@ -419,6 +450,14 @@ export const useFlowchartStore = create((set, get) => ({
     const elementType = ELEMENT_TYPES[type];
     if (!elementType) return null;
 
+    const baseProperties = Object.fromEntries(
+      Object.entries(elementType.properties).map(([key, prop]) => [key, prop.default])
+    );
+    if (type === 'plugin' && !baseProperties.config) {
+      baseProperties.config = { authMode: 'account' };
+      baseProperties.connection = { status: 'not_configured', testedAt: null, mode: 'account', error: '' };
+    }
+
     const newElement = {
       id: `element_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       type: type,
@@ -428,9 +467,7 @@ export const useFlowchartStore = create((set, get) => ({
       color: elementType.color,
       parentId: parentId,
       depth: (parent.depth || 0) + 1,
-      properties: Object.fromEntries(
-        Object.entries(elementType.properties).map(([key, prop]) => [key, prop.default])
-      )
+      properties: baseProperties
     };
 
     set((state) => ({

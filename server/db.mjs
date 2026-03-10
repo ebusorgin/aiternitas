@@ -611,6 +611,45 @@ export async function initDatabase() {
 
     console.log('✅ Таблица task_comments создана/проверена');
 
+    // Создаем таблицу для хранения конфигураций плагинов
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS plugin_configs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        project_id VARCHAR(100) NOT NULL,
+        element_id VARCHAR(100) NOT NULL,
+        plugin_id VARCHAR(50) NOT NULL,
+        enabled BOOLEAN DEFAULT true,
+        config JSONB NOT NULL DEFAULT '{}',
+        encrypted_session TEXT,
+        connection_status VARCHAR(50) DEFAULT 'not_tested',
+        last_tested_at TIMESTAMP,
+        last_error TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, project_id, element_id)
+      )
+    `);
+
+    // Индексы для plugin_configs
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_plugin_configs_user_id ON plugin_configs(user_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_plugin_configs_project_element ON plugin_configs(project_id, element_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_plugin_configs_plugin_id ON plugin_configs(plugin_id)
+    `).catch(() => {});
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_plugin_configs_enabled ON plugin_configs(enabled) WHERE enabled = true
+    `).catch(() => {});
+
+    console.log('✅ Таблица plugin_configs создана/проверена');
+
     return true;
   } catch (error) {
     console.error('❌ Ошибка инициализации БД:', error);

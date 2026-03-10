@@ -6,6 +6,7 @@ import FlowchartCanvas3D from '../components/flowchart/FlowchartCanvas3D';
 import PropertiesPanel from '../components/flowchart/PropertiesPanel';
 import GenerateCompanyModal from '../components/flowchart/GenerateCompanyModal';
 import ViewToggle from '../components/flowchart/ViewToggle';
+import PluginSettingsModal from '../components/flowchart/PluginSettingsModal';
 import './Companies.css';
 
 function Companies() {
@@ -144,6 +145,9 @@ function Companies() {
       {showGenerateModal && (
         <GenerateCompanyModal onClose={() => setShowGenerateModal(false)} />
       )}
+
+      {/* Plugin settings popup (opened from canvas dblclick / gear / sidebar button) */}
+      <PluginSettingsModal />
     </div>
   );
 }

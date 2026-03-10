@@ -30,3 +30,6 @@ npm-debug.log*
 
 # Uploads
 uploads/
+
+# Stakpak session files
+.stakpak/session*

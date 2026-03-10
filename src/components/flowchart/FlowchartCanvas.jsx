@@ -14,6 +14,7 @@ const HEADER_HEIGHT = 28;
 function FlowchartCanvas() {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const lastCanvasSizeRef = useRef({ width: 0, height: 0 });
   
   // Store state
   const elements = useFlowchartStore((state) => state.elements);
@@ -50,6 +51,7 @@ function FlowchartCanvas() {
   const fitToView = useFlowchartStore((state) => state.fitToView);
   const autoLayoutElements = useFlowchartStore((state) => state.autoLayoutElements);
   const needsAutoLayout = useFlowchartStore((state) => state.needsAutoLayout);
+  const openPluginSettings = useFlowchartStore((state) => state.openPluginSettings);
 
   // Local state
   const [isDragging, setIsDragging] = useState(false);
@@ -317,6 +319,44 @@ function FlowchartCanvas() {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
       ctx.fillText(elementType?.name || '', x, y + size * 0.38);
     }
+
+    // Plugin gear indicator (clickable in handleMouseDown)
+    if (element.type === 'plugin') {
+      const gearR = 13 * zoom;
+      const gx = x + halfSize - gearR - 6 * zoom;
+      const gy = y - halfSize + gearR + 6 * zoom;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(gx, gy, gearR, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(125, 211, 252, 0.5)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.font = `${16 * zoom}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#e0f2fe';
+      ctx.fillText('⚙️', gx, gy + 1 * zoom);
+
+      // Status dot (top-left of the gear circle)
+      const status = element.properties?.connection?.status || 'unknown';
+      const dotColor = status === 'connected'
+        ? 'rgba(34, 197, 94, 0.95)'
+        : status === 'not_configured'
+          ? 'rgba(251, 146, 60, 0.95)'
+          : (status === 'invalid' || status === 'connection_failed')
+            ? 'rgba(239, 68, 68, 0.95)'
+            : 'rgba(148, 163, 184, 0.9)';
+      ctx.beginPath();
+      ctx.arc(gx - gearR + 4 * zoom, gy - gearR + 4 * zoom, 4.5 * zoom, 0, Math.PI * 2);
+      ctx.fillStyle = dotColor;
+      ctx.fill();
+
+      ctx.restore();
+    }
     
     // Индикатор соединения
     if (isConnecting && connectingFrom !== element.id) {
@@ -464,9 +504,15 @@ function FlowchartCanvas() {
     
     const ctx = canvas.getContext('2d');
     const { width, height } = container.getBoundingClientRect();
-    
-    canvas.width = width;
-    canvas.height = height;
+
+    // Avoid resizing canvas if size hasn't changed: resizing can trigger expensive reflow and
+    // may cause cascaded mousemove events in some browsers.
+    const last = lastCanvasSizeRef.current;
+    if (last.width !== width || last.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+      lastCanvasSizeRef.current = { width, height };
+    }
     
     // Фон
     ctx.fillStyle = '#0f172a';
@@ -686,6 +732,28 @@ function FlowchartCanvas() {
       if (isConnecting) {
         finishConnecting(element.id);
       } else {
+        // Gear click for plugin element opens settings popup (no dragging).
+        if (element.type === 'plugin') {
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (rect) {
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+            const { x, y } = worldToScreen(element.position.x, element.position.y);
+            const size = BASE_SIZE * zoom;
+            const halfSize = size / 2;
+            const gearR = 13 * zoom;
+            const gx = x + halfSize - gearR - 6 * zoom;
+            const gy = y - halfSize + gearR + 6 * zoom;
+            const dx = clickX - gx;
+            const dy = clickY - gy;
+            if (dx * dx + dy * dy <= (gearR + 3) * (gearR + 3)) {
+              selectElement(element.id);
+              openPluginSettings(element.id);
+              return;
+            }
+          }
+        }
+
         selectElement(element.id);
         setDraggingElementId(element.id);
         setDragStart({ x: worldPos.x - element.position.x, y: worldPos.y - element.position.y });
@@ -704,13 +772,18 @@ function FlowchartCanvas() {
         }
       }
     }
-  }, [screenToWorld, hitTestElement, hitTestConnection, pan, zoom, isConnecting, 
-      selectElement, selectConnection, finishConnecting, clearSelection, cancelConnecting]);
+  }, [screenToWorld, hitTestElement, hitTestConnection, pan, zoom, isConnecting,
+      worldToScreen, openPluginSettings, selectElement, selectConnection, finishConnecting, clearSelection, cancelConnecting]);
 
   const handleMouseMove = useCallback((e) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (rect) {
-      setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      // mousePos is only needed for drawing the "connecting" line.
+      // Don't update state unless it affects rendering; also guard against redundant updates.
+      if (isConnecting) {
+        const next = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        setMousePos((prev) => (prev.x === next.x && prev.y === next.y ? prev : next));
+      }
     }
     
     if (isPanning) {
@@ -729,7 +802,7 @@ function FlowchartCanvas() {
       const dropTarget = findDropTarget(newPosition.x, newPosition.y, draggingElementId);
       setDropTarget(dropTarget?.id || null);
     }
-  }, [isPanning, isDragging, draggingElementId, dragStart, zoom, screenToWorld, setPan, updateElement, findDropTarget, setDropTarget]);
+  }, [isConnecting, isPanning, isDragging, draggingElementId, dragStart, zoom, screenToWorld, setPan, updateElement, findDropTarget, setDropTarget]);
 
   const handleMouseUp = useCallback(() => {
     if (isDragging && draggingElementId && dropTargetId) {
@@ -764,12 +837,14 @@ function FlowchartCanvas() {
       // Только департаменты поддерживают навигацию внутрь (даже пустые)
       if (elementType?.canContain) {
         navigateInto(element.id);
+      } else if (element.type === 'plugin') {
+        openPluginSettings(element.id);
       } else {
         // Для других типов - показываем информационный диалог
         setInfoModalElement(element);
       }
     }
-  }, [screenToWorld, hitTestElement, navigateInto]);
+  }, [screenToWorld, hitTestElement, navigateInto, openPluginSettings]);
 
   // Контекстное меню (правый клик)
   const handleContextMenu = useCallback((e) => {

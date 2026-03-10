@@ -166,14 +166,25 @@ function PropertiesPanel() {
   const startConnecting = useFlowchartStore((state) => state.startConnecting);
   const unnestElement = useFlowchartStore((state) => state.unnestElement);
   const navigateInto = useFlowchartStore((state) => state.navigateInto);
+  const openPluginSettings = useFlowchartStore((state) => state.openPluginSettings);
 
   const selectedElement = elements.find((e) => e.id === selectedElementId);
   const selectedConnection = connections.find((c) => c.id === selectedConnectionId);
+
+  const apiBase = (import.meta?.env?.DEV && window.location.port === '3000')
+    ? `http://${window.location.hostname}:3001`
+    : '';
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState('#3b82f6');
   const [properties, setProperties] = useState({});
+
+  // Реестр доступных плагинов (backend: server/plugins/* -> GET /api/plugins)
+  const [availablePlugins, setAvailablePlugins] = useState([]);
+  const [pluginsLoading, setPluginsLoading] = useState(false);
+  const [pluginsError, setPluginsError] = useState('');
+  const [pluginsFetchAttempted, setPluginsFetchAttempted] = useState(false);
   
   // Connection state
   const [connectionDescription, setConnectionDescription] = useState('');
@@ -194,6 +205,157 @@ function PropertiesPanel() {
       setConnectionType(selectedConnection.type || 'collaborates');
     }
   }, [selectedElement, selectedConnection]);
+
+  useEffect(() => {
+    if (selectedElement?.type !== 'plugin') return;
+    if (availablePlugins.length > 0 || pluginsLoading || pluginsFetchAttempted) return;
+
+    setPluginsLoading(true);
+    setPluginsError('');
+    setPluginsFetchAttempted(true);
+    fetch(`${apiBase}/api/plugins`, { credentials: 'include' })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        const plugins = Array.isArray(data?.plugins) ? data.plugins : [];
+        setAvailablePlugins(plugins);
+      })
+      .catch((e) => {
+        // Fallback: Telegram-only manifest so UI stays usable even if backend route isn't available yet.
+        setAvailablePlugins([{
+          id: 'telegram',
+          name: 'Telegram',
+          description: 'Подключает Telegram к проекту. Настройка хранится на сервере и наследуется вниз по иерархии: можно подключить Telegram на корне (для всего проекта) или на конкретном звене (департамент/узел) только для этой ветки.',
+          howItWorks: 'Плагин сохраняет серверные параметры доступа к Telegram. Для уведомлений обычно достаточно бота (Bot API). Если нужно работать как аккаунт (через MTProto), используются api_id/api_hash и номер телефона (аутентификация выполняется на сервере).',
+          fields: [
+            {
+              key: 'authMode',
+              label: 'Способ подключения',
+              type: 'select',
+              required: true,
+              default: 'account',
+              options: [
+                { value: 'account', label: 'Telegram аккаунт (серверно, MTProto)' },
+                { value: 'bot', label: 'Telegram бот (Bot API)' }
+              ],
+              help: 'Выберите, что именно вы подключаете. Аккаунт нужен для более широких сценариев, бот чаще всего подходит для уведомлений.'
+            },
+            {
+              key: 'apiId',
+              label: 'API ID',
+              type: 'text',
+              required: true,
+              placeholder: '123456',
+              showIf: { key: 'authMode', equals: 'account' },
+              help: 'Берется на my.telegram.org → API development tools → App configuration → API ID.'
+            },
+            {
+              key: 'apiHash',
+              label: 'API Hash',
+              type: 'password',
+              required: true,
+              placeholder: '0123456789abcdef0123456789abcdef',
+              showIf: { key: 'authMode', equals: 'account' },
+              help: 'Берется на my.telegram.org → API development tools → App configuration → API Hash.'
+            },
+            {
+              key: 'phoneNumber',
+              label: 'Номер телефона аккаунта',
+              type: 'text',
+              required: true,
+              placeholder: '+79991234567',
+              showIf: { key: 'authMode', equals: 'account' },
+              help: 'Номер в международном формате (с +). Это тот номер, на который зарегистрирован Telegram.'
+            },
+            {
+              key: 'twoFactorPassword',
+              label: 'Пароль 2FA (если включен)',
+              type: 'password',
+              required: false,
+              placeholder: '••••••••',
+              showIf: { key: 'authMode', equals: 'account' },
+              help: 'Нужен только если в Telegram включена двухэтапная аутентификация. Рекомендуется в дальнейшем заменить на безопасную серверную сессию.'
+            },
+            {
+              key: 'sessionString',
+              label: 'Серверная сессия (Session String)',
+              type: 'textarea',
+              required: false,
+              placeholder: 'AQG... (длинная строка)',
+              showIf: { key: 'authMode', equals: 'account' },
+              help: 'Если у вас уже есть Session String (например, сгенерированный админом), вставьте сюда. Это безопаснее, чем хранить пароль 2FA.'
+            },
+            {
+              key: 'botToken',
+              label: 'Токен бота',
+              type: 'password',
+              required: true,
+              placeholder: '123456789:AA...',
+              showIf: { key: 'authMode', equals: 'bot' },
+              help: 'Создается через @BotFather в Telegram.'
+            },
+            {
+              key: 'defaultChatId',
+              label: 'ID чата/канала (по умолчанию)',
+              type: 'text',
+              required: false,
+              placeholder: '-1001234567890',
+              help: 'Опционально. Если заполнить, система сможет отправлять уведомления без выбора чата каждый раз.'
+            }
+          ],
+          instructions: [
+            {
+              title: 'Главное',
+              text: 'Telegram в Aiternitas работает серверно: вы один раз задаете параметры доступа в плагине, и далее Telegram доступен на любом нижнем уровне иерархии (плагин наследуется вниз). Если вам нужен отдельный Telegram для конкретного департамента, создайте второй плагин внутри нужного узла.'
+            },
+            {
+              title: 'Вариант A: Telegram аккаунт (MTProto, серверно)',
+              text: 'Этот вариант использует ваш Telegram-аккаунт. Нужны api_id/api_hash (ключи приложения) и номер телефона. Важно: на my.telegram.org номер телефона НЕ показывается, его нужно взять из Telegram (или просто ввести тот, на который зарегистрирован аккаунт). Где взять ключи:',
+              showIf: { key: 'authMode', equals: 'account' },
+              steps: [
+                '1) Откройте сайт my.telegram.org (это официальный сайт Telegram).',
+                '2) Войдите: введите номер телефона и код подтверждения, который придет в Telegram.',
+                '3) Перейдите в раздел: "API development tools".',
+                '4) Создайте приложение (Create new application), если его еще нет: заполните App title и Short name (любой текст).',
+                '5) После создания на странице появятся "API ID" и "API Hash" (в блоке App configuration): скопируйте их в поля плагина.',
+                '6) Номер телефона возьмите из Telegram: Telegram → Настройки → (ваш аккаунт) → номер телефона. Введите его в поле "Номер телефона аккаунта" в формате +<код_страны><номер> (например +79991234567).',
+                '7) Если в Telegram включена 2FA (пароль): заполните "Пароль 2FA". Если 2FA нет, оставьте пустым.',
+                '8) Если у вас уже есть Session String: вставьте его в поле "Серверная сессия". Это предпочтительнее, чем хранить пароль 2FA.'
+              ]
+            },
+            {
+              title: 'Вариант B: Telegram бот (Bot API)',
+              text: 'Это самый простой способ для уведомлений (бот пишет сообщения). Что делать:',
+              showIf: { key: 'authMode', equals: 'bot' },
+              steps: [
+                '1) Откройте Telegram и найдите @BotFather.',
+                '2) Отправьте команду /newbot и следуйте инструкциям.',
+                '3) Скопируйте выданный токен и вставьте в поле "Токен бота".',
+                '4) (Опционально) Добавьте бота в чат/канал, куда он будет писать.',
+                '5) (Опционально) Узнайте ID чата/канала и заполните "ID чата/канала (по умолчанию)".'
+              ]
+            },
+            {
+              title: 'Как понять, что вводить',
+              steps: [
+                'API ID / API Hash: выдаются только на my.telegram.org в разделе API development tools.',
+                'Номер телефона: это номер Telegram-аккаунта (my.telegram.org его не показывает). Посмотреть можно в Telegram → Настройки.',
+                'Токен бота: выдаёт только @BotFather и он выглядит как 123456789:AA....',
+                'ID чата/канала: обычно отрицательное число для каналов/супергрупп (пример: -100...).'
+              ]
+            },
+            {
+              title: 'Где размещать плагин в структуре',
+              text: 'Плагин считается подключенным на уровне того элемента, внутри которого он создан. Такой Telegram доступен для всех элементов ниже по иерархии. Если создать плагин на корне, он будет доступен всему проекту.'
+            }
+          ]
+        }]);
+        setPluginsError('Бекенд /api/plugins недоступен (используется встроенный Telegram-шаблон)');
+      })
+      .finally(() => setPluginsLoading(false));
+  }, [apiBase, selectedElement?.type, availablePlugins.length, pluginsLoading, pluginsFetchAttempted]);
 
   const handleSaveElement = () => {
     if (selectedElement && selectedElementId) {
@@ -218,6 +380,59 @@ function PropertiesPanel() {
 
   const handlePropertyChange = (key, value) => {
     setProperties((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handlePluginConfigChange = (key, value) => {
+    setProperties((prev) => ({
+      ...prev,
+      config: {
+        ...(prev?.config || {}),
+        [key]: value
+      }
+    }));
+  };
+
+  const getPluginLabel = (pluginId) => {
+    const p = availablePlugins.find(x => x.id === pluginId);
+    return p?.name || pluginId || 'Плагин';
+  };
+
+  const computeEffectivePlugins = (element) => {
+    if (!element) return [];
+
+    // Уровень для наследования начинается с контейнера:
+    // department -> сам департамент; остальные -> родитель (если есть).
+    const containers = [];
+    let container = element.type === 'department'
+      ? element
+      : (element.parentId ? elements.find(e => e.id === element.parentId) : null);
+
+    while (container) {
+      containers.push(container);
+      container = container.parentId ? elements.find(e => e.id === container.parentId) : null;
+    }
+    containers.push(null); // root scope
+
+    const seen = new Set();
+    const effective = [];
+
+    for (const scopeEl of containers) {
+      const scopeId = scopeEl?.id || null;
+      const scopePlugins = elements.filter(e =>
+        e.type === 'plugin' &&
+        (e.parentId || null) === scopeId &&
+        e.properties?.enabled !== false
+      );
+
+      for (const pEl of scopePlugins) {
+        const pid = pEl.properties?.pluginId || 'unknown';
+        if (seen.has(pid)) continue;
+        seen.add(pid);
+        effective.push({ pluginElement: pEl, pluginId: pid, scopeElement: scopeEl });
+      }
+    }
+
+    return effective;
   };
 
   // === ПУСТОЕ СОСТОЯНИЕ ===
@@ -380,6 +595,19 @@ function PropertiesPanel() {
     : null;
   const parentType = parent ? ELEMENT_TYPES[parent.type] : null;
   const childElements = elements.filter(e => e.parentId === selectedElement.id);
+  const effectivePlugins = selectedElement.type !== 'plugin'
+    ? computeEffectivePlugins(selectedElement)
+    : [];
+
+  const selectedPluginId = selectedElement.type === 'plugin'
+    ? (properties?.pluginId || 'telegram')
+    : null;
+  const selectedPlugin = selectedElement.type === 'plugin'
+    ? (availablePlugins.find(p => p.id === selectedPluginId) || null)
+    : null;
+  const pluginScopeLabel = selectedElement.type === 'plugin'
+    ? (parent ? `Уровень: ${parent.name}` : 'Уровень: Корень проекта')
+    : '';
 
   return (
     <div className="flowchart-properties-panel">
@@ -387,6 +615,16 @@ function PropertiesPanel() {
         <div className="properties-title-row">
           <span className="properties-icon">{elementType?.icon}</span>
           <h3>{elementType?.name || 'Элемент'}</h3>
+          {selectedElement.type === 'plugin' && (
+            <button
+              className="properties-settings-btn"
+              onClick={() => openPluginSettings(selectedElement.id)}
+              title="Открыть настройки плагина"
+              type="button"
+            >
+              ⚙️ Настроить
+            </button>
+          )}
         </div>
       </div>
       
@@ -461,6 +699,30 @@ function PropertiesPanel() {
           </>
         )}
 
+        {/* Плагины, доступные на уровне элемента (наследуются от уровней выше) */}
+        {effectivePlugins.length > 0 && (
+          <>
+            <div className="properties-divider">
+              <span>🔌 Доступные плагины</span>
+            </div>
+            <div className="plugins-effective">
+              {effectivePlugins.map(({ pluginElement, pluginId, scopeElement }) => (
+                <button
+                  key={pluginElement.id}
+                  className="plugins-effective-item"
+                  onClick={() => selectElement(pluginElement.id)}
+                  title="Открыть настройки плагина"
+                >
+                  <span className="plugins-effective-name">{getPluginLabel(pluginId)}</span>
+                  <span className="plugins-effective-scope">
+                    {scopeElement ? `из: ${scopeElement.name}` : 'из: Корень'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
         {/* Дочерние элементы */}
         <div className="properties-divider">
           <span>👶 Дочерние ({childElements.length})</span>
@@ -507,41 +769,212 @@ function PropertiesPanel() {
               <span>⚙️ Свойства типа</span>
             </div>
 
-            {Object.entries(elementType.properties).map(([key, propDef]) => (
-              <div key={key} className="property-group">
-                <label>{propDef.label}</label>
-                {propDef.type === 'boolean' ? (
+            {selectedElement.type === 'plugin' ? (
+              <div className="plugin-editor">
+                <div className="property-group">
+                  <label>Плагин</label>
+                  <select
+                    value={selectedPluginId || 'telegram'}
+                    onChange={(e) => {
+                      const nextId = e.target.value;
+                      const nextPlugin = availablePlugins.find(p => p.id === nextId) || null;
+
+                      setProperties(prev => ({ ...prev, pluginId: nextId, config: {} }));
+
+                      // Если имя по умолчанию, подставим имя плагина.
+                      if ((name || '').trim() === (ELEMENT_TYPES.plugin?.name || 'Плагин') && nextPlugin?.name) {
+                        setName(nextPlugin.name);
+                        updateElement(selectedElementId, {
+                          name: nextPlugin.name,
+                          properties: { ...(properties || {}), pluginId: nextId, config: {} }
+                        });
+                        return;
+                      }
+
+                      setTimeout(handleSaveElement, 0);
+                    }}
+                    disabled={pluginsLoading}
+                  >
+                    {(availablePlugins.length > 0 ? availablePlugins : [{ id: 'telegram', name: 'Telegram' }]).map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  {pluginsError && <div className="field-hint error">{pluginsError}</div>}
+                  <div className="field-hint">
+                    {pluginScopeLabel}. Авторизованный Telegram можно использовать ниже по иерархии, а также создать новый Telegram-плагин на любом звене.
+                  </div>
+                </div>
+
+                <div className="property-group">
+                  <label>Включен</label>
                   <label className="checkbox-label">
                     <input
                       type="checkbox"
-                      checked={properties[key] || false}
+                      checked={properties?.enabled !== false}
                       onChange={(e) => {
-                        handlePropertyChange(key, e.target.checked);
+                        handlePropertyChange('enabled', e.target.checked);
                         setTimeout(handleSaveElement, 0);
                       }}
                     />
                     <span className="checkbox-text">
-                      {properties[key] ? 'Да' : 'Нет'}
+                      {properties?.enabled !== false ? 'Да' : 'Нет'}
                     </span>
                   </label>
-                ) : propDef.type === 'number' ? (
-                  <input
-                    type="number"
-                    value={properties[key] || 0}
-                    onChange={(e) => handlePropertyChange(key, parseFloat(e.target.value) || 0)}
-                    onBlur={handleSaveElement}
-                  />
-                ) : (
-                  <input
-                    type="text"
-                    value={properties[key] || ''}
-                    onChange={(e) => handlePropertyChange(key, e.target.value)}
-                    onBlur={handleSaveElement}
-                    placeholder={propDef.label}
-                  />
+                  <div className="field-hint">Если выключить, этот плагин не будет считаться доступным для нижних уровней.</div>
+                </div>
+
+                {selectedPlugin?.description && (
+                  <div className="plugin-card">
+                    <div className="plugin-card-title">Как работает в системе</div>
+                    <div className="plugin-card-text">{selectedPlugin.description}</div>
+                    {selectedPlugin.howItWorks && (
+                      <div className="plugin-card-text">{selectedPlugin.howItWorks}</div>
+                    )}
+                  </div>
+                )}
+
+                {selectedPlugin?.instructions && (
+                  <details className="plugin-details" open>
+                    <summary>Инструкция по подключению</summary>
+                    {Array.isArray(selectedPlugin.instructions) ? (
+                      <div className="plugin-instructions">
+                        {selectedPlugin.instructions
+                          .filter((section) => {
+                            if (!section?.showIf) return true;
+                            const cfg = properties?.config || {};
+                            const depKey = section.showIf.key;
+                            const depDefault = selectedPlugin.fields?.find(f => f.key === depKey)?.default;
+                            const depVal = cfg?.[depKey] ?? depDefault;
+                            return depVal === section.showIf.equals;
+                          })
+                          .map((section, idx) => (
+                            <div key={idx} className="plugin-instructions-section">
+                              {section.title && <div className="plugin-instructions-title">{section.title}</div>}
+                              {section.text && <div className="plugin-instructions-text">{section.text}</div>}
+                              {Array.isArray(section.steps) && (
+                                <ul className="plugin-instructions-steps">
+                                  {section.steps.map((s, i) => <li key={i}>{s}</li>)}
+                                </ul>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <div className="plugin-instructions">{String(selectedPlugin.instructions)}</div>
+                    )}
+                  </details>
+                )}
+
+                {Array.isArray(selectedPlugin?.fields) && selectedPlugin.fields.length > 0 && (
+                  <>
+                    {selectedPlugin.fields.map((f) => {
+                      const cfg = properties?.config || {};
+                      const v = cfg[f.key] ?? f.default ?? '';
+
+                      const isVisible = (() => {
+                        if (!f?.showIf) return true;
+                        const depKey = f.showIf.key;
+                        const depVal = cfg?.[depKey] ?? selectedPlugin?.fields?.find(x => x.key === depKey)?.default;
+                        return depVal === f.showIf.equals;
+                      })();
+                      if (!isVisible) return null;
+
+                      const inputType = f.type === 'password'
+                        ? 'password'
+                        : (f.type === 'number' ? 'number' : 'text');
+                      return (
+                        <div key={f.key} className="property-group">
+                          <label>{f.label}{f.required ? ' *' : ''}</label>
+                          {f.type === 'select' ? (
+                            <select
+                              value={v}
+                              onChange={(e) => {
+                                handlePluginConfigChange(f.key, e.target.value);
+                                setTimeout(handleSaveElement, 0);
+                              }}
+                            >
+                              {(f.options || []).map(o => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
+                            </select>
+                          ) : f.type === 'textarea' ? (
+                            <textarea
+                              value={v}
+                              onChange={(e) => handlePluginConfigChange(f.key, e.target.value)}
+                              onBlur={handleSaveElement}
+                              placeholder={f.placeholder || f.label}
+                              rows={4}
+                              autoComplete="off"
+                            />
+                          ) : (
+                            <input
+                              type={inputType}
+                              value={v}
+                              onChange={(e) => handlePluginConfigChange(
+                                f.key,
+                                inputType === 'number' ? (parseFloat(e.target.value) || 0) : e.target.value
+                              )}
+                              onBlur={handleSaveElement}
+                              placeholder={f.placeholder || f.label}
+                              autoComplete="off"
+                            />
+                          )}
+                          {f.help && <div className="field-hint">{f.help}</div>}
+                        </div>
+                      );
+                    })}
+                  </>
                 )}
               </div>
-            ))}
+            ) : (
+              Object.entries(elementType.properties).map(([key, propDef]) => (
+                <div key={key} className="property-group">
+                  <label>{propDef.label}</label>
+                  {propDef.type === 'boolean' ? (
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={properties[key] || false}
+                        onChange={(e) => {
+                          handlePropertyChange(key, e.target.checked);
+                          setTimeout(handleSaveElement, 0);
+                        }}
+                      />
+                      <span className="checkbox-text">
+                        {properties[key] ? 'Да' : 'Нет'}
+                      </span>
+                    </label>
+                  ) : propDef.type === 'number' ? (
+                    <input
+                      type="number"
+                      value={properties[key] || 0}
+                      onChange={(e) => handlePropertyChange(key, parseFloat(e.target.value) || 0)}
+                      onBlur={handleSaveElement}
+                    />
+                  ) : propDef.type === 'select' ? (
+                    <select
+                      value={properties[key] ?? propDef.default ?? ''}
+                      onChange={(e) => {
+                        handlePropertyChange(key, e.target.value);
+                        setTimeout(handleSaveElement, 0);
+                      }}
+                    >
+                      {(propDef.options || []).map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={properties[key] || ''}
+                      onChange={(e) => handlePropertyChange(key, e.target.value)}
+                      onBlur={handleSaveElement}
+                      placeholder={propDef.label}
+                    />
+                  )}
+                </div>
+              ))
+            )}
           </>
         )}
 

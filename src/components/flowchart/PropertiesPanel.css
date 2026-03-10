@@ -28,6 +28,25 @@
   color: #fff;
 }
 
+.properties-settings-btn {
+  margin-left: auto;
+  padding: 8px 10px;
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(14, 165, 233, 0.28);
+  border-radius: 10px;
+  color: #7dd3fc;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.properties-settings-btn:hover {
+  background: rgba(14, 165, 233, 0.18);
+  border-color: rgba(14, 165, 233, 0.4);
+  color: #e0f2fe;
+}
+
 .properties-empty {
   padding: 50px 20px;
   text-align: center;
@@ -90,7 +109,8 @@
 }
 
 .property-group input[type="text"],
-.property-group input[type="number"] {
+.property-group input[type="number"],
+.property-group select {
   padding: 10px 12px;
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -101,11 +121,134 @@
 }
 
 .property-group input[type="text"]:focus,
-.property-group input[type="number"]:focus {
+.property-group input[type="number"]:focus,
+.property-group select:focus {
   outline: none;
   border-color: rgba(59, 130, 246, 0.5);
   background: rgba(0, 0, 0, 0.4);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.property-group select {
+  cursor: pointer;
+}
+
+.field-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+.field-hint.error {
+  color: rgba(239, 68, 68, 0.9);
+}
+
+/* Effective plugins list (inheritance preview) */
+.plugins-effective {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plugins-effective-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(14, 165, 233, 0.08);
+  border: 1px solid rgba(14, 165, 233, 0.18);
+  border-radius: 10px;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.plugins-effective-item:hover {
+  background: rgba(14, 165, 233, 0.14);
+  border-color: rgba(14, 165, 233, 0.28);
+}
+
+.plugins-effective-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.plugins-effective-scope {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Plugin editor */
+.plugin-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plugin-card {
+  padding: 12px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.plugin-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 6px;
+}
+
+.plugin-card-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.4;
+}
+
+.plugin-details {
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.plugin-details summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.plugin-instructions {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plugin-instructions-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.plugin-instructions-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.plugin-instructions-steps {
+  margin: 6px 0 0 18px;
+  padding: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.45;
 }
 
 .property-group textarea {
