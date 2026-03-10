@@ -87,6 +87,19 @@ export async function sendAuthCode(mtproto, phoneNumber, config) {
       return retryResult;
     }
 
+    // Обработка AUTH_RESTART - перезапускаем запрос один раз
+    if (error.error_message === 'AUTH_RESTART') {
+      console.log(`🔄 AUTH_RESTART received, retrying sendAuthCode...`);
+      return mtproto.call('auth.sendCode', {
+        phone_number: phoneNumber,
+        api_id: parseInt(config.apiId, 10),
+        api_hash: config.apiHash,
+        settings: {
+          _: 'codeSettings'
+        }
+      });
+    }
+
     console.log(`❌ Throwing error: ${error.error_message}`);
     throw error;
   }
@@ -125,6 +138,64 @@ export async function sendMessageToSelf(mtproto, messageText) {
     message: messageText,
     random_id: Math.floor(Math.random() * 1e16)
   });
+}
+
+/**
+ * Получить статистику чатов (всего и непрочитанных)
+ */
+export async function getChatStats(mtproto) {
+  try {
+    const dialogs = await mtproto.call('messages.getDialogs', {
+      offset_date: 0,
+      offset_id: 0,
+      offset_peer: {
+        _: 'inputPeerEmpty'
+      },
+      limit: 100, // Лимит 100 для статистики достаточно
+      hash: 0
+    });
+
+    let totalChats = 0;
+    let totalUnread = 0;
+
+    // messages.dialogsSlice содержит поле count для общего количества
+    if (dialogs._ === 'messages.dialogsSlice') {
+      totalChats = dialogs.count;
+    } else if (dialogs._ === 'messages.dialogs') {
+      totalChats = dialogs.dialogs.length;
+    }
+
+    if (dialogs.dialogs) {
+      for (const dialog of dialogs.dialogs) {
+        totalUnread += dialog.unread_count || 0;
+      }
+    }
+
+    return { totalChats, totalUnread };
+  } catch (error) {
+    console.error('❌ Error in getChatStats:', error);
+    throw error;
+  }
+}
+
+/**
+ * Удалить сессию Telegram для пользователя
+ */
+export function deleteTelegramSession(userId) {
+  const storageDir = path.resolve(__dirname, `../../data/telegram-sessions`);
+  const storagePath = path.join(storageDir, `session_${userId}.json`);
+  
+  if (fs.existsSync(storagePath)) {
+    try {
+      fs.unlinkSync(storagePath);
+      console.log(`🗑️ Deleted Telegram session for user ${userId}`);
+      return true;
+    } catch (err) {
+      console.error(`❌ Failed to delete Telegram session for user ${userId}:`, err);
+      throw err;
+    }
+  }
+  return false;
 }
 
 /**

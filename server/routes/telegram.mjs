@@ -1,10 +1,14 @@
 import express from 'express';
+import pool from '../db.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
 import {
   createMTProtoClient,
   sendAuthCode,
-  testTelegramConnection
+  testTelegramConnection,
+  getChatStats,
+  deleteTelegramSession
 } from '../plugins/telegramMTProto.mjs';
+import { savePluginConfig, getPluginConfig, deletePluginConfig } from '../models/pluginConfig.mjs';
 
 const router = express.Router();
 
@@ -39,12 +43,22 @@ router.post('/test', requireAuth, async (req, res) => {
       });
     }
 
+    if (isNaN(parseInt(apiId, 10))) {
+      return res.status(400).json({
+        success: false,
+        error: 'App api_id должен быть числом'
+      });
+    }
+
     const config = { apiId, apiHash, appTitle, publicKeys };
 
     console.log(`📱 Telegram test: userId=${userId}, apiId=${apiId}`);
 
     // Если есть code - значит это второй шаг (подтверждение)
     if (code && phoneCodeHash && phoneNumber) {
+      const projectId = req.body.projectId || 'default';
+      const elementId = req.body.elementId || 'telegram-plugin';
+
       const result = await testTelegramConnection({
         config,
         userId,
@@ -54,11 +68,31 @@ router.post('/test', requireAuth, async (req, res) => {
       });
 
       console.log(`📡 Telegram test result:`, result.status);
+
+      // Если авторизация прошла успешно, сохраняем конфиг в БД
+      if (result.success && result.status === 'connected') {
+        try {
+          await savePluginConfig({
+            userId,
+            projectId,
+            elementId,
+            pluginId: 'telegram',
+            enabled: true,
+            config: config
+          });
+          console.log(`💾 Telegram config saved to DB after auth for user ${userId}, element ${elementId}`);
+        } catch (saveError) {
+          console.error('❌ Failed to save telegram config to DB after auth:', saveError);
+        }
+      }
+
       return res.json(result);
     }
 
     // Если есть phoneNumber но нет кода - отправляем код
-    if (phoneNumber) {
+    if (phoneNumber && !code) {
+      // Принудительно очищаем старую сессию перед новой авторизацией
+      deleteTelegramSession(userId);
       const mtproto = createMTProtoClient(config, userId);
 
       try {
@@ -82,8 +116,29 @@ router.post('/test', requireAuth, async (req, res) => {
     }
 
     // Если ничего не передано - просто проверяем существующую авторизацию
+    const projectId = req.body.projectId || 'default';
+    const elementId = req.body.elementId || 'telegram-plugin';
+
     const result = await testTelegramConnection({ config, userId });
     console.log(`📡 Telegram test result:`, result.status);
+
+    // Если тест успешен и мы подключены, сохраняем конфиг в БД
+    if (result.success && result.status === 'connected') {
+      try {
+        await savePluginConfig({
+          userId,
+          projectId,
+          elementId,
+          pluginId: 'telegram',
+          enabled: true,
+          config: config
+        });
+        console.log(`💾 Telegram config saved to DB for user ${userId}, element ${elementId}`);
+      } catch (saveError) {
+        console.error('❌ Failed to save telegram config to DB:', saveError);
+      }
+    }
+
     res.json(result);
 
   } catch (e) {
@@ -91,6 +146,107 @@ router.post('/test', requireAuth, async (req, res) => {
     res.status(500).json({
       success: false,
       error: e.message || 'Ошибка тестирования'
+    });
+  }
+});
+
+/**
+ * GET /api/telegram/stats
+ * Получить статистику чатов Telegram (всего и непрочитанных)
+ */
+router.get('/stats', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    const elementId = req.query.elementId || 'telegram-plugin';
+    
+    console.log(`📊 Requesting stats for user=${userId}, elementId=${elementId}`);
+    
+    // Загружаем конфиг из БД
+    let savedConfig = await getPluginConfig({ userId, projectId: 'default', elementId });
+    
+    // Если по elementId не нашли, попробуем дефолтный (или наоборот)
+    if (!savedConfig || !savedConfig.config) {
+      console.log(`⚠️ Config for element ${elementId} not found, trying fallback 'telegram-plugin'`);
+      savedConfig = await getPluginConfig({ userId, projectId: 'default', elementId: 'telegram-plugin' });
+    }
+
+    if (!savedConfig || !savedConfig.config) {
+      console.log(`❌ No Telegram config found for user ${userId} (searched ${elementId} and fallback)`);
+      
+      // Попробуем найти ЛЮБОЙ конфиг телеграма для этого пользователя
+      try {
+        const anyConfig = await pool.query(
+          'SELECT element_id FROM plugin_configs WHERE user_id = $1 AND plugin_id = $2 LIMIT 1',
+          [userId, 'telegram']
+        );
+        if (anyConfig.rows.length > 0) {
+          console.log(`💡 Found alternative element_id for user ${userId}: ${anyConfig.rows[0].element_id}`);
+          savedConfig = await getPluginConfig({ userId, projectId: 'default', elementId: anyConfig.rows[0].element_id });
+        }
+      } catch (dbErr) {
+        console.error('Error searching alternative config:', dbErr);
+      }
+    }
+
+    if (!savedConfig || !savedConfig.config) {
+      return res.status(404).json({
+        success: false,
+        error: 'Конфигурация Telegram не найдена',
+        searchedId: elementId
+      });
+    }
+
+    const mtproto = createMTProtoClient(savedConfig.config, userId);
+    const stats = await getChatStats(mtproto);
+
+    console.log(`📊 Telegram stats for user ${userId}:`, stats);
+
+    res.json({
+      success: true,
+      stats
+    });
+  } catch (e) {
+    if (e.error_message === 'AUTH_KEY_UNREGISTERED') {
+      return res.status(401).json({
+        success: false,
+        error: 'Требуется авторизация в Telegram'
+      });
+    }
+    console.error('❌ Telegram stats error:', e);
+    res.status(500).json({
+      success: false,
+      error: e.message || 'Ошибка получения статистики'
+    });
+  }
+});
+
+/**
+ * POST /api/telegram/disconnect
+ * Отключить Telegram: удалить сессию и очистить конфигурацию
+ */
+router.post('/disconnect', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    const elementId = req.body.elementId || 'telegram-plugin';
+    const projectId = req.body.projectId || 'default';
+
+    console.log(`🔌 Disconnecting Telegram for user ${userId}, element ${elementId}`);
+
+    // 1. Удаляем сессию MTProto (файл)
+    deleteTelegramSession(userId);
+
+    // 2. Удаляем конфигурацию из БД
+    await deletePluginConfig({ userId, projectId, elementId });
+
+    res.json({
+      success: true,
+      message: 'Telegram успешно отключен'
+    });
+  } catch (e) {
+    console.error('❌ Telegram disconnect error:', e);
+    res.status(500).json({
+      success: false,
+      error: e.message || 'Ошибка при отключении Telegram'
     });
   }
 });

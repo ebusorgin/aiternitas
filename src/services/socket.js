@@ -211,9 +211,9 @@ class SocketService {
   // Check auth status
   async checkAuth() {
     try {
-      const response = await this.emit('auth:check', {});
+      const response = await this.emit('auth:check', {}, 3000);
       
-      if (response.authenticated) {
+      if (response && response.authenticated) {
         this.authenticated = true;
         this.userId = response.user.id;
       } else {
@@ -223,7 +223,7 @@ class SocketService {
       
       return response;
     } catch (error) {
-      console.error('Auth check error:', error);
+      console.warn('Auth check failed (possibly timeout):', error.message);
       this.authenticated = false;
       this.userId = null;
       return { authenticated: false, error: error.message };

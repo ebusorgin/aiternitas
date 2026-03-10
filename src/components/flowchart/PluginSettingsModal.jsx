@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useFlowchartStore } from '../../store/flowchartStore';
 import { useAuth } from '../../context/AuthContext';
-import TelegramSetup from './TelegramSetup';
 import './PluginSettingsModal.css';
 
 const FALLBACK_TELEGRAM = {
@@ -10,6 +9,8 @@ const FALLBACK_TELEGRAM = {
   description: 'Подключите Telegram аккаунт (двойной клик для настройки)',
   fields: [] // Поля показываются в модальном окне, а не в общем списке
 };
+
+const STORAGE_KEY = 'telegram_setup_data';
 
 function fieldVisible(field, config, plugin) {
   if (!field?.showIf) return true;
@@ -34,9 +35,32 @@ export default function PluginSettingsModal() {
   const [availablePlugins, setAvailablePlugins] = useState([FALLBACK_TELEGRAM]);
   const [pluginsFetchAttempted, setPluginsFetchAttempted] = useState(false);
   const [properties, setProperties] = useState({});
-  const [testLoading, setTestLoading] = useState(false);
-  const [testMessage, setTestMessage] = useState('');
-  const [showTelegramAuth, setShowTelegramAuth] = useState(false);
+  const [chatStats, setChatStats] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [disconnectLoading, setDisconnectLoading] = useState(false);
+
+  // Telegram Setup State
+  const [step, setStep] = useState('form'); // 'form' | 'phone' | 'code' | 'testing' | 'success'
+  const [apiId, setApiId] = useState('35115172');
+  const [apiHash, setApiHash] = useState('3a86bee7a54b8b364f4532c2dc6f91af');
+  const [appTitle, setAppTitle] = useState('aiternitas');
+  const [publicKeys, setPublicKeys] = useState(`-----BEGIN RSA PUBLIC KEY-----
+MIIBCgKCAQEAyMEdY1aR+sCR3ZSJrtztKTKqigvO/vBfqACJLZtS7QMgCGXJ6XIR
+yy7mx66W0/sOFa7/1mAZtEoIokDP3ShoqF4fVNb6XeqgQfaUHd8wJpDWHcR2OFwv
+plUUI1PLTktZ9uW2WE23b+ixNwJjJGwBDJPQEQFBE+vfmH0JP503wr5INS1poWg/
+j25sIWeYPHYeOrFp/eXaqhISP6G+q2IeTaWTXpwZj4LzXq5YOpk4bYEQ6mvRq7D1
+aHWfYmlEGepfaYR8Q0YqvvhYtMte3ITnuSJs171+GDqpdKcSwHnd6FudwGO4pcCO
+j4WcDuXc2CTHgH8gFTNhp/Y8/SpDOhvn9QIDAQAB
+-----END RSA PUBLIC KEY-----`);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [code, setCode] = useState('');
+  const [phoneCodeHash, setPhoneCodeHash] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState(null);
+  const [isConfigExpanded, setIsConfigExpanded] = useState(false);
+
+  const initialLoadDone = useRef(false);
 
   // Определяем base URL для API запросов
   const apiBase = (() => {
@@ -55,7 +79,78 @@ export default function PluginSettingsModal() {
   useEffect(() => {
     if (!element) return;
     setProperties(element.properties || {});
+    
+    // Сброс статистики при смене элемента
+    setChatStats(null);
+    setStep('form');
+    setError('');
+    
+    // Инициализация полей Telegram из свойств элемента
+    const config = element.properties?.config || {};
+    setApiId(config.apiId || '35115172');
+    setApiHash(config.apiHash || '3a86bee7a54b8b364f4532c2dc6f91af');
+    setAppTitle(config.appTitle || 'aiternitas');
+    setPublicKeys(config.publicKeys || `-----BEGIN RSA PUBLIC KEY-----
+MIIBCgKCAQEAyMEdY1aR+sCR3ZSJrtztKTKqigvO/vBfqACJLZtS7QMgCGXJ6XIR
+yy7mx66W0/sOFa7/1mAZtEoIokDP3ShoqF4fVNb6XeqgQfaUHd8wJpDWHcR2OFwv
+plUUI1PLTktZ9uW2WE23b+ixNwJjJGwBDJPQEQFBE+vfmH0JP503wr5INS1poWg/
+j25sIWeYPHYeOrFp/eXaqhISP6G+q2IeTaWTXpwZj4LzXq5YOpk4bYEQ6mvRq7D1
+aHWfYmlEGepfaYR8Q0YqvvhYtMte3ITnuSJs171+GDqpdKcSwHnd6FudwGO4pcCO
+j4WcDuXc2CTHgH8gFTNhp/Y8/SpDOhvn9QIDAQAB
+-----END RSA PUBLIC KEY-----`);
+    setPhoneNumber(config.phoneNumber || '');
+    
+    // Если подключено, сворачиваем по умолчанию
+    const isConnected = element.properties?.connection?.status === 'connected';
+    setIsConfigExpanded(!isConnected);
+    
+    initialLoadDone.current = true;
   }, [element?.id]);
+
+  // Загрузка статистики для Telegram
+  useEffect(() => {
+    const pluginId = properties?.pluginId || element?.properties?.pluginId;
+    const connectionStatus = properties?.connection?.status || element?.properties?.connection?.status;
+
+    if (pluginId === 'telegram' && (connectionStatus === 'connected' || properties?.connection?.status === 'connected') && !chatStats && !loadingStats) {
+      // Даем небольшую задержку, чтобы бэкенд успел сохранить конфиг в БД
+      // (актуально при первом подключении)
+      const fetchWithDelay = (retry = 0) => {
+        if (!element?.id) return;
+        setLoadingStats(true);
+        fetch(`${apiBase}/api/telegram/stats?elementId=${element.id}`, { credentials: 'include' })
+          .then(res => {
+            if (!res.ok) {
+              const err = new Error(`HTTP ${res.status}`);
+              err.status = res.status;
+              throw err;
+            }
+            const contentType = res.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+              throw new TypeError('Not a JSON response');
+            }
+            return res.json();
+          })
+          .then(data => {
+            if (data.success) {
+              setChatStats(data.stats);
+            }
+          })
+          .catch(err => {
+            console.error(`Error fetching telegram stats (attempt ${retry + 1}):`, err);
+            // Если 404, возможно БД еще не обновилась, попробуем еще раз через 2, 4, 6 секунд
+            if (err.status === 404 && retry < 3) {
+               const nextDelay = (retry + 1) * 2000;
+               setTimeout(() => fetchWithDelay(retry + 1), nextDelay);
+            }
+          })
+          .finally(() => setLoadingStats(false));
+      };
+
+      const timer = setTimeout(fetchWithDelay, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [element?.id, properties?.pluginId, properties?.connection?.status, apiBase, chatStats, loadingStats]);
 
   useEffect(() => {
     if (!element) return;
@@ -84,7 +179,6 @@ export default function PluginSettingsModal() {
   const connection = properties?.connection || null;
   const connectionStatus = connection?.status || 'not_tested';
   const effectiveStatus = connectionStatus;
-  const effectiveError = connection?.error || '';
 
   const save = (nextProps) => {
     setProperties(nextProps);
@@ -102,105 +196,208 @@ export default function PluginSettingsModal() {
     });
   };
 
-  const testConnection = async () => {
-    // Check if user is authenticated
-    if (!user) {
-      setTestMessage('❌ Требуется авторизация. Войдите в систему для тестирования плагина.');
+  const handleDisconnect = async (silent = false) => {
+    if (!silent && !window.confirm('Вы уверены, что хотите полностью отключить Telegram? Это удалит сессию и настройки.')) {
       return;
     }
 
-    setTestLoading(true);
-    setTestMessage('');
+    setDisconnectLoading(true);
     try {
-      const res = await fetch(`${apiBase}/api/plugins/test`, {
+      const response = await fetch(`${apiBase}/api/telegram/disconnect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          elementId: element.id,
+          projectId: 'default'
+        }),
+        credentials: 'include'
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        save({
+          ...(properties || {}),
+          config: {
+            ...config,
+            // Сохраняем введенные данные, но сбрасываем статус подключения
+          },
+          connection: {
+            status: 'not_tested',
+            testedAt: null,
+            error: ''
+          }
+        });
+        setChatStats(null);
+        setStep('form');
+      } else if (!silent) {
+        alert('Ошибка при отключении: ' + (data.error || 'Неизвестная ошибка'));
+      }
+    } catch (e) {
+      console.error('Disconnect error:', e);
+      if (!silent) alert('Ошибка при выполнении запроса');
+    } finally {
+      setDisconnectLoading(false);
+    }
+  };
+
+  // Авто-отключение при изменении API ID или API Hash
+  const handleApiFieldChange = (key, value) => {
+    if (!initialLoadDone.current) return;
+    
+    // Обновляем локальное состояние полей
+    if (key === 'apiId') setApiId(value);
+    if (key === 'apiHash') setApiHash(value);
+    if (key === 'appTitle') setAppTitle(value);
+    if (key === 'publicKeys') setPublicKeys(value);
+
+    // Если мы уже были подключены, отключаем
+    if (effectiveStatus === 'connected') {
+      handleDisconnect(true);
+    }
+
+    // Сохраняем в конфиг элемента
+    setCfg(key, value);
+  };
+
+  // Auth logic
+  const handleConnect = async () => {
+    if (!user) {
+      setError('Требуется авторизация в системе');
+      return;
+    }
+
+    if (!apiId || !apiHash) {
+      setError('Заполните App api_id и App api_hash');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    // Сбрасываем старые данные авторизации
+    setPhoneNumber('');
+    setCode('');
+    setPhoneCodeHash('');
+
+    try {
+      // При нажатии "Подключиться" мы ВСЕГДА переходим к вводу номера телефона,
+      // чтобы пользователь мог сам инициировать процесс авторизации нужного аккаунта.
+      // Даже если на бэкенде есть сессия, мы её проверим или перезатрем при вводе номера.
+      
+      const res = await fetch(`${apiBase}/api/telegram/test`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pluginId, config })
+        body: JSON.stringify({ 
+          apiId, apiHash, appTitle, publicKeys,
+          elementId: element.id,
+          projectId: 'default'
+        })
       });
 
-      if (res.status === 401) {
-        setTestMessage('❌ Требуется авторизация. Войдите в систему.');
-        save({
-          ...(properties || {}),
-          connection: {
-            status: 'connection_failed',
-            testedAt: new Date().toISOString(),
-            mode: config?.authMode || 'account',
-            error: 'Требуется авторизация'
-          }
-        });
-        setTestLoading(false);
-        return;
-      }
+      const data = await res.json();
 
-      const data = await res.json().catch(() => ({}));
-
-      // Handle validation errors (400) - show which fields are missing
-      if (res.status === 400 || data?.status === 'invalid' || data?.status === 'not_configured') {
-        const errMsg = data?.error || 'Ошибка валидации';
-        setTestMessage(`❌ ${errMsg}`);
-        save({
-          ...(properties || {}),
-          connection: {
-            status: data?.status || 'invalid',
-            testedAt: new Date().toISOString(),
-            mode: data?.mode || config?.authMode || 'account',
-            error: errMsg
-          }
-        });
-        setTestLoading(false);
-        return;
-      }
-
-      // Handle server errors (500)
-      if (!res.ok) {
-        const errMsg = data?.error || `Ошибка сервера (HTTP ${res.status})`;
-        setTestMessage(`❌ ${errMsg}`);
-        save({
-          ...(properties || {}),
-          connection: {
-            status: 'connection_failed',
-            testedAt: new Date().toISOString(),
-            mode: data?.mode || config?.authMode || 'account',
-            error: errMsg
-          }
-        });
-        setTestLoading(false);
-        return;
-      }
-
-      const status = data?.status || (data?.success ? 'connected' : 'connection_failed');
-      const testedAt = data?.testedAt || new Date().toISOString();
-      const err = data?.error || '';
-
-      save({
-        ...(properties || {}),
-        connection: {
-          status,
-          testedAt,
-          mode: data?.mode || config?.authMode || 'account',
-          error: err
-        }
-      });
-
-      setTestMessage(data?.success
-        ? '✅ Тест пройден: сообщение отправлено.'
-        : `❌ ${err || 'Тест не пройден.'}`);
+      // Если мы уже ПОЛНОСТЬЮ подключены и авторизованы (старая сессия на бэкенде), 
+      // то мы предлагаем пользователю переподключиться, перейдя к вводу номера.
+      // Пользователь нажал "Подключиться", значит он ХОЧЕТ подключить аккаунт.
+      setStep('phone');
+      
     } catch (e) {
-      const errMsg = e?.message || 'Ошибка тестирования';
-      setTestMessage(`❌ ${errMsg}`);
-      save({
-        ...(properties || {}),
-        connection: {
-          status: 'connection_failed',
-          testedAt: new Date().toISOString(),
-          mode: config?.authMode || 'account',
-          error: errMsg
-        }
-      });
+      // Даже если ошибка сети или парсинга, даем шанс ввести номер
+      setStep('phone');
     } finally {
-      setTestLoading(false);
+      setLoading(false);
+    }
+  };
+
+  const handleSendCode = async () => {
+    if (!phoneNumber.trim()) {
+      setError('Введите номер телефона');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch(`${apiBase}/api/telegram/test`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          apiId, apiHash, appTitle, publicKeys, phoneNumber,
+          elementId: element.id,
+          projectId: 'default'
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.status === 'code_sent' || data.phoneCodeHash) {
+        setPhoneCodeHash(data.phoneCodeHash);
+        setStep('code');
+      } else {
+        setError(data.error || 'Ошибка отправки кода');
+      }
+    } catch (e) {
+      setError(e.message || 'Ошибка подключения');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmCode = async () => {
+    if (!code.trim()) {
+      setError('Введите код из Telegram');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    const prevStep = step;
+    setStep('testing');
+
+    try {
+      const res = await fetch(`${apiBase}/api/telegram/test`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiId, apiHash, appTitle, publicKeys,
+          phoneNumber,
+          code: code.trim(),
+          phoneCodeHash,
+          elementId: element.id,
+          projectId: 'default'
+        })
+      });
+
+      const data = await res.json();
+
+      if ((data.success && data.status === 'connected') || data.status === 'connected') {
+        setResult(data);
+        save({
+          ...(properties || {}),
+          config: { apiId, apiHash, appTitle, publicKeys, phoneNumber },
+          connection: {
+            status: 'connected',
+            testedAt: new Date().toISOString(),
+            mode: 'account',
+            user: data.user
+          }
+        });
+        setChatStats(null); // Сброс статистики для перезапроса
+        setStep('success');
+        setIsConfigExpanded(false); // Сворачиваем настройки после успешного подключения
+      } else {
+        setError(data.error || data.message || 'Ошибка авторизации');
+        setStep(prevStep);
+      }
+    } catch (e) {
+      setError(e.message || 'Ошибка подключения');
+      setStep(prevStep);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -222,29 +419,6 @@ export default function PluginSettingsModal() {
 
         <div className="plugin-settings-content">
           <div className="property-group">
-            <label>Плагин</label>
-            <select
-              value={pluginId}
-              onChange={(e) => {
-                const nextId = e.target.value;
-                const nextPlugin = availablePlugins.find(p => p.id === nextId);
-                const next = { ...(properties || {}), pluginId: nextId, config: {} };
-                save(next);
-                if ((element.name || '').trim() === 'Плагин' && nextPlugin?.name) {
-                  updateElement(element.id, { name: nextPlugin.name });
-                }
-              }}
-            >
-              {availablePlugins.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-            <div className="field-hint">
-              Плагин доступен ниже по иерархии от уровня, где он создан (на корне или внутри департамента).
-            </div>
-          </div>
-
-          <div className="property-group">
             <label>Включен</label>
             <label className="checkbox-label">
               <input
@@ -256,68 +430,179 @@ export default function PluginSettingsModal() {
             </label>
           </div>
 
-          <div className="plugin-test-card">
-            <div className="plugin-test-row">
-              <div className="plugin-test-title">Статус подключения</div>
-              <span className={`plugin-status-badge ${effectiveStatus || 'unknown'}`}>
-                {effectiveStatus === 'connected' ? 'Подключено' :
-                  effectiveStatus === 'not_configured' ? 'Не заполнено' :
-                    effectiveStatus === 'invalid' ? 'Неверные данные' :
-                      effectiveStatus === 'connection_failed' ? 'Ошибка подключения' :
-                        effectiveStatus === 'not_tested' ? 'Не протестировано' :
-                          'Не протестировано'}
-              </span>
-            </div>
-            {connection?.testedAt && (
-              <div className="field-hint">Последняя проверка: {new Date(connection.testedAt).toLocaleString()}</div>
-            )}
-            {effectiveError && (
-              <div className="field-hint error">{effectiveError}</div>
-            )}
-            {testMessage && (
-              <div className="field-hint">{testMessage}</div>
-            )}
-            {!user && (
-              <div className="field-hint error">
-                ⚠️ Для тестирования плагина необходимо войти в систему
+          {effectiveStatus === 'connected' && pluginId === 'telegram' && (
+            <div className="plugin-stats">
+              <div className="stats-header">
+                <span className="status-badge connected">✅ Подключено</span>
+                <button 
+                  className="disconnect-btn-small" 
+                  onClick={() => handleDisconnect()}
+                  disabled={disconnectLoading}
+                >
+                  {disconnectLoading ? '...' : 'Удалить'}
+                </button>
               </div>
-            )}
-            <button
-              className="plugin-test-btn"
-              onClick={testConnection}
-              disabled={testLoading || !user}
-              type="button"
-            >
-              {testLoading ? 'Проверяем...' : 'Протестировать соединение'}
-            </button>
-            <div className="field-hint">
-              Тест отправляет сообщение в "Избранное" (Saved Messages) и сразу отключается.
-            </div>
-          </div>
-
-          <div className="plugin-card">
-            <div className="plugin-card-title">Описание</div>
-            <div className="plugin-card-text">{plugin.description}</div>
-            {plugin.howItWorks && <div className="plugin-card-text">{plugin.howItWorks}</div>}
-          </div>
-
-          {/* Кнопка настройки Telegram */}
-          {pluginId === 'telegram' && (
-            <div className="property-group">
-              <button
-                className="plugin-connect-btn"
-                onClick={() => setShowTelegramAuth(true)}
-                type="button"
-              >
-                🔗 Настроить Telegram
-              </button>
-              <div className="field-hint">
-                Откройте окно настройки для подключения Telegram аккаунта
-              </div>
+              {loadingStats ? (
+                <div className="field-hint">Загрузка статистики...</div>
+              ) : chatStats ? (
+                <div className="stats-grid">
+                  <div className="stat-item">
+                    <span className="stat-label">Всего чатов:</span>
+                    <span className="stat-value">{chatStats.totalChats}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">Непрочитанных:</span>
+                    <span className={`stat-value ${chatStats.totalUnread > 0 ? 'has-unread' : ''}`}>
+                      {chatStats.totalUnread}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="field-hint">Статистика недоступна</div>
+              )}
             </div>
           )}
 
-          {Array.isArray(plugin.fields) && plugin.fields.length > 0 && (
+          {pluginId === 'telegram' && (
+            <div className="telegram-integration-block">
+              {step === 'form' && (
+                <>
+                  <div 
+                    className={`config-toggle-header ${isConfigExpanded ? 'expanded' : ''}`}
+                    onClick={() => setIsConfigExpanded(!isConfigExpanded)}
+                  >
+                    <span className="toggle-icon">{isConfigExpanded ? '▼' : '▶'}</span>
+                    <span className="toggle-label">Настройки API</span>
+                  </div>
+
+                  {isConfigExpanded && (
+                    <div className="config-expandable-content">
+                      <div className="property-group">
+                        <label>App api_id *</label>
+                        <input
+                          type="text"
+                          value={apiId}
+                          onChange={(e) => handleApiFieldChange('apiId', e.target.value)}
+                          placeholder="35115172"
+                        />
+                      </div>
+                      <div className="property-group">
+                        <label>App api_hash *</label>
+                        <input
+                          type="password"
+                          value={apiHash}
+                          onChange={(e) => handleApiFieldChange('apiHash', e.target.value)}
+                          placeholder="3a86bee7a54b8b364f4532c2dc6f91af"
+                        />
+                      </div>
+                      <div className="property-group">
+                        <label>App title</label>
+                        <input
+                          type="text"
+                          value={appTitle}
+                          onChange={(e) => handleApiFieldChange('appTitle', e.target.value)}
+                          placeholder="aiternitas"
+                        />
+                      </div>
+                      <div className="property-group">
+                        <label>Public Key (PEM)</label>
+                        <textarea
+                          value={publicKeys}
+                          onChange={(e) => handleApiFieldChange('publicKeys', e.target.value)}
+                          placeholder="-----BEGIN RSA PUBLIC KEY----- ..."
+                          rows={3}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {effectiveStatus !== 'connected' && (
+                    <div className="auth-action-row">
+                      {error && step === 'form' && <div className="error-message">{error}</div>}
+                      <button 
+                        className="connect-btn" 
+                        onClick={handleConnect}
+                        disabled={loading}
+                      >
+                        {loading ? 'Проверка...' : 'Подключиться к Telegram'}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {['phone', 'code', 'testing', 'success'].includes(step) && (
+                <div className="auth-modal-overlay">
+                  <div className="auth-modal-container">
+                    <button className="auth-modal-close" onClick={() => setStep('form')}>&times;</button>
+                    
+                    {step === 'phone' && (
+                      <div className="auth-step-container">
+                        <h3>📱 Номер телефона</h3>
+                        <p className="step-hint">Введите номер в международном формате</p>
+                        <div className="property-group">
+                          <input
+                            type="text"
+                            value={phoneNumber}
+                            onChange={(e) => setPhoneNumber(e.target.value)}
+                            placeholder="+79991234567"
+                            autoFocus
+                          />
+                        </div>
+                        {error && <div className="error-message">{error}</div>}
+                        <div className="btn-group">
+                          <button className="primary-btn" onClick={handleSendCode} disabled={loading}>
+                            {loading ? 'Отправка...' : 'Отправить код'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {step === 'code' && (
+                      <div className="auth-step-container">
+                        <h3>✅ Подтверждение</h3>
+                        <p className="step-hint">Код отправлен на {phoneNumber}</p>
+                        <div className="property-group">
+                          <input
+                            type="text"
+                            value={code}
+                            onChange={(e) => setCode(e.target.value)}
+                            placeholder="12345"
+                            autoFocus
+                            maxLength={5}
+                          />
+                        </div>
+                        {error && <div className="error-message">{error}</div>}
+                        <div className="btn-group">
+                          <button className="primary-btn" onClick={handleConfirmCode} disabled={loading}>
+                            {loading ? 'Подтверждение...' : 'Войти'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {step === 'testing' && (
+                      <div className="auth-step-container testing">
+                        <div className="spinner"></div>
+                        <p>Авторизация...</p>
+                      </div>
+                    )}
+
+                    {step === 'success' && (
+                      <div className="auth-step-container success">
+                        <div className="success-icon">✅</div>
+                        <h3>Готово!</h3>
+                        <p>Telegram успешно подключен</p>
+                        <button className="primary-btn" onClick={() => setStep('form')}>Закрыть</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {pluginId !== 'telegram' && Array.isArray(plugin.fields) && plugin.fields.length > 0 && (
             <div className="plugin-fields">
               {plugin.fields
                 .filter(f => fieldVisible(f, config, plugin))
@@ -357,30 +642,6 @@ export default function PluginSettingsModal() {
           )}
         </div>
       </div>
-
-      {/* Модальное окно подключения Telegram */}
-      {showTelegramAuth && (
-        <TelegramSetup
-          onClose={() => setShowTelegramAuth(false)}
-          elementName={element.name}
-          onSuccess={(config, status) => {
-            // Сохраняем конфигурацию и статус
-            save({
-              ...(properties || {}),
-              config: { ...config },
-              connection: {
-                status: status.status,
-                testedAt: new Date().toISOString(),
-                mode: 'account',
-                error: '',
-                user: status.user
-              }
-            });
-            setShowTelegramAuth(false);
-            setTestMessage(`✅ Telegram подключен: ${status.user?.firstName || status.user?.username}`);
-          }}
-        />
-      )}
     </div>
   );
 }

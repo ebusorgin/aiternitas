@@ -65,7 +65,11 @@ export const ELEMENT_TYPES = {
     // ВАЖНО: конфиг конкретного плагина хранится в element.properties.config (JSON).
     properties: {
       pluginId: { label: 'Плагин', type: 'select', default: 'telegram', options: [
-        { value: 'telegram', label: 'Telegram' }
+        { value: 'telegram', label: 'Telegram' },
+        { value: 'whatsapp', label: 'WhatsApp' },
+        { value: 'viber', label: 'Viber' },
+        { value: 'youtube', label: 'YouTube' },
+        { value: 'instagram', label: 'Instagram' }
       ] },
       enabled: { label: 'Включен', type: 'boolean', default: true }
     }

@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useFlowchartStore, ELEMENT_TYPES, CONNECTION_TYPES } from '../../store/flowchartStore';
 import ContextMenu from './ContextMenu';
+import PluginTypeModal from './PluginTypeModal';
 import ElementInfoModal from './ElementInfoModal';
 import './FlowchartCanvas.css';
 
@@ -65,6 +66,10 @@ function FlowchartCanvas() {
   
   // Info modal state (for non-department elements)
   const [infoModalElement, setInfoModalElement] = useState(null);
+
+  // Plugin type selection state
+  const [showPluginTypeModal, setShowPluginTypeModal] = useState(false);
+  const [pendingPluginPos, setPendingPluginPos] = useState(null);
 
   // Get visible elements based on current view
   const getVisibleElements = useCallback(() => {
@@ -894,6 +899,13 @@ function FlowchartCanvas() {
   // Создание элемента из контекстного меню
   const handleCreateElement = useCallback((typeId) => {
     if (contextMenu?.worldPos) {
+      if (typeId === 'plugin') {
+        setPendingPluginPos(contextMenu.worldPos);
+        setShowPluginTypeModal(true);
+        setContextMenu(null);
+        return;
+      }
+      
       if (currentViewId) {
         // Если мы внутри элемента, создаем дочерний
         addChildElement(currentViewId, typeId);
@@ -903,6 +915,40 @@ function FlowchartCanvas() {
       }
     }
   }, [contextMenu, currentViewId, addElement, addChildElement]);
+
+  // Обработка выбора типа плагина
+  const handlePluginTypeSelect = useCallback((pluginTypeId, pluginTypeName) => {
+    setShowPluginTypeModal(false);
+    
+    if (pendingPluginPos) {
+      let newElement;
+      if (currentViewId) {
+        newElement = addChildElement(currentViewId, 'plugin');
+      } else {
+        newElement = addElement('plugin', pendingPluginPos);
+      }
+      
+      if (newElement) {
+        // Обновляем имя и тип плагина в свойствах
+        const updates = {
+          name: pluginTypeName,
+          properties: {
+            ...newElement.properties,
+            pluginId: pluginTypeId
+          }
+        };
+        
+        updateElement(newElement.id, updates);
+        
+        // Если выбран Telegram, сразу открываем настройки
+        if (pluginTypeId === 'telegram') {
+          openPluginSettings(newElement.id);
+        }
+      }
+    }
+    
+    setPendingPluginPos(null);
+  }, [pendingPluginPos, currentViewId, addElement, addChildElement, updateElement, openPluginSettings]);
 
   // Клавиатурные сокращения
   const handleKeyDown = useCallback((e) => {
@@ -1040,6 +1086,13 @@ function FlowchartCanvas() {
         <ElementInfoModal
           element={infoModalElement}
           onClose={() => setInfoModalElement(null)}
+        />
+      )}
+
+      {showPluginTypeModal && (
+        <PluginTypeModal
+          onClose={() => setShowPluginTypeModal(false)}
+          onSelect={handlePluginTypeSelect}
         />
       )}
     </div>
