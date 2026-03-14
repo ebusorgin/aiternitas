@@ -9,7 +9,6 @@ import { startTelegramAuth, completeTelegramAuth, cancelTelegramAuth } from '../
 
 const router = express.Router();
 
-// Public endpoint: frontend needs the list to render plugin settings UI.
 router.get('/', (req, res) => {
   res.json({ plugins: listPluginManifests() });
 });
@@ -20,50 +19,6 @@ router.get('/:pluginId', (req, res) => {
   res.json({ plugin: p });
 });
 
-const testLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  message: { error: 'Слишком много попыток тестирования. Попробуйте через минуту.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// Server-side plugin connectivity test.
-// For Telegram (account mode) it sends a message to "Saved Messages" (self).
-router.post('/test', requireAuth, testLimiter, async (req, res) => {
-  try {
-    const { pluginId, config } = req.body || {};
-
-    console.log(`🔌 Plugin test requested: userId=${req.session?.userId}, pluginId=${pluginId}, authMode=${config?.authMode}`);
-
-    if (!pluginId) {
-      console.log('❌ Plugin test failed: pluginId missing');
-      return res.status(400).json({ success: false, status: 'invalid', error: 'pluginId обязателен' });
-    }
-    if (!config || typeof config !== 'object') {
-      console.log('❌ Plugin test failed: config missing or invalid');
-      return res.status(400).json({ success: false, status: 'invalid', error: 'config обязателен' });
-    }
-
-    if (pluginId !== 'telegram') {
-      console.log(`❌ Plugin test failed: unsupported pluginId=${pluginId}`);
-      return res.status(400).json({ success: false, status: 'invalid', error: 'Тестирование доступно пока только для Telegram' });
-    }
-
-    const mode = (config?.authMode === 'bot' || config?.authMode === 'account') ? config.authMode : 'account';
-    console.log(`🔌 Testing Telegram connection: mode=${mode}`);
-
-    const result = await testTelegramConnection({ config, userId: req.session.userId });
-    console.log(`🔌 Plugin test result: status=${result?.status}, success=${!!result?.success}`);
-
-    // Return appropriate HTTP status based on result
-    const httpStatus = result?.success ? 200 : (result?.status === 'invalid' || result?.status === 'not_configured') ? 400 : 200;
-    res.status(httpStatus).json(result);
-  } catch (e) {
-    console.error('❌ Plugin test error:', e);
-    res.status(500).json({ success: false, status: 'connection_failed', error: e?.message || 'Ошибка тестирования' });
-  }
-});
 
 // Save plugin configuration
 router.post('/config/save', requireAuth, async (req, res) => {
@@ -170,37 +125,7 @@ router.get('/telegram/status', requireAuth, async (req, res) => {
   }
 });
 
-// Manually connect/reconnect Telegram
-router.post('/telegram/connect', requireAuth, async (req, res) => {
-  try {
-    const { projectId, elementId } = req.body || {};
-    const userId = req.session.userId;
 
-    if (!projectId || !elementId) {
-      return res.status(400).json({ success: false, error: 'projectId и elementId обязательны' });
-    }
-
-    const config = await getPluginConfig({ userId, projectId, elementId });
-
-    if (!config || !config.enabled) {
-      return res.status(400).json({ success: false, error: 'Плагин не найден или отключен' });
-    }
-
-    const result = await telegramConnectionManager.connect({
-      userId,
-      projectId,
-      elementId,
-      pluginId: config.plugin_id,
-      config: config.config,
-      sessionString: config.sessionString
-    });
-
-    res.json({ success: true, result });
-  } catch (e) {
-    console.error('❌ Telegram connect error:', e);
-    res.status(500).json({ success: false, error: e?.message || 'Ошибка подключения' });
-  }
-});
 
 // Disconnect Telegram
 router.post('/telegram/disconnect', requireAuth, async (req, res) => {
@@ -255,6 +180,8 @@ router.get('/telegram/status', requireAuth, async (req, res) => {
 
 // Manually connect/reconnect Telegram
 router.post('/telegram/connect', requireAuth, async (req, res) => {
+  console.log('🔌 Telegram connect request received:', { body: req.body, userId: req.session.userId });
+  return res.status(200).json({ success: true, message: 'Telegram connect request received' });
   try {
     const { projectId, elementId } = req.body || {};
     const userId = req.session.userId;

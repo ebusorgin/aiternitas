@@ -1,13 +1,7 @@
 import express from 'express';
 import pool from '../db.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
-import {
-  createMTProtoClient,
-  sendAuthCode,
-  testTelegramConnection,
-  getChatStats,
-  deleteTelegramSession
-} from '../plugins/telegramMTProto.mjs';
+import telegram from '../plugins/telegramMTProto.mjs';
 import { savePluginConfig, getPluginConfig, deletePluginConfig } from '../models/pluginConfig.mjs';
 
 const router = express.Router();
@@ -25,12 +19,26 @@ setInterval(() => {
   }
 }, 60 * 1000);
 
+function withTimeout(promise, ms, context) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      const id = setTimeout(() => {
+        clearTimeout(id);
+        const err = new Error(`Операция "${context}" заняла больше ${ms / 1000} секунд. Попробуйте ещё раз позже.`);
+        err.code = 'ETIMEDOUT';
+        reject(err);
+      }, ms);
+    })
+  ]);
+}
+
 /**
- * POST /api/telegram/test
- * Тестировать подключение Telegram
+ * POST /api/telegram/connect
+ * Подключение и тестирование Telegram (отправка кода и подтверждение)
  * Body: { apiId, apiHash, appTitle, publicKeys, phoneNumber?, code?, phoneCodeHash? }
  */
-router.post('/test', requireAuth, async (req, res) => {
+async function handleTelegramConnect(req, res) {
   try {
     const { apiId, apiHash, appTitle, publicKeys, phoneNumber, code, phoneCodeHash } = req.body || {};
     const userId = req.session.userId;
@@ -58,14 +66,18 @@ router.post('/test', requireAuth, async (req, res) => {
     if (code && phoneCodeHash && phoneNumber) {
       const projectId = req.body.projectId || 'default';
       const elementId = req.body.elementId || 'telegram-plugin';
-
-      const result = await testTelegramConnection({
-        config,
-        userId,
-        phoneNumber,
-        code,
-        phoneCodeHash
-      });
+console.log(config, userId, phoneNumber, code, phoneCodeHash); 
+      const result = await withTimeout(
+        testTelegramConnection({
+          config,
+          userId,
+          phoneNumber,
+          code,
+          phoneCodeHash
+        }),
+        60000,
+        'подтверждения кода Telegram'
+      );
 
       console.log(`📡 Telegram test result:`, result.status);
 
@@ -88,7 +100,7 @@ router.post('/test', requireAuth, async (req, res) => {
 
       return res.json(result);
     }
-
+console.log("phoneNumber", phoneNumber, "code", code);
     // Если есть phoneNumber но нет кода - отправляем код
     if (phoneNumber && !code) {
       // Принудительно очищаем старую сессию перед новой авторизацией
@@ -96,6 +108,7 @@ router.post('/test', requireAuth, async (req, res) => {
       const mtproto = createMTProtoClient(config, userId);
 
       try {
+        // Отправка кода может занимать больше минуты, поэтому не ограничиваем таймаутом
         const codeResult = await sendAuthCode(mtproto, phoneNumber, config);
 
         console.log(`📨 Auth code sent to ${phoneNumber}`);
@@ -119,7 +132,11 @@ router.post('/test', requireAuth, async (req, res) => {
     const projectId = req.body.projectId || 'default';
     const elementId = req.body.elementId || 'telegram-plugin';
 
-    const result = await testTelegramConnection({ config, userId });
+    const result = await withTimeout(
+      testTelegramConnection({ config, userId }),
+      60000,
+      'проверки подключения Telegram'
+    );
     console.log(`📡 Telegram test result:`, result.status);
 
     // Если тест успешен и мы подключены, сохраняем конфиг в БД
@@ -148,7 +165,13 @@ router.post('/test', requireAuth, async (req, res) => {
       error: e.message || 'Ошибка тестирования'
     });
   }
-});
+}
+
+// Новый основной endpoint
+router.post('/connect', requireAuth, handleTelegramConnect);
+
+// Алиас для обратной совместимости
+router.post('/test', requireAuth, handleTelegramConnect);
 
 /**
  * GET /api/telegram/stats

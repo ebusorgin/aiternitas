@@ -1,0 +1,43 @@
+{
+  "name": "aiternitas-server",
+  "version": "1.0.0",
+  "description": "Aiternitas backend",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "nodemon server.mjs",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": ["aiternitas", "backend"],
+  "license": "ISC",
+  "dependencies": {
+    "@mtproto/core": "^6.3.0",
+    "bcrypt": "^5.1.1",
+    "connect-pg-simple": "^10.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.1",
+    "express-session": "^1.18.1",
+    "google-auth-library": "^10.5.0",
+    "mailparser": "^3.6.5",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^2.7.0",
+    "nodemailer": "^7.0.11",
+    "openai": "^6.9.1",
+    "pg": "^8.16.3",
+    "smtp-server": "^3.14.0",
+    "socket.io": "^4.7.5",
+    "socks-proxy-agent": "^8.0.5",
+    "telegram": "^2.26.16"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.3",
+    "nodemon": "^3.1.14",
+    "vitest": "^4.0.18"
+  }
+}

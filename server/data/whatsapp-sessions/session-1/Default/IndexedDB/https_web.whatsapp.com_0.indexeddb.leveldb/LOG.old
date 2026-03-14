@@ -1,0 +1,15 @@
+2026/01/31-00:13:56.715 4fa0 Reusing MANIFEST C:\Users\evg\WebstormProjects\apk\aiternitas\data\whatsapp-sessions\session-1\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/01/31-00:13:56.715 4fa0 Recovering log #65
+2026/01/31-00:13:56.746 4fa0 Reusing old log C:\Users\evg\WebstormProjects\apk\aiternitas\data\whatsapp-sessions\session-1\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000065.log 
+2026/01/31-00:14:11.076 884 Level-0 table #72: started
+2026/01/31-00:14:11.102 884 Level-0 table #72: 1235746 bytes OK
+2026/01/31-00:14:11.105 884 Delete type=0 #65
+2026/01/31-00:14:11.896 16d4 Compacting 1@1 + 2@2 files
+2026/01/31-00:14:11.988 16d4 Generated table #73@1: 72757 keys, 2308788 bytes
+2026/01/31-00:14:12.050 16d4 Generated table #74@1: 39543 keys, 2210384 bytes
+2026/01/31-00:14:12.057 16d4 Generated table #75@1: 1800 keys, 161118 bytes
+2026/01/31-00:14:12.057 16d4 Compacted 1@1 + 2@2 files => 4680290 bytes
+2026/01/31-00:14:12.059 16d4 compacted to: files[ 0 0 4 0 0 0 0 ]
+2026/01/31-00:14:12.059 16d4 Delete type=2 #67
+2026/01/31-00:14:12.059 16d4 Delete type=2 #68
+2026/01/31-00:14:12.059 16d4 Delete type=2 #72

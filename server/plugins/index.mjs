@@ -16,10 +16,12 @@ function sanitizeManifest(p) {
 }
 
 export function listPluginManifests() {
+
   return PLUGINS.map(sanitizeManifest);
 }
 
 export function getPluginManifest(pluginId) {
+  console.log("sssswwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwsss", pluginId);
   const p = PLUGINS.find(x => x.id === pluginId);
   return p ? sanitizeManifest(p) : null;
 }
