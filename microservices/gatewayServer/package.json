@@ -1,0 +1,17 @@
+{
+  "name": "gatewayServer",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node --env-file=../../.env index.mjs",
+    "dev": "nodemon --env-file=../../.env index.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "http-proxy": "^1.18.1",
+    "http-proxy-middleware": "^3.0.6"
+  }
+}

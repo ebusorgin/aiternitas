@@ -1,0 +1,14 @@
+{
+  "name": "integrationServer",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node --env-file=../../.env index.mjs",
+    "dev": "nodemon --env-file=../../.env index.mjs"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5"
+  }
+}

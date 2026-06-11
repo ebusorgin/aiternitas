@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "@docling/docling-core": "^0.0.7",
+    "concurrently": "^9.2.1"
+  },
+  "scripts": {
+    "start": "concurrently --kill-others-on-fail --prefix \"[{name}]\" --names \"SERVER,CLIENT\" --prefix-colors \"bgBlue.bold,bgGreen.bold\" \"npm run dev --prefix server\" \"npm run dev --prefix client\""
+  },
+  "workspaces": [
+    "server",
+    "client",
+    "microservices/*"
+  ]
+}

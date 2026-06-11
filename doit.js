@@ -1,0 +1,13 @@
+const fs = require('fs');
+const file = 'c:/Users/evg/WebstormProjects/apk/aiternitas/server/agents/WorkerAgent.mjs';
+let c = fs.readFileSync(file, 'utf8');
+
+c = c.replace('3. "bash_execute" - запуск консольной команды в корне проекта.', '3. "bash_execute" - запуск консольной команды в Docker-песочнице (Linux-контейнер).');
+c = c.replace('Ты работаешь на ОС Windows (используй PowerShell/CMD команды, если нужно). Рабочая директория: ${process.cwd()}', 'Скрипты (bash_execute) выполняются в изолированной Linux-песочнице (Docker) в папке /workspace. Рабочая директория хоста проецируется в /workspace.');
+
+const bashExecOld = "        case 'bash_execute':\n          const forbidden = ['rm -rf', 'del /s /q', 'format', 'shutdown', 'mkfs'];\n          if (forbidden.some(cmd => args.command.toLowerCase().includes(cmd))) {\n             return 'TOOL ERROR: Command forbidden for security reasons.';\n          }\n          const { stdout, stderr } = await execPromise(args.command, { cwd: process.cwd() });\n          return `STDOUT:\\n${stdout}\\nSTDERR:\\n${stderr}`;";
+const bashExecNew = "        case 'bash_execute':\n          const forbidden = ['rm -rf', 'format', 'shutdown', 'mkfs'];\n          if (forbidden.some(cmd => args.command.toLowerCase().includes(cmd))) {\n             return 'TOOL ERROR: Command forbidden for security reasons.';\n          }\n          const crypto = require('crypto');\n          const scriptName = '.temp_exec_' + crypto.randomBytes(4).toString('hex') + '.sh';\n          const tempScriptPath = require('path').join(process.cwd(), scriptName);\n          await require('fs').promises.writeFile(tempScriptPath, args.command, 'utf8');\n          let stdout = '';\n          let stderr = '';\n          try {\n            const dockerCmd = 'docker run --rm -v \"' + process.cwd() + '\":/workspace -w /workspace node:18-alpine sh /workspace/' + scriptName;\n            const result = await execPromise(dockerCmd);\n            stdout = result.stdout;\n            stedrr = result.stderr;\n          } catch(err) {\n            stdout = err.stdout || '';\n            stedrr = err.stderr || err.message;\n          } finally {\n            await require('fs').promises.unlink(tempScriptPath).catch(() => {});\n          }\n          return `STDOUT:\\n${stdout}\\nSTDERR:\\n${stderr}`;";
+
+c = c.replace(bashExecOld, bashExecNew);
+fs.writeFileSync(file, c, 'utf8');
+console.log('Update complete.');

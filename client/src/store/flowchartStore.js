@@ -939,6 +939,7 @@ export const useFlowchartStore = create((set, get) => ({
     const startY = -gridHeight / 2;
     
     // Position each element
+    const updates = [];
     visibleElements.forEach((el, index) => {
       const col = index % cols;
       const row = Math.floor(index / cols);
@@ -953,13 +954,22 @@ export const useFlowchartStore = create((set, get) => ({
       const dy = Math.abs((el.position?.y || 0) - newPosition.y);
       
       if (dx > 5 || dy > 5) {
-        set((state) => ({
-          elements: state.elements.map(e =>
-            e.id === el.id ? { ...e, position: newPosition } : e
-          )
-        }));
+        updates.push({ id: el.id, position: newPosition });
       }
     });
+    
+    if (updates.length > 0) {
+      set((state) => {
+        const nextElements = [...state.elements];
+        updates.forEach(update => {
+          const idx = nextElements.findIndex(e => e.id === update.id);
+          if (idx !== -1) {
+            nextElements[idx] = { ...nextElements[idx], position: update.position };
+          }
+        });
+        return { elements: nextElements };
+      });
+    }
     
     // Fit to view after layout
     get().fitToView(viewportWidth, viewportHeight);

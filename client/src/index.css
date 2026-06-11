@@ -1,4 +1,4 @@
-* {
+﻿* {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -9,14 +9,17 @@ body {
     background: #0a0e27;
     color: #e0e0e0;
     line-height: 1.6;
-    overflow-x: hidden;
+    overflow: hidden;
+    height: 100vh;
 }
 
 html {
     scroll-behavior: smooth;
+    height: 100vh;
+    overflow: hidden;
 }
 
 #root {
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
 }
-

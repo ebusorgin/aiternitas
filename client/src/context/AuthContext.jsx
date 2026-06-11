@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import socketService from '../services/socket';
+import { apiCallJson } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -14,15 +15,12 @@ export function AuthProvider({ children }) {
     const init = async () => {
       setLoading(true);
       try {
-        // Сначала проверяем сессию по HTTP (cookie) — так надёжно и на проде, и после перезагрузки
-        const meRes = await fetch('/api/auth/me', { credentials: 'include' });
-        if (meRes.ok) {
-          const data = await meRes.json();
-          if (data.user) {
-            setUser(data.user);
-            httpSessionRef.current = true;
-          }
-        }
+         // Сначала проверяем сессию по HTTP (cookie) — так надёжно и на проде, и после перезагрузки
+         const meRes = await apiCallJson('/api/auth/me');
+         if (meRes && meRes.user) {
+           setUser(meRes.user);
+           httpSessionRef.current = true;
+         }
 
         await socketService.connect();
         setSocketConnected(true);
@@ -69,15 +67,12 @@ export function AuthProvider({ children }) {
 
   const checkAuth = useCallback(async () => {
     try {
-      const meRes = await fetch('/api/auth/me', { credentials: 'include' });
-      if (meRes.ok) {
-        const data = await meRes.json();
-        if (data.user) {
-          setUser(data.user);
-          httpSessionRef.current = true;
-          setLoading(false);
-          return;
-        }
+      const data = await apiCallJson('/api/auth/me');
+      if (data && data.user) {
+        setUser(data.user);
+        httpSessionRef.current = true;
+        setLoading(false);
+        return;
       }
     } catch (e) {
       console.error('Auth check (HTTP) error:', e);
@@ -113,14 +108,10 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     try {
-      const response = await fetch('/api/auth/login', {
+      const result = await apiCallJson('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
-      
-      const result = await response.json();
       
       if (result.success && result.user) {
         setUser(result.user);
@@ -144,14 +135,10 @@ export function AuthProvider({ children }) {
 
   const register = useCallback(async (name, email, password) => {
     try {
-      const response = await fetch('/api/auth/register', {
+      const result = await apiCallJson('/api/auth/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ name, email, password }),
       });
-      
-      const result = await response.json();
       
       if (result.success && result.user) {
         setUser(result.user);
@@ -177,7 +164,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      await apiCallJson('/api/auth/logout', { method: 'POST' });
       httpSessionRef.current = false;
       await socketService.logout();
       setUser(null);
@@ -194,13 +181,9 @@ export function AuthProvider({ children }) {
   // Google OAuth still uses HTTP redirect
   const loginWithGoogle = useCallback(async () => {
     try {
-      const response = await fetch('/api/auth/google', {
-        credentials: 'include',
-      });
+      const data = await apiCallJson('/api/auth/google');
 
-      const data = await response.json();
-
-      if (response.ok && data.authUrl) {
+      if (data && data.authUrl) {
         window.location.href = data.authUrl;
         return { success: true };
       } else {

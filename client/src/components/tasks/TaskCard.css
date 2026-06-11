@@ -196,3 +196,27 @@
   color: rgba(255, 255, 255, 0.6);
 }
 
+/* AI Processing Indicator */
+.task-card__ai-processing {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #a78bfa;
+  background: rgba(139, 92, 246, 0.1);
+  padding: 6px 10px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.ai-pulse {
+  display: inline-block;
+  animation: ai-pulse-anim 1.5s infinite;
+}
+
+@keyframes ai-pulse-anim {
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.2); opacity: 1; text-shadow: 0 0 8px rgba(167, 139, 250, 0.8); }
+  100% { transform: scale(1); opacity: 0.8; }
+}

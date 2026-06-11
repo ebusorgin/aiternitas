@@ -1,0 +1,117 @@
+.agent-terminal {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  width: 450px;
+  background: rgba(15, 15, 20, 0.95);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  z-index: 9998;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+.agent-terminal.closed {
+  height: 40px;
+}
+
+.agent-terminal.open {
+  height: 350px;
+}
+
+.agent-terminal__header {
+  padding: 10px 15px;
+  background: rgba(139, 92, 246, 0.2);
+  color: #a78bfa;
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.agent-terminal__toggle {
+  background: none;
+  border: none;
+  color: #a78bfa;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.agent-terminal__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Custom Scrollbar for terminal */
+.agent-terminal__content::-webkit-scrollbar {
+  width: 6px;
+}
+.agent-terminal__content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+.agent-terminal__content::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.4);
+  border-radius: 3px;
+}
+
+.agent-log {
+  padding: 4px 6px;
+  border-radius: 4px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.agent-log__time {
+  color: rgba(255, 255, 255, 0.4);
+  margin-right: 8px;
+}
+
+.agent-log__name {
+  color: #a78bfa;
+  margin-right: 8px;
+  font-weight: bold;
+}
+
+.agent-log__message {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Log Types */
+.agent-log--info .agent-log__message {
+  color: #60a5fa;
+}
+
+.agent-log--thinking .agent-log__message {
+  color: #fcd34d;
+  font-style: italic;
+}
+
+.agent-log--tool_call .agent-log__message {
+  color: #34d399;
+}
+
+.agent-log--success .agent-log__message {
+  color: #10b981;
+  font-weight: bold;
+}
+
+.agent-log--error .agent-log__message {
+  color: #ef4444;
+}
+
+.agent-log--warning .agent-log__message {
+  color: #f59e0b;
+}

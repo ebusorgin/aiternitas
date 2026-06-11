@@ -49,6 +49,19 @@ function Sidebar({ user, loading, onLogout, isOpen, onClose }) {
           
           <nav className="sidebar-nav">
             <Link 
+              to="/sandbox" 
+              className={`sidebar-nav-item ${isActive('/sandbox') ? 'active' : ''}`}
+              onClick={handleLinkClick}
+              style={{ background: 'rgba(234, 179, 8, 0.1)', borderLeft: '3px solid #eab308' }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="9" y1="3" x2="9" y2="21"></line>
+              </svg>
+              <span style={{ color: '#fef08a', fontWeight: 'bold' }}>ПЕСОЧНИЦА</span>
+            </Link>
+
+            <Link 
               to="/profile" 
               className={`sidebar-nav-item ${isActive('/profile') ? 'active' : ''}`}
               onClick={handleLinkClick}

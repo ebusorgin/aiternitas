@@ -1,0 +1,89 @@
+.system-dashboard {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(20, 20, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+  width: 300px;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.system-dashboard.closed {
+  height: auto;
+}
+
+.system-dashboard__toggle {
+  width: 100%;
+  padding: 10px 15px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+}
+
+.system-dashboard.open .system-dashboard__toggle {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.system-dashboard__content {
+  padding: 15px;
+}
+
+.metric-group {
+  margin-bottom: 15px;
+}
+
+.metric-group:last-child {
+  margin-bottom: 0;
+}
+
+.metric-title {
+  margin: 0 0 5px 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.metric-bar-container {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.metric-bar {
+  height: 100%;
+  transition: width 1s ease, background-color 1s ease;
+}
+
+.metric-value {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.cpu-cores {
+  display: flex;
+  gap: 2px;
+  margin-top: 5px;
+  height: 20px;
+  align-items: flex-end;
+}
+
+.cpu-core-bar {
+  flex: 1;
+  background: #10b981;
+  min-height: 2px;
+  transition: height 1s ease, background-color 1s ease;
+  border-radius: 1px 1px 0 0;
+}

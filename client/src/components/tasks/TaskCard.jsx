@@ -149,6 +149,12 @@ function TaskCard({
         </div>
       </div>
       
+      {task.assigned_to_worker_id && task.status === 'in_progress' && (
+        <div className="task-card__ai-processing">
+          <span className="ai-pulse">🤖</span> ИИ работает...
+        </div>
+      )}
+      
       {task.status === 'escalated' && (
         <div className="task-card__escalated">
           ⬆️ Эскалировано

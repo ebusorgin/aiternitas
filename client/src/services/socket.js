@@ -10,10 +10,12 @@ class SocketService {
     this.authenticated = false;
     this.userId = null;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
+    this.maxReconnectAttempts = 10;
     this.eventHandlers = new Map();
     this.pendingCallbacks = new Map();
     this.connectPromise = null;
+    this._listenersAttached = false; // Защита от дублирования слушателей
+    this._forwardingAttached = false; // Защита от повторной регистрации forwarding
   }
 
   // Connect to server
@@ -29,9 +31,26 @@ class SocketService {
     this.connectPromise = new Promise((resolve, reject) => {
       try {
         if (!this.socket) {
-          const baseUrl = window.location.origin;
+          // Determine the correct URL for connecting
+          let socketUrl;
+          const isDev = window.location.hostname === 'localhost';
+          
+          // In development (Vite dev server on 3000): connect to Gateway on 3001
+          // In production: use same origin
+          if (isDev && window.location.port === '3000') {
+            // Development: Gateway is on port 3001
+            socketUrl = 'http://localhost:3001';
+            console.log('[Socket] Dev mode: connecting to Gateway on 3001');
+          } else {
+            // Production: use current origin
+            socketUrl = window.location.origin;
+            console.log('[Socket] Production mode: using origin', socketUrl);
+          }
 
-          this.socket = io(baseUrl, {
+          console.log('[Socket] Connecting to:', socketUrl);
+
+          this.socket = io(socketUrl, {
+            path: '/socket.io/',
             withCredentials: true,
             transports: ['websocket', 'polling'],
             reconnection: true,
@@ -58,7 +77,7 @@ class SocketService {
           });
 
           this.socket.on('connect_error', (error) => {
-            console.error('🔌 Socket.IO connection error:', error);
+            console.error('🔌 Socket.IO connection error:', error.message);
             this.reconnectAttempts++;
             this.connectPromise = null;
 
@@ -80,6 +99,22 @@ class SocketService {
             });
           });
 
+          // Обработка ситуации, когда все попытки переподключения провалились
+          this.socket.on('reconnect_failed', () => {
+            console.warn('🔌 Socket.IO reconnect_failed — все попытки исчерпаны, пересоздаём подключение');
+            this.connected = false;
+            this.connectPromise = null;
+            // Пересоздаём сокет заново
+            this.socket?.removeAllListeners();
+            this.socket = null;
+            this._listenersAttached = false;
+            this._forwardingAttached = false;
+            // Пытаемся подключиться снова
+            this.connect().catch(err => {
+              console.error('🔌 Socket.IO full reconnect failed:', err.message);
+            });
+          });
+
           this.setupEventForwarding();
         } else {
           this.socket.connect();
@@ -98,12 +133,15 @@ class SocketService {
   // Disconnect
   disconnect() {
     if (this.socket) {
+      this.socket.removeAllListeners();
       this.socket.disconnect();
       this.socket = null;
     }
     this.connected = false;
     this.authenticated = false;
     this.userId = null;
+    this._forwardingAttached = false;
+    this._listenersAttached = false;
   }
 
   // Emit event with promise-based callback
@@ -174,6 +212,9 @@ class SocketService {
 
   // Setup event forwarding for common events
   setupEventForwarding() {
+    if (this._forwardingAttached) return; // Защита от повторной регистрации
+    this._forwardingAttached = true;
+
     // Flowchart events
     const flowchartEvents = [
       'flowchart:element:created',
@@ -410,6 +451,15 @@ class SocketService {
       return await this.emit('flowchart:sync:request', {});
     } catch (error) {
       return { success: false, error: error.message };
+    }
+  }
+
+  // Fire-and-forget emit (no ACK expected, for pub/sub style events like sandbox:*)
+  send(event, data) {
+    if (this.socket && this.socket.connected) {
+      this.socket.emit(event, data || {});
+    } else {
+      console.warn('[socket] send() called but not connected:', event);
     }
   }
 

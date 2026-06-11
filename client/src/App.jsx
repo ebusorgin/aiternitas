@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import Profile from './pages/Profile';
+import Charter from './pages/Charter';
+import Sandbox from './pages/Sandbox';
 import Messages from './pages/Messages';
 import Calls from './pages/Calls';
 import Companies from './pages/Companies';
@@ -13,6 +15,8 @@ import ResetPassword from './pages/ResetPassword';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 import { MailProvider } from './context/MailContext';
+import SystemDashboard from './components/SystemDashboard';
+import AgentTerminal from './components/AgentTerminal';
 
 function App() {
   return (
@@ -70,8 +74,12 @@ function App() {
           <Route path="mail/compose" element={<ProtectedRoute><Mail /></ProtectedRoute>} />
           <Route path="mail/folder/:folder" element={<ProtectedRoute><Mail /></ProtectedRoute>} />
           <Route path="mail/folder/:folder/read/:id" element={<ProtectedRoute><Mail /></ProtectedRoute>} />
+          <Route path="charter" element={<Charter />} />
+          <Route path="sandbox" element={<ProtectedRoute><Sandbox /></ProtectedRoute>} />
         </Route>
       </Routes>
+      <SystemDashboard />
+      <AgentTerminal />
       </MailProvider>
     </AuthProvider>
   );

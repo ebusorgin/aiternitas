@@ -38,11 +38,16 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
+        rewrite: (path) => path,
       },
       '/socket.io': {
         target: 'http://localhost:3001',
         changeOrigin: true,
         ws: true,
+        rewrite: (path) => path,
+        onError: (err, req, res) => {
+          console.error('[Vite Proxy] Socket.IO error:', err.message);
+        }
       },
     },
   },
