@@ -1,5 +1,6 @@
 import './config.mjs';
-
+import dotenv from 'dotenv';
+dotenv.config();
 import express from 'express';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
@@ -121,7 +122,7 @@ async function bootstrap() {
     console.log('[System] Starting...');
 
     await initDatabase();
-    await initRabbit();
+    await initRabbit(process.env.RABBITMQ_QUEUE);
     console.log('[DB] Connected');
 
     console.log('[RabbitMQ] Bootstrapping...');

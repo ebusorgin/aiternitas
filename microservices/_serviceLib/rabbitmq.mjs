@@ -1,54 +1,72 @@
 import amqp from 'amqplib';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 class RabbitMQ {
-    constructor({
-                    url,
-                    queue,
-                } = {}) {
-        this.url = url || process.env.RABBITMQ_URL || 'amqp://localhost';
-        this.queue = queue || process.env.RABBITMQ_QUEUE || 'default_queue';
+    constructor() {
+        this.url = process.env.RABBITMQ_URL;
+
+        this.exchange = 'events';
+
+        this.queue = null;
+        this.service = null;
 
         this.connection = null;
         this.channel = null;
         this.connected = false;
     }
 
-    async connect() {
+    async connect(serviceName = 'user') {
         if (this.connected) return;
+
+        this.service = serviceName;
+        this.queue = `${serviceName}_service`;
 
         this.connection = await amqp.connect(this.url);
         this.channel = await this.connection.createChannel();
 
+        // 1. exchange
+        await this.channel.assertExchange(
+            this.exchange,
+            'topic',
+            { durable: true }
+        );
+
+        // 2. queue
         await this.channel.assertQueue(this.queue, {
-            durable: true,
+            durable: true
         });
+
+        // 3. bind only own events
+        await this.channel.bindQueue(
+            this.queue,
+            this.exchange,
+            `${this.service}.#`
+        );
 
         this.connected = true;
 
-        console.log(`[RabbitMQ] ✅ Connected`);
-        console.log(`[RabbitMQ] 📦 Queue: ${this.queue}`);
+        console.log(`[RabbitMQ] Connected as ${this.service}`);
+        console.log(`[RabbitMQ] Queue: ${this.queue}`);
+        console.log(`[RabbitMQ] Binding: ${this.service}.#`);
     }
 
-    async send(data) {
-        if (!this.channel) await this.connect();
+    // publish to all services
+    async publish(routingKey, data) {
+        if (!this.channel) await this.connect(this.service);
 
-        const payload =
-            typeof data === 'string'
-                ? data
-                : JSON.stringify(data);
+        const payload = Buffer.from(
+            typeof data === 'string' ? data : JSON.stringify(data)
+        );
 
-        return this.channel.sendToQueue(
-            this.queue,
-            Buffer.from(payload),
+        return this.channel.publish(
+            this.exchange,
+            routingKey,
+            payload,
             { persistent: true }
         );
     }
 
     async consume(callback) {
-        if (!this.channel) await this.connect();
+        if (!this.channel) await this.connect(this.service);
 
         await this.channel.consume(
             this.queue,
@@ -56,60 +74,37 @@ class RabbitMQ {
                 if (!msg) return;
 
                 try {
-                    const raw = msg.content.toString();
+                    const event = msg.fields.routingKey;
 
                     let data;
                     try {
-                        data = JSON.parse(raw);
+                        data = JSON.parse(msg.content.toString());
                     } catch {
-                        data = raw;
+                        data = msg.content.toString();
                     }
 
-                    await callback(data, msg);
+                    await callback(event, data);
 
                     this.channel.ack(msg);
-                } catch (error) {
-                    console.error('[RabbitMQ] Consumer error:', error);
+                } catch (err) {
+                    console.error('[RabbitMQ] error:', err);
                     this.channel.nack(msg, false, true);
                 }
             },
             { noAck: false }
         );
 
-        console.log(`[RabbitMQ] 👂 Listening "${this.queue}"`);
-    }
-
-    async close() {
-        if (this.channel) await this.channel.close();
-        if (this.connection) await this.connection.close();
-
-        this.channel = null;
-        this.connection = null;
-        this.connected = false;
+        console.log(`[RabbitMQ] Listening ${this.queue}`);
     }
 }
 
-//
-// =====================
-// SINGLETON INSTANCE
-// =====================
-//
-const rabbit = new RabbitMQ({
-    url: process.env.RABBITMQ_URL,
-    queue: process.env.RABBITMQ_QUEUE || 'emails',
-});
+const rabbit = new RabbitMQ();
 
-//
-// init вызывается только из index.mjs
-//
-export async function initRabbit() {
-    await rabbit.connect();
+export async function initRabbit(serviceName) {
+    await rabbit.connect(serviceName);
 
-    console.log('[RabbitMQ] 🚀 Ready for use');
+    console.log('[RabbitMQ] Ready');
     return rabbit;
 }
 
-//
-// 🔥 ВОТ ЭТО ТЫ И ИМПОРТИРУЕШЬ ВЕЗДЕ
-//
 export default rabbit;

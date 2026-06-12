@@ -99,7 +99,8 @@ export function setupSandboxHandlers(io, socket) {
   socket.on('sandbox:chat:message', async (data) => {
 
     try {
-      await rabbit.send({type: 'sandbox:chat:message', data: { userId, ...data }});
+      // await rabbit.send({type: 'sandbox:chat:message', data: { userId, ...data }});
+      await rabbit.publish('ai.chat.message', { userId, ...data });
       return
       const { text, conversationId, model = 'llama3' } = data;
 
