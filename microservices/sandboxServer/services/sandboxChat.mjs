@@ -1,9 +1,6 @@
-import express from 'express';
 import pool from '../db.mjs';
-import { callLocalLLM } from '../utils/aiClient.mjs';
+import { callLocalLLM, callLocalLLMStream } from '../utils/aiClient.mjs';
 import rabbit from '../../_serviceLib/rabbitmq.mjs';
-
-const router = express.Router();
 
 // Sandbox assistant system prompt (Owner-facing orchestrator).
 const SYSTEM_PROMPT = `Ты ИИ-Оркестратор (Главный Департамент) системы Aiternitas. Ты общаешься с Владельцем через Песочницу.
@@ -12,16 +9,14 @@ const SYSTEM_PROMPT = `Ты ИИ-Оркестратор (Главный Депа
 ЕСЛИ ЗАПРОС ТРЕБУЕТ СОЗДАНИЯ ПРОГРАММЫ, ПАРСЕРА, ВИДЖЕТА С ДАННЫМИ ИЛИ ВЫПОЛНЕНИЯ СЛОЖНОГО ДЕЙСТВИЯ — ты ДОЛЖЕН создать Задачу для внутреннего Департамента.
 Отвечай СТРОГО в формате JSON: { "text": "ответ", "create_task": { "title": "...", "description": "..." } } (create_task только если нужна задача).`;
 
-// POST /sandbox/chat  { userId, conversationId, text, model }
-// Runs the full sandbox orchestration: persist user msg, classify (chat vs task),
-// create a pending task for depServer when needed, call the LLM via aiServer,
+// Full sandbox orchestration: persist user msg, classify (chat vs task),
+// create a pending task for depServer when needed, call the LLM via the bus,
 // persist the agent reply and return it. Live UI delivery is handled by the
 // caller (userServer socket handler) and, for tasks, via the event bus.
-router.post('/chat', async (req, res) => {
-  const { userId, conversationId, text, model = 'llama3' } = req.body || {};
-
+// Returns the same shape the old HTTP endpoint produced.
+export async function runSandboxChat({ userId, conversationId, text, model = 'llama3', socketId }) {
   if (!userId || !conversationId || !text) {
-    return res.status(400).json({ success: false, error: 'userId, conversationId и text обязательны' });
+    return { success: false, error: 'userId, conversationId и text обязательны' };
   }
 
   try {
@@ -99,13 +94,27 @@ router.post('/chat', async (req, res) => {
 
       parsed.text = `Понял вас. Я сформировал задачу #${taskId} ("${taskData.title}") и передал её в Департамент Разработки. Специалисты скоро приступят к выполнению.`;
     } else {
-      // 4b. Plain chat reply.
-      const chatPrompt = SYSTEM_PROMPT + "\n\nПользователь: " + text + "\nВерни СТРОГИЙ JSON: { \"text\": \"твой ответ\" }";
-      const chatResponse = await callLocalLLM(chatPrompt, model, '', true);
-      try {
-        parsed = typeof chatResponse === 'string' ? JSON.parse(chatResponse) : (chatResponse || parsed);
-      } catch {
-        parsed = { text: typeof chatResponse === 'string' ? chatResponse : JSON.stringify(chatResponse) };
+      // 4b. Plain chat reply. When we have the caller's socketId we STREAM the
+      // answer as a typewriter: aiServer pushes token deltas to the client as
+      // `sandbox:chat:chunk` (push.socket), then we persist the final text and
+      // the caller sends the authoritative `sandbox:chat:response`. Otherwise we
+      // fall back to the original JSON-mode reply.
+      if (socketId) {
+        const streamPrompt = SYSTEM_PROMPT + "\n\nПользователь: " + text + "\nОтветь ПРОСТО текстом, без JSON и без markdown.";
+        const streamed = await callLocalLLMStream(streamPrompt, {
+          model,
+          chunkTo: socketId,
+          chunkEvent: 'sandbox:chat:chunk',
+        });
+        parsed = { text: (streamed || '').trim() };
+      } else {
+        const chatPrompt = SYSTEM_PROMPT + "\n\nПользователь: " + text + "\nВерни СТРОГИЙ JSON: { \"text\": \"твой ответ\" }";
+        const chatResponse = await callLocalLLM(chatPrompt, model, '', true);
+        try {
+          parsed = typeof chatResponse === 'string' ? JSON.parse(chatResponse) : (chatResponse || parsed);
+        } catch {
+          parsed = { text: typeof chatResponse === 'string' ? chatResponse : JSON.stringify(chatResponse) };
+        }
       }
     }
 
@@ -117,7 +126,7 @@ router.post('/chat', async (req, res) => {
       [conversationId, 'agent', parsed.text, parsed.widget ? JSON.stringify(parsed.widget) : null]
     );
 
-    res.json({ success: true, ...parsed });
+    return { success: true, ...parsed };
   } catch (error) {
     console.error('[sandbox] chat error:', error);
     const errMsg = 'Ошибка при обращении к нейросети: ' + error.message;
@@ -125,23 +134,6 @@ router.post('/chat', async (req, res) => {
       'INSERT INTO sandbox_messages (conversation_id, sender, text) VALUES ($1, $2, $3)',
       [conversationId, 'agent', errMsg]
     ).catch(() => {});
-    res.status(500).json({ success: false, error: errMsg, text: errMsg });
+    return { success: false, error: errMsg, text: errMsg };
   }
-});
-
-// GET /sandbox/conversations?userId=
-router.get('/conversations', async (req, res) => {
-  const userId = req.query.userId;
-  if (!userId) return res.status(400).json({ success: false, error: 'userId обязателен' });
-  try {
-    const result = await pool.query(
-      'SELECT id, title, model, created_at, updated_at FROM sandbox_conversations WHERE user_id = $1 ORDER BY updated_at DESC',
-      [userId]
-    );
-    res.json({ success: true, conversations: result.rows });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-export default router;
+}

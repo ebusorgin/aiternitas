@@ -1,7 +1,6 @@
 import pool from '../db.mjs';
 import { listModels } from '../services/aiClient.mjs';
-
-const SANDBOX_SERVER_URL = process.env.SANDBOX_SERVER_URL || 'http://localhost:4006';
+import rabbit from '../../_serviceLib/rabbitmq.mjs';
 
 
 
@@ -36,23 +35,30 @@ const SYSTEM_PROMPT = `Ты ИИ-Оркестратор (Главный Депа
 }`;
 
 export function setupSandboxHandlers(io, socket) {
-  const userId = socket.userId;
-  if (!userId) return;
+  // NOTE (bus migration): регистрация больше не привязана к соединению, поэтому
+  // проверка авторизации перенесена внутрь обработчиков; userId читается динамически.
+  const currentUserId = () => socket.userId;
 
-  socket.on('sandbox:conversations:list', async () => {
+  socket.on('sandbox:conversations:list', async (data, callback) => {
+    const userId = currentUserId();
+    if (!userId) return callback?.({ success: false, error: 'Требуется авторизация' });
     try {
       const result = await pool.query(
         'SELECT id, title, model, created_at, updated_at FROM sandbox_conversations WHERE user_id = $1 ORDER BY updated_at DESC',
         [userId]
       );
       socket.emit('sandbox:conversations:list', result.rows);
+      callback?.({ success: true });
     } catch (error) {
       console.error('sandbox:conversations:list error:', error);
       socket.emit('sandbox:conversations:list', []);
+      callback?.({ success: true });
     }
   });
 
   socket.on('sandbox:conversation:load', async (data) => {
+    const userId = currentUserId();
+    if (!userId) return;
     try {
       const { conversationId } = data;
       const convResult = await pool.query(
@@ -72,6 +78,8 @@ export function setupSandboxHandlers(io, socket) {
   });
 
   socket.on('sandbox:conversation:create', async (data) => {
+    const userId = currentUserId();
+    if (!userId) return;
     try {
       const model = data && data.model ? data.model : 'llama3';
       const result = await pool.query(
@@ -85,6 +93,8 @@ export function setupSandboxHandlers(io, socket) {
   });
 
   socket.on('sandbox:conversation:delete', async (data) => {
+    const userId = currentUserId();
+    if (!userId) return;
     try {
       const { conversationId } = data;
       await pool.query(
@@ -98,17 +108,20 @@ export function setupSandboxHandlers(io, socket) {
   });
 
   // Chat orchestration lives in sandboxServer. This authenticated socket handler
-  // forwards the message over internal HTTP (userId is trusted server-to-server),
+  // forwards the message over the event bus (userId is trusted server-to-server),
   // then relays the reply back to this user's socket.
   socket.on('sandbox:chat:message', async (data) => {
+    const userId = currentUserId();
+    if (!userId) return;
     try {
       const { text, conversationId, model = 'llama3' } = data || {};
-      const resp = await fetch(`${SANDBOX_SERVER_URL}/sandbox/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, conversationId, text, model }),
-      });
-      const result = await resp.json();
+      // socket.id (из контекста вызова) позволяет sandboxServer стримать ответ
+      // на этот сокет как typewriter (sandbox:chat:chunk) через push.socket.
+      const result = await rabbit.request(
+        'sandbox.chat.run',
+        { userId, conversationId, text, model, socketId: socket.id },
+        300000
+      );
       socket.emit('sandbox:chat:response', result?.success ? result : { text: result?.error || 'Ошибка песочницы' });
     } catch (error) {
       console.error('sandbox:chat:message delegate error:', error);
@@ -117,6 +130,7 @@ export function setupSandboxHandlers(io, socket) {
   });
 
   socket.on('sandbox:models:list', async () => {
+    if (!currentUserId()) return;
     try {
       const models = await listModels();
       socket.emit('sandbox:models:list', models);

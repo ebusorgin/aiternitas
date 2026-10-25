@@ -1,0 +1,26 @@
+{
+  "name": "socketServer",
+  "version": "1.0.0",
+  "description": "Aiternitas socket gateway - holds Socket.IO connections, verifies sessions, bridges messages to RabbitMQ bus",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs",
+    "dev": "nodemon index.mjs"
+  },
+  "keywords": [
+    "aiternitas",
+    "socket",
+    "gateway"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "amqplib": "^0.10.4",
+    "dotenv": "^16.4.5",
+    "pg": "^8.16.3",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

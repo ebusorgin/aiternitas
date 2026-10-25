@@ -38,14 +38,26 @@ Write-Host "3. Checking Docker image aiternitas-sandbox..." -ForegroundColor Yel
 $sandboxImage = docker images -q aiternitas-sandbox:latest
 if (-not $sandboxImage) {
     Write-Host "   Image not found. Building sandbox image..." -ForegroundColor Magenta
-    docker build -t aiternitas-sandbox:latest server/docker
+    docker build -t aiternitas-sandbox:latest microservices/workerServer/docker
     Write-Host "   Build completed." -ForegroundColor Green
 } else {
     Write-Host "   Image aiternitas-sandbox already exists." -ForegroundColor Green
 }
 
-# 4. Ollama
-Write-Host "4. Starting Ollama..." -ForegroundColor Yellow
+# 4. RabbitMQ & Redis
+Write-Host "4. Checking RabbitMQ and Redis..." -ForegroundColor Yellow
+$rabbitStatus = docker ps -f name=aiternitas-rabbitmq --format "{{.Status}}"
+$redisStatus = docker ps -f name=aiternitas-redis --format "{{.Status}}"
+if (-not $rabbitStatus -or -not $redisStatus) {
+    Write-Host "   Starting infrastructure via docker compose..." -ForegroundColor Magenta
+    docker compose -f docker-compose.infrastructure.yml up -d
+    Write-Host "   Infrastructure started." -ForegroundColor Green
+} else {
+    Write-Host "   RabbitMQ and Redis are already running." -ForegroundColor Green
+}
+
+# 5. Ollama
+Write-Host "5. Starting Ollama..." -ForegroundColor Yellow
 $ollamaRunning = Get-Process "ollama" -ErrorAction SilentlyContinue
 if (-not $ollamaRunning) {
     Write-Host "   Starting Ollama server..." -ForegroundColor Magenta
@@ -61,5 +73,21 @@ Write-Host "Starting Frontend and Backend monitoring (via concurrently)..." -For
 Write-Host "Press Ctrl+C to stop" -ForegroundColor Yellow
 Write-Host "=========================================" -ForegroundColor Cyan
 
-# 5. NPM Start
+# 6. Local domain proxy (aiternitas.local -> Vite :3000)
+Write-Host "6. Checking aiternitas.local proxy (port 80 -> 3000)..." -ForegroundColor Yellow
+$proxyRunning = Get-NetTCPConnection -State Listen -LocalPort 80 -ErrorAction SilentlyContinue
+if (-not $proxyRunning) {
+    Start-Process -FilePath "node" -ArgumentList "tools/local-proxy.mjs" -WindowStyle Hidden
+    Start-Sleep -Seconds 2
+    if (Get-NetTCPConnection -State Listen -LocalPort 80 -ErrorAction SilentlyContinue) {
+        Write-Host "   Proxy started: http://aiternitas.local/ -> Vite :3000" -ForegroundColor Green
+    } else {
+        Write-Host "   WARNING: Proxy did not bind :80. Run this script as Administrator (port < 1024 needs elevation)." -ForegroundColor Red
+    }
+} else {
+    Write-Host "   Proxy already running on :80." -ForegroundColor Green
+}
+
+# 7. NPM Start
+Write-Host "7. Starting services (npm start)..." -ForegroundColor Cyan
 npm start

@@ -1,31 +1,28 @@
-import fetch from 'node-fetch';
+import rabbit from '../../_serviceLib/rabbitmq.mjs';
 
-const AI_SERVER_URL = process.env.AI_SERVER_URL || 'http://localhost:4003';
-
+// LLM call routed through the shared event bus (aiServer is a pure consumer,
+// no HTTP port). Returns the raw model string (JSON string when requireJson=true).
+// Timeout is generous because local Ollama generations can run for minutes.
 export async function callLocalLLM(prompt, model = 'llama3:latest', systemPrompt = '', requireJson = false) {
-  try {
-    const response = await fetch(`${AI_SERVER_URL}/api/ai/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        prompt,
-        model,
-        systemPrompt,
-        requireJson
-      })
-    });
+  const reply = await rabbit.request(
+    'ai.generate',
+    { prompt, model, systemPrompt, requireJson },
+    300000
+  );
+  if (reply?.error) throw new Error(`AI Server error: ${reply.error}`);
+  return reply?.response;
+}
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`AI Server error: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data.response;
-  } catch (error) {
-    console.error('[AI Client] Error calling aiServer:', error);
-    throw error;
-  }
+// Streaming LLM call over the bus: aiServer pushes each token-delta to
+// `chunkTo` (a client socketId) as `push.socket { event: chunkEvent }` and
+// returns the full accumulated text in the single RPC reply. When chunkTo is
+// absent this degrades to a normal (non-pushed) generation.
+export async function callLocalLLMStream(prompt, { model = 'llama3:latest', systemPrompt = '', chunkTo, chunkEvent } = {}) {
+  const reply = await rabbit.request(
+    'ai.generate.stream',
+    { prompt, model, systemPrompt, chunkTo, chunkEvent },
+    300000
+  );
+  if (reply?.error) throw new Error(`AI Server error: ${reply.error}`);
+  return reply?.response;
 }

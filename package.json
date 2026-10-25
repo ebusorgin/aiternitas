@@ -4,10 +4,13 @@
     "concurrently": "^9.2.1"
   },
   "scripts": {
-    "start": "concurrently --kill-others-on-fail --prefix \"[{name}]\" --names \"SERVER,CLIENT\" --prefix-colors \"bgBlue.bold,bgGreen.bold\" \"npm run dev --prefix server\" \"npm run dev --prefix client\""
+    "start": "concurrently --kill-others-on-fail --prefix \"[{name}]\" --names \"GATEWAY,SOCKET,USER,AI,DEP,WORKER,SANDBOX,INTEGRATION,CLIENT\" --prefix-colors \"bgMagenta.bold,bgBlue.bold,bgBlue.bold,bgYellow.bold,bgCyan.bold,bgGreen.bold,bgRed.bold,bgWhite,bgBlack\" \"npm run dev --prefix microservices/gatewayServer\" \"npm run dev --prefix microservices/socketServer\" \"npm run dev --prefix microservices/userServer\" \"npm run dev --prefix microservices/aiServer\" \"npm run dev --prefix microservices/depServer\" \"npm run dev --prefix microservices/workerServer\" \"npm run dev --prefix microservices/sandboxServer\" \"npm run dev --prefix microservices/integrationServer\" \"npm run dev --prefix client\""
   },
   "workspaces": [
     "client",
     "microservices/*"
-  ]
+  ],
+  "devDependencies": {
+    "pm2": "^7.1.1"
+  }
 }

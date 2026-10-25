@@ -14,6 +14,7 @@ function Sandbox() {
   const [conversations, setConversations] = useState([]);
   const [activeConvId, setActiveConvId] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
+  const [streamText, setStreamText] = useState('');
 
   const [availableModels, setAvailableModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState('llama3:latest');
@@ -24,7 +25,7 @@ function Sandbox() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [chatMessages, isTyping]);
+  }, [chatMessages, isTyping, streamText]);
 
   // Socket listeners — use socketService.on() which registers to the raw socket
   useEffect(() => {
@@ -63,8 +64,17 @@ function Sandbox() {
           setWidgets([]);
         }
       }),
+      socketService.on('sandbox:chat:chunk', (data) => {
+        // typewriter: live-дельты стрима от aiServer (push.socket). Гасим
+        // индикатор печати и накапливаем текст в отдельном live-баббле.
+        const delta = data && typeof data === 'object' ? data.delta : data;
+        if (!delta) return;
+        setIsTyping(false);
+        setStreamText(prev => prev + delta);
+      }),
       socketService.on('sandbox:chat:response', (data) => {
         setIsTyping(false);
+        setStreamText('');
         setChatMessages(prev => [...prev, { sender: 'agent', text: data.text }]);
         if (data.widget) {
           const newWidget = { id: Date.now(), ...data.widget };
@@ -264,6 +274,11 @@ function Sandbox() {
                       <div className="chat-bubble typing-indicator">
                         <span></span><span></span><span></span>
                       </div>
+                    </div>
+                  )}
+                  {streamText && (
+                    <div className="chat-message agent">
+                      <div className="chat-bubble stream-bubble">{streamText}</div>
                     </div>
                   )}
                   <div ref={messagesEndRef} />

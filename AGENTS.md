@@ -8,13 +8,14 @@
 aiternitas/
 ├── client/                    # React + Vite, Three.js 3D visualizations
 ├── microservices/
-│   ├── userServer/           # Express (4002): Auth, users, Socket.IO hub
-│   ├── aiServer/             # LLM integration (4003)
-│   ├── depServer/            # Task orchestrator (4004)
-│   ├── workerServer/         # Task workers w/ RabbitMQ (4005)
+│   ├── userServer/           # Express (4002): Auth, users, business logic (bus consumer)
+│   ├── socketServer/         # SocketGate (4009): holds Socket.IO conns, session check, bus bridge
+│   ├── aiServer/             # LLM integration — bus-only consumer (no HTTP port)
+│   ├── depServer/            # Task orchestrator — bus-only consumer (no HTTP port)
+│   ├── workerServer/         # Task workers w/ RabbitMQ — bus-only (no HTTP port)
 │   ├── gatewayServer/        # API Gateway (3001)
-│   ├── integrationServer/    # External plugins (4007)
-│   └── sandboxServer/        # Code execution sandbox (4006)
+│   ├── integrationServer/    # External plugins (4007, HTTP — client calls it via gateway)
+│   └── sandboxServer/        # Code execution / chat — bus-only consumer (no HTTP port)
 ├── mobile_app/               # React Native
 └── plugins/telegram/         # Plugin example
 ```
@@ -37,15 +38,26 @@ depServer (scheduler) → LLM decides task handling →
 - LLM (Ollama on localhost:11434) makes routing decisions (which department, which worker)
 - Workers consume from `tasks_queue` via RabbitMQ/AMQP
 
-### 3. Real-Time Communication (Socket.IO)
-- **Hub**: `userServer` (4002) handles Socket.IO server + session storage
-- **Gateway** proxies `/socket.io` → userServer
-- **User rooms**: Connected sockets join `user:{userId}` for targeted broadcasts
-- **Authentication**: Restored from HTTP session cookie (Express session in PostgreSQL)
-- **Patterns**:
+### 3. Real-Time Communication (Socket.IO + RabbitMQ bus)
+- **SocketGate**: `socketServer` (4009) — только держит веб-сокетные соединения.
+  Проверяет HTTP-сессию (PostgreSQL) при подключении, авторизованных кладёт в
+  комнату `user:{userId}`, неавторизованным на protected-события отвечает
+  `UNAUTHORIZED`. Бизнес-логики НЕТ.
+- **Gateway** проксирует `/socket.io` → socketServer (4009), а `/api/*` → userServer (4002).
+- **Все клиентские socket-события уходят в RabbitMQ** (exchange `events`, topic).
+  Гейт публикует конверт `{ corrId, event, userId, socketId, args }` на routing key
+  `<service>.<domain>.<action>` и ждёт RPC-ответ на `reply.socket` (correlationId=corrId),
+  чтобы резолвить client-ack. См. `socketServer/bridge.mjs`, `socketServer/registry.mjs`.
+- **Business services** (userServer и др.) — consumer'ы своей очереди. Старые
+  `socket.on(...)` handlers переиспользуются через `SocketAdapter` (fake-сокет поверх
+  шины): `userServer/socket/adapter.mjs` + `bus.mjs`. Регистрация отделена от соединения,
+  поэтому авторизацию проверяют ВНУТРИ обработчика (см. `sandbox.mjs`).
+- **Push обратно клиентам**: сервис публикует `push.socket` / `push.room` / `push.all`,
+  гейт доставляет конкретному сокету/комнате/всем.
+- **Patterns** (клиент, `client/src/services/socket.js` — БЕЗ изменений):
   - `.emit(event, data, timeoutMs)` - request/response with timeout promise
-  - `.send(event, data)` - fire-and-forget (for pub/sub like sandbox events)
-- Setup in `userServer/socket/index.mjs`, handlers split by feature (auth, flowchart, task, sandbox)
+  - `.send(event, data)` - fire-and-forget
+- `userServer/socket/scene.mjs` — легаси (клиент не использует его события), к шине НЕ подключён.
 
 ### 4. Database & Configuration
 - **PostgreSQL** container: `task-management-postgres`
@@ -102,14 +114,15 @@ npm run build:low-mem # Low memory build (--max-old-space-size=384)
 |---------|------|---------|
 | Gateway | 3001 | API entry point |
 | Client  | 3000 | Frontend Vite dev |
-| UserServer | 4002 | Auth, Socket.IO |
-| AiServer | 4003 | LLM endpoints |
-| DepServer | 4004 | Task orchestration |
-| WorkerServer | 4005 | Background workers |
-| SandboxServer | 4006 | Code execution |
-| IntegrationServer | 4007 | Plugins |
+| SocketGate | 4009 | Socket.IO connections + bus bridge |
+| UserServer | 4002 | Auth, REST, business logic (bus consumer) |
+| AiServer | — (bus) | LLM endpoints — pure RabbitMQ consumer, no HTTP port |
+| DepServer | — (bus) | Task orchestration — pure consumer, no HTTP port |
+| WorkerServer | — (bus) | Background workers — no HTTP port |
+| SandboxServer | — (bus) | Code execution / chat — pure consumer, no HTTP port |
+| IntegrationServer | 4007 | Plugins (HTTP, called by client via gateway) |
 | PostgreSQL | 5432 | Database |
-| RabbitMQ | 5672 | Message queue |
+| RabbitMQ | 5672 | Message queue + shared event bus |
 | Redis | 6379 | Cache/sessions |
 | Ollama | 11434 | Local LLM |
 
@@ -159,16 +172,20 @@ npm run build:low-mem # Low memory build (--max-old-space-size=384)
 ## Critical Integration Points
 
 ### Frontend → Backend
-1. **HTTP**: `/api/*` routes through gateway
-2. **WebSocket**: Direct Socket.IO connection → userServer (gateway proxies)
-3. **Auth**: HTTP cookie-based sessions (express-session + connect-pg-simple)
+1. **HTTP**: `/api/*` routes through gateway (only userServer 4002 + integrationServer 4007 expose ports)
+2. **WebSocket**: Socket.IO connection → SocketGate (4009); gateway proxies `/socket.io` to the gate
+3. **Auth**: HTTP cookie-based sessions (express-session + connect-pg-simple); the gate verifies the session cookie against PostgreSQL
 4. **Client library**: `src/services/socket.js` - singleton socketService instance
 
 ### Inter-Service Communication
-1. **HTTP**: Services call each other directly (e.g., depServer calls aiServer for LLM)
-2. **RabbitMQ/AMQP**: depServer publishes tasks → workerServer consumes
-3. **Database**: Shared PostgreSQL (all services read/write same tables)
-4. **Redis**: Cache/session storage (docker-compose.infrastructure.yml)
+Everything runs over the shared RabbitMQ topic exchange `events` — services NO LONGER call each other over HTTP.
+1. **Event bus RPC**: `rabbit.request(routingKey, data, timeoutMs)` publishes with a `corrId` + `replyTo=reply.<caller>` and returns a Promise resolved when the matching reply arrives; the callee answers with `rabbit.respond(envelope, result)`. Consumers must call `rabbit.consume(...)` so their `reply.<service>` gets delivered.
+   - LLM: `ai.generate` / `ai.chat` / `ai.models` → answered by aiServer (pure consumer).
+   - Sandbox chat: `sandbox.chat.run` → answered by sandboxServer (which itself does a NESTED `ai.generate` request — no deadlock, replies ride the same queue under unlimited prefetch).
+2. **Routing-key conventions**: `<service>.<domain>.<action>` (e.g. `user.task.list`), `reply.<service>` for RPC replies, `push.socket|push.room|push.all` for gate→client delivery, `<domain>.#` bindings per service.
+3. **Legacy queue**: depServer still publishes ready tasks to `tasks_queue` (RabbitMQ) → workerServer consumes via its own AMQP client.
+4. **Database**: Shared PostgreSQL (all services read/write same tables)
+5. **Redis**: Cache/session storage (docker-compose.infrastructure.yml)
 
 ### External Dependencies
 - **Ollama**: Local LLM on port 11434 (`http://localhost:11434`)
@@ -199,7 +216,7 @@ npm run build:low-mem # Low memory build (--max-old-space-size=384)
 ## Common Gotchas & Fixes
 
 1. **WebSocket Connection Fails**: Gateway not proxying `/socket.io`
-   - Check: `getProxyMiddleware` rule for `/socket.io` → `http://localhost:4002` in gatewayServer
+   - Check: `SOCKET_GATE_URL` (default `http://localhost:4009`) in gatewayServer; socketServer running
 
 2. **Task Orchestrator Not Running**: depServer processes but nothing happens
    - Ensure: RabbitMQ running (`docker ps | grep rabbitmq`)
@@ -211,7 +228,7 @@ npm run build:low-mem # Low memory build (--max-old-space-size=384)
    - Pull model: `ollama pull llama3:latest` (or your configured model)
 
 4. **Session Lost on Socket Reconnect**: Socket doesn't restore from cookie
-   - Check: `setupAuthCheck()` in `userServer/socket/index.mjs`
+   - Check: `verifySession()` in `socketServer/session.mjs` (JOIN session+users по sid)
    - Session store: PostgreSQL (connect-pg-simple table `session`)
 
 5. **Image Not Found (aiternitas-sandbox)**: Docker command fails
@@ -233,8 +250,9 @@ npm run build:low-mem # Low memory build (--max-old-space-size=384)
 ### New Microservice
 1. Create folder in `microservices/newservice/`
 2. Add `index.mjs`, `config.mjs`, `package.json` (type: "module")
-3. Update gateway routes in `gatewayServer/index.mjs`
-4. Add port to `start` script in root package.json if needed
+3. Prefer the bus: `await initRabbit('<name>')` + `await rabbit.consume(handler)`; answer requests with `rabbit.respond(envelope, result)`. A bus-only service opens NO HTTP port (add it to `ecosystem.config.js`, and set `busOnly:true` in `tools/service-manager.mjs` SERVICES).
+4. Only expose an HTTP port if the CLIENT must reach it directly — then add a gateway route in `gatewayServer/index.mjs`
+5. Add the service to `start` script in root package.json if needed
 
 ---
 

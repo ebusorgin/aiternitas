@@ -10,9 +10,6 @@
   "dependencies": {
     "amqplib": "^2.0.1",
     "dotenv": "^16.6.1",
-    "express": "^4.19.2",
-    "node-fetch": "^3.3.2",
-    "pg": "^8.21.0",
-    "redis": "^6.0.0"
+    "pg": "^8.21.0"
   }
 }

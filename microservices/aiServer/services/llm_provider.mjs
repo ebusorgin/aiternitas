@@ -70,6 +70,78 @@ export async function callLocalLLM(prompt, system = '', model = DEFAULT_MODEL, j
 }
 
 /**
+ * Стриминговый вызов локальной модели (Ollama stream:true, NDJSON).
+ * onDelta(chunkText) вызывается на каждый токен-чанк; возвращается полный текст.
+ * jsonFormat не используется (стримим только обычный текст).
+ * @param {string} prompt
+ * @param {string} system
+ * @param {string} model
+ * @param {(delta:string)=>void|Promise<void>} onDelta
+ * @param {{temperature?:number,numPredict?:number,signal?:AbortSignal}} [options]
+ */
+export async function callLocalLLMStream(prompt, system = '', model = DEFAULT_MODEL, onDelta, options = {}) {
+  const payload = {
+    model,
+    messages: [],
+    stream: true,
+  };
+
+  if (options.temperature !== undefined || options.numPredict !== undefined) {
+    payload.options = {};
+    if (options.temperature !== undefined) payload.options.temperature = options.temperature;
+    if (options.numPredict !== undefined) payload.options.num_predict = options.numPredict;
+  }
+
+  if (system) payload.messages.push({ role: 'system', content: system });
+  payload.messages.push({ role: 'user', content: prompt });
+
+  const response = await fetch(`${OLLAMA_HOST}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: options.signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`Ollama API error: ${response.status} - ${errorText}`);
+  }
+
+  if (!response.body) throw new Error('Ollama streaming: no response body');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let full = '';
+
+  // Ollama отдаёт NDJSON: по одному JSON-объекту в строке, content в data.message.content
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let obj;
+      try { obj = JSON.parse(trimmed); } catch { continue; }
+      if (obj.error) throw new Error(`Ollama stream error: ${obj.error}`);
+      const delta = obj.message?.content ?? '';
+      if (delta) {
+        full += delta;
+        if (typeof onDelta === 'function') await onDelta(delta);
+      }
+      if (obj.done) break;
+    }
+  }
+
+  return full;
+}
+
+/**
  * Проверка доступности сервера Ollama и списка загруженных моделей
  */
 export async function checkOllamaStatus() {

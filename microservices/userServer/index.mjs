@@ -5,7 +5,6 @@ import express from 'express';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
 import cors from 'cors';
-import { Server } from 'socket.io';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -20,9 +19,8 @@ import mailRouter from './routes/mail.mjs';
 import emailsRouter from './routes/emails.mjs';
 import messagesRouter from './routes/messages.mjs';
 
-// socket
-import { setupSceneHandlers } from './socket/scene.mjs';
-import { setupSocketHandlers } from './socket/index.mjs';
+// socket-обработчики теперь живут за RabbitMQ-шиной (SocketAdapter)
+import { createBusSocketHandlers } from './socket/bus.mjs';
 
 // subsystems (migrated from monolith server.mjs)
 import { startMailReceiver } from './mail/receiver.mjs';
@@ -80,21 +78,6 @@ const sessionMiddleware = session({
 app.use(sessionMiddleware);
 
 //
-// SOCKET.IO
-//
-const io = new Server(server, {
-  cors: {
-    origin: [FRONTEND_URL, 'http://localhost:3000'],
-    methods: ["GET", "POST"],
-    credentials: true
-  },
-  pingInterval: 25000,
-  pingTimeout: 20000
-});
-
-io.engine.use(sessionMiddleware);
-
-//
 // ROUTES
 //
 app.use('/auth', authRouter);
@@ -122,18 +105,22 @@ async function bootstrap() {
     console.log('[System] Starting...');
 
     await initDatabase();
-    await initRabbit('user');
+    // user-сервис потребляет свои команды (user.#) и RPC-ответы (reply.user)
+    await initRabbit('user', { bindings: ['reply.user'] });
     console.log('[DB] Connected');
 
     console.log('[RabbitMQ] Bootstrapping...');
     console.log(`[RabbitMQ] Queue: ${rabbit.queue}`);
 
-    setupSocketHandlers(io, sessionStore);
-    setupSceneHandlers(io, sessionStore);
+    // Socket-обработчики подключены к шине через SocketAdapter
+    const { adapter, handle } = createBusSocketHandlers(sessionStore);
+    await rabbit.consume(handle);
 
     // --- Mail receiver (SMTP inbound) ---
     try {
-      startMailReceiver(io);
+      // receiver использует только io.to(room).emit -> publish push в шину,
+      // доставка клиентам через socketServer-гейт
+      startMailReceiver(adapter.ioShim());
     } catch (e) {
       console.error('[Mail] failed to start receiver:', e.message);
     }
@@ -141,25 +128,7 @@ async function bootstrap() {
     // --- System monitoring -> broadcast metrics ---
     startMonitoring(3000);
     systemEvents.on('metrics', (metrics) => {
-      io.emit('system:metrics', metrics);
-    });
-
-    // --- Event bus -> Socket.IO bridge (consume user.# events) ---
-    rabbit.consume((event, data) => {
-      try {
-        if (event === 'user.chat.message' && data?.userId) {
-          io.to(`user:${data.userId}`).emit('sandbox:chat:response', data);
-        } else if (event === 'user.task.updated' && data?.userId) {
-          io.to(`user:${data.userId}`).emit('task:updated', data);
-        } else if (event === 'user.telegram.message') {
-          if (data?.userId) io.to(`user:${data.userId}`).emit('telegram:message', data);
-          else io.emit('telegram:message', data);
-        } else if (event === 'user.mail.new' && data?.userId) {
-          io.to(`user:${data.userId}`).emit('mail:new', data);
-        }
-      } catch (e) {
-        console.error('[RabbitMQ] bridge error:', e.message);
-      }
+      rabbit.publish('push.all', { event: 'system:metrics', data: metrics });
     });
 
     server.listen(PORT, () => {

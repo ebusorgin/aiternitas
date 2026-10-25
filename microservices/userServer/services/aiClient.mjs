@@ -1,49 +1,35 @@
-// Thin HTTP client to aiServer (single point of truth for LLM calls).
-// Mirrors depServer/workerServer utils/aiClient.mjs but adds chat + models.
-// Uses global fetch (Node 18+).
+// LLM client for userServer, routed through the shared event bus.
+// aiServer is a pure consumer (no HTTP); these helpers use rabbit.request()
+// and rely on userServer consuming its own `reply.user` queue (set up in index.mjs).
+import rabbit from '../../_serviceLib/rabbitmq.mjs';
 
-const AI_SERVER_URL = process.env.AI_SERVER_URL || 'http://localhost:4003';
 const DEFAULT_MODEL = process.env.AI_MODEL || 'llama3:latest';
+const LLM_TIMEOUT = 300000; // 5 min - local generations can be slow
 
 // Single-prompt generation. Returns the raw string from the model
 // (JSON string when requireJson=true), matching dep/worker contract.
 export async function callLocalLLM(prompt, model = 'llama3:latest', systemPrompt = '', requireJson = false) {
-  const res = await fetch(`${AI_SERVER_URL}/api/ai/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, model, systemPrompt, requireJson }),
-  });
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => '');
-    throw new Error(`AI Server error: ${res.status} - ${errorText}`);
-  }
-  const data = await res.json();
-  return data.response;
+  const reply = await rabbit.request('ai.generate', { prompt, model, systemPrompt, requireJson }, LLM_TIMEOUT);
+  if (reply?.error) throw new Error(`AI Server error: ${reply.error}`);
+  return reply?.response;
 }
 
 // Chat-style call returning structured answer (object when jsonFormat=true).
-// Supports system prompt + generation options (temperature, num_predict/max tokens).
 export async function chat(prompt, { model = DEFAULT_MODEL, systemPrompt = '', jsonFormat = false, temperature, numPredict } = {}) {
-  const res = await fetch(`${AI_SERVER_URL}/api/ai/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, model, systemPrompt, jsonFormat, temperature, numPredict }),
-  });
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => '');
-    throw new Error(`AI Server error: ${res.status} - ${errorText}`);
-  }
-  const data = await res.json();
-  return data.answer;
+  const reply = await rabbit.request(
+    'ai.chat',
+    { prompt, model, systemPrompt, jsonFormat, temperature, numPredict },
+    LLM_TIMEOUT
+  );
+  if (reply?.error) throw new Error(`AI Server error: ${reply.error}`);
+  return reply?.answer;
 }
 
 // List available Ollama models; returns [] if aiServer/Ollama unreachable.
 export async function listModels() {
   try {
-    const res = await fetch(`${AI_SERVER_URL}/api/ai/models`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data.models) ? data.models : [];
+    const reply = await rabbit.request('ai.models', {}, 15000);
+    return Array.isArray(reply?.models) ? reply.models : [];
   } catch (e) {
     console.error('[aiClient] listModels error:', e.message);
     return [];

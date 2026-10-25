@@ -1,34 +1,27 @@
 import './config.mjs';
 
-import express from 'express';
-import cors from 'cors';
-
+import rabbit, { initRabbit } from '../_serviceLib/rabbitmq.mjs';
 import { initDatabase } from './db.mjs';
-import sandboxRouter from './routes/sandbox.mjs';
-import { initRabbit } from '../_serviceLib/rabbitmq.mjs';
+import { runSandboxChat } from './services/sandboxChat.mjs';
 
-const PORT = parseInt(process.env.SANDBOX_PORT || '4006', 10);
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
-
-const app = express();
-app.set('trust proxy', 1);
-app.use(cors({ origin: [FRONTEND_URL, 'http://localhost:3001'], credentials: true }));
-app.use(express.json({ limit: '5mb' }));
-
-app.use('/sandbox', sandboxRouter);
-
-app.get('/', (req, res) => res.send('sandboxServer is running on port ' + PORT));
-
+// sandboxServer is now a pure bus consumer: it opens NO HTTP port.
+// userServer forwards sandbox chat over the bus as `sandbox.chat.run`
+// (request carries corrId + replyTo; we answer with rabbit.respond()).
 async function bootstrap() {
   try {
     console.log('[sandboxServer] Starting...');
     await initDatabase();
-    // Bus connection so the sandbox can publish `user.task.updated` when it creates tasks.
+
     await initRabbit('sandbox');
 
-    app.listen(PORT, () => {
-      console.log(`[sandboxServer] 🚀 Listening on port ${PORT}`);
+    await rabbit.consume(async (event, data) => {
+      if (event !== 'sandbox.chat.run') return;
+      const { userId, conversationId, text, model, socketId } = data || {};
+      const result = await runSandboxChat({ userId, conversationId, text, model, socketId });
+      await rabbit.respond(data, result);
     });
+
+    console.log('[sandboxServer] 🚀 ready (bus-only, no HTTP port)');
   } catch (err) {
     console.error('[sandboxServer] BOOTSTRAP ERROR', err);
     process.exit(1);
@@ -39,6 +32,7 @@ bootstrap();
 
 async function shutdown(signal) {
   console.log(`\n🛑 [sandboxServer] ${signal} - shutting down...`);
+  try { await rabbit.close(); } catch (_) {}
   process.exit(0);
 }
 process.on('SIGINT', () => shutdown('SIGINT'));
