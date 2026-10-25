@@ -34,6 +34,8 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // Разрешаем локальный домен aiternitas.local (через реверс-прокси tools/local-proxy.mjs на :80)
+    allowedHosts: ['aiternitas.local'],
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

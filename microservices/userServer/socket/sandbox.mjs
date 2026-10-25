@@ -1,6 +1,7 @@
 import pool from '../db.mjs';
-import { callLocalLLM, checkOllamaStatus } from '../services/llm_provider.mjs';
-import rabbit from '../../_serviceLib/rabbitmq.mjs';
+import { listModels } from '../services/aiClient.mjs';
+
+const SANDBOX_SERVER_URL = process.env.SANDBOX_SERVER_URL || 'http://localhost:4006';
 
 
 
@@ -96,112 +97,29 @@ export function setupSandboxHandlers(io, socket) {
     }
   });
 
+  // Chat orchestration lives in sandboxServer. This authenticated socket handler
+  // forwards the message over internal HTTP (userId is trusted server-to-server),
+  // then relays the reply back to this user's socket.
   socket.on('sandbox:chat:message', async (data) => {
-
     try {
-      // await rabbit.send({type: 'sandbox:chat:message', data: { userId, ...data }});
-      await rabbit.publish('ai.chat.message', { userId, ...data });
-      return
-      const { text, conversationId, model = 'llama3' } = data;
-
-      await pool.query(
-        'INSERT INTO sandbox_messages (conversation_id, sender, text) VALUES ($1, $2, $3)',
-        [conversationId, 'user', text]
-      );
-
-      const convCheck = await pool.query(
-        'SELECT title FROM sandbox_conversations WHERE id = $1', [conversationId]
-      );
-      if (convCheck.rows[0] && convCheck.rows[0].title === 'Новый чат') {
-        const title = text.substring(0, 60);
-        await pool.query(
-          'UPDATE sandbox_conversations SET title = $1, model = $2, updated_at = NOW() WHERE id = $3',
-          [title, model, conversationId]
-        );
-      } else {
-        await pool.query(
-          'UPDATE sandbox_conversations SET updated_at = NOW(), model = $1 WHERE id = $2',
-          [model, conversationId]
-        );
-      }
-
-      
-      // 1. ATOMIC PROMPT: Определяем тип запроса
-      const typePrompt = "Ты классификатор. Пользователь написал: '" + text + "'. Если он просит создать виджет, написать парсер, вытащить данные с сайта или решить сложную задачу программирования - ответь строго одним словом 'task'. Если это просто разговор или вопрос - ответь 'chat'.";
-      const typeResponse = await callLocalLLM(typePrompt, "", model, false);
-      const isTask = typeResponse && typeResponse.toLowerCase().includes('task');
-
-      let parsed = { text: "" };
-
-      if (isTask) {
-        // 2. ATOMIC PROMPT: Извлекаем суть задачи
-        const extractPrompt = "Пользователь написал: '" + text + "'. Извлеки из этого задачу для отдела разработки. Верни СТРОГО JSON: { \"title\": \"краткое название\", \"description\": \"подробное описание того, что нужно запрограммировать\" }";
-        const extractResponse = await callLocalLLM(extractPrompt, "", model, true);
-        
-        let taskData;
-        try { taskData = JSON.parse(extractResponse); } catch(e) { taskData = { title: "Новая задача", description: text }; }
-
-        // Проверяем/создаем Департамент Разработки
-        const deptRes = await pool.query("SELECT id FROM elements WHERE name = 'Департамент Разработки' AND user_id = $1", [userId]);
-        let deptId;
-        if (deptRes.rows.length > 0) {
-          deptId = deptRes.rows[0].id;
-        } else {
-          deptId = 'dept_' + Date.now();
-          await pool.query("INSERT INTO elements (id, user_id, name, element_type) VALUES ($1, $2, $3, $4)", [deptId, userId, 'Департамент Разработки', 'department']);
-        }
-
-        // Проверяем/создаем Колонку "To Do" для канбана
-        const colRes = await pool.query("SELECT id FROM task_columns WHERE user_id = $1 ORDER BY position ASC LIMIT 1", [userId]);
-        let colId;
-        if (colRes.rows.length > 0) {
-          colId = colRes.rows[0].id;
-        } else {
-          const newCol = await pool.query("INSERT INTO task_columns (user_id, title, position) VALUES ($1, 'К выполнению', 0) RETURNING id", [userId]);
-          colId = newCol.rows[0].id;
-        }
-
-        // Создаем задачу
-        const taskRes = await pool.query(
-          `INSERT INTO tasks (user_id, department_id, column_id, title, description, status) 
-           VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING id`,
-          [userId, deptId, colId, taskData.title || 'Разработка виджета', taskData.description || text]
-        );
-        const taskId = taskRes.rows[0].id;
-        parsed.text = `Понял вас. Я сформировал задачу #${taskId} ("${taskData.title}") и передал её в Департамент Разработки. Специалисты скоро приступят к написанию скрипта.`;
-      } else {
-        // 3. ATOMIC PROMPT: Обычный чат
-        const chatPrompt = "Ты ИИ-ассистент Владельца. Ответь на его сообщение: '" + text + "'. Отвечай кратко и по делу. Верни СТРОГИЙ JSON: { \"text\": \"твой ответ\" }";
-        const chatResponse = await callLocalLLM(chatPrompt, "", model, true);
-        try { parsed = JSON.parse(chatResponse); } catch(e) { parsed = { text: chatResponse }; }
-      }
-
-      if (!parsed.text) parsed.text = JSON.stringify(parsed);
-
-      await pool.query(
-        'INSERT INTO sandbox_messages (conversation_id, sender, text, widget) VALUES ($1, $2, $3, $4)',
-        [conversationId, 'agent', parsed.text, parsed.widget ? JSON.stringify(parsed.widget) : null]
-      );
-
-      socket.emit('sandbox:chat:response', parsed);
-
+      const { text, conversationId, model = 'llama3' } = data || {};
+      const resp = await fetch(`${SANDBOX_SERVER_URL}/sandbox/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, conversationId, text, model }),
+      });
+      const result = await resp.json();
+      socket.emit('sandbox:chat:response', result?.success ? result : { text: result?.error || 'Ошибка песочницы' });
     } catch (error) {
-      console.error('Ошибка Sandbox Chat:', error);
-      const errMsg = 'Ошибка при обращении к нейросети: ' + error.message;
-      if (data && data.conversationId) {
-        await pool.query(
-          'INSERT INTO sandbox_messages (conversation_id, sender, text) VALUES ($1, $2, $3)',
-          [data.conversationId, 'agent', errMsg]
-        ).catch(() => {});
-      }
-      socket.emit('sandbox:chat:response', { text: errMsg });
+      console.error('sandbox:chat:message delegate error:', error);
+      socket.emit('sandbox:chat:response', { text: 'Ошибка песочницы: ' + error.message });
     }
   });
 
   socket.on('sandbox:models:list', async () => {
     try {
-      const status = await checkOllamaStatus();
-      socket.emit('sandbox:models:list', status.ok ? status.models : []);
+      const models = await listModels();
+      socket.emit('sandbox:models:list', models);
     } catch (e) {
       socket.emit('sandbox:models:list', []);
     }

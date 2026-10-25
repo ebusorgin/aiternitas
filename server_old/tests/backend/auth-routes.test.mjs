@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import session from 'express-session';
-import pool from '../../db.mjs';
-import authRouter from '../../routes/auth.mjs';
+import pool from '../db.mjs';
+import authRouter from '../routes/auth.mjs';
 
 // Создаем тестовое приложение
 const createTestApp = () => {

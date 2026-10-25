@@ -34,11 +34,11 @@ const routes = {
   '/api/mail': 'http://localhost:4002/mail',
   '/api/emails': 'http://localhost:4002/emails',
   '/api/messages': 'http://localhost:4002/messages',
-  '/api/telegram': 'http://localhost:4002/telegram',
+  '/api/telegram': 'http://localhost:4007/telegram',
   '/api/upload': 'http://localhost:4002/upload',
   '/api/stats': 'http://localhost:4002/stats',
   '/api/flowcharts': 'http://localhost:4002/flowcharts',
-  '/api/plugins': 'http://localhost:4002/plugins',
+  '/api/plugins': 'http://localhost:4007/plugins',
   '/api/ai': 'http://localhost:4003/ai',
   '/api/tasks': 'http://localhost:4004/tasks',
   '/api/sandbox': 'http://localhost:4006/sandbox'

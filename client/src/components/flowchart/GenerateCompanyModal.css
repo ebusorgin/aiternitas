@@ -18,6 +18,7 @@
 }
 
 .generate-modal {
+  position: relative; /* опорный контекст для clarification-overlay */
   background: linear-gradient(180deg, #1e293b, #0f172a);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 20px;
@@ -286,10 +287,10 @@
   position: relative;
 }
 
-/* Step grid (compact for 7 steps) */
+/* Step grid (авто-количество: 3–7 шагов без пустых ячеек) */
 .progress-steps-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 8px;
 }
 
@@ -364,7 +365,7 @@
 .progress-percent {
   position: absolute;
   right: 0;
-  top: -20px;
+  top: calc(100% + 4px);
   font-size: 11px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.5);
@@ -666,17 +667,30 @@
   animation: pulse 2s ease-in-out infinite;
 }
 
-/* Всплывающее уточнение по ходу генерации */
+/* Всплывающее уточнение — закрывает ВСЮ модалку (шапка, контент, футер),
+   box прокручивается внутри, если не помещается */
 .clarification-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(6, 10, 20, 0.92);
+  backdrop-filter: blur(3px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  z-index: 10;
-  border-radius: 0 0 20px 20px;
-  padding: 16px;
+  z-index: 20;
+  border-radius: 20px;
+  padding: 24px 16px;
+  overflow-y: auto;
+  animation: fadeIn 0.2s ease;
+}
+
+.clarification-overlay::-webkit-scrollbar {
+  width: 6px;
+}
+
+.clarification-overlay::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
 }
 
 .clarification-box {
@@ -686,6 +700,7 @@
   padding: 24px;
   max-width: 420px;
   width: 100%;
+  margin: auto; /* вертикальное центрирование с учётом скролла */
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 

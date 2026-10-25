@@ -65,6 +65,31 @@ class RabbitMQ {
         );
     }
 
+    // Fire-and-forget alias. Accepts (routingKey, data) or (data) with default
+    // routing to `<service>.message`.
+    async send(routingKey, data) {
+        if (typeof routingKey === 'object' || routingKey === null) {
+            data = routingKey;
+            routingKey = `${this.service}.message`;
+        }
+        return this.publish(routingKey, data);
+    }
+
+    // Publish a reply event. `replyTo` is a routing key (e.g. `user.chat.message`);
+    // correlationId is passed through in the message properties for request/response.
+    async reply(replyTo, data, correlationId = null) {
+        if (!this.channel) await this.connect(this.service);
+
+        const payload = Buffer.from(
+            typeof data === 'string' ? data : JSON.stringify(data)
+        );
+
+        return this.channel.publish(this.exchange, replyTo, payload, {
+            persistent: true,
+            ...(correlationId ? { correlationId } : {})
+        });
+    }
+
     async consume(callback) {
         if (!this.channel) await this.connect(this.service);
 
@@ -95,6 +120,16 @@ class RabbitMQ {
         );
 
         console.log(`[RabbitMQ] Listening ${this.queue}`);
+    }
+
+    // Close channel + connection (used by graceful shutdown).
+    async close() {
+        try {
+            if (this.channel) { await this.channel.close(); this.channel = null; }
+            if (this.connection) { await this.connection.close(); this.connection = null; }
+        } finally {
+            this.connected = false;
+        }
     }
 }
 

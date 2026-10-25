@@ -4,37 +4,11 @@
 import pool from '../db.mjs';
 import { userRooms } from './auth.mjs';
 import { decomposeTask, suggestAssignee } from '../services/openai.mjs';
-import { WorkerAgent } from '../agents/WorkerAgent.mjs';
-import { EvolutionManager } from '../agents/EvolutionManager.mjs';
 
-async function triggerAgentIfAssigned(taskId, workerId, io) {
-  if (!workerId) return;
-  try {
-    const workerRes = await pool.query(`SELECT * FROM elements WHERE id = $1 AND element_type = 'worker'`, [workerId]);
-    if (workerRes.rows.length === 0) return;
-    
-    const taskRes = await pool.query(`SELECT * FROM tasks WHERE id = $1`, [taskId]);
-    if (taskRes.rows.length === 0) return;
-    
-    const workerData = workerRes.rows[0];
-    const taskRecord = taskRes.rows[0];
-    
-    if (taskRecord.status === 'completed' || taskRecord.status === 'cancelled') return;
-
-    setTimeout(async () => {
-      try {
-        const agent = new WorkerAgent(workerData, io);
-        await agent.processTask(taskRecord);
-        await EvolutionManager.evolveAgent(workerData, taskRecord, "Logs available in terminal");
-        io.emit('task:updated', { task: taskRecord });
-      } catch (err) {
-        console.error('Agent processing error:', err);
-      }
-    }, 100);
-  } catch (error) {
-    console.error('Agent trigger error:', error);
-  }
-}
+// NOTE: Task orchestration/execution lives ONLY in depServer + workerServer (RabbitMQ).
+// These socket handlers persist tasks as `status='pending'`; depServer polls pending
+// tasks, routes them and publishes to `tasks_queue`, and workerServer executes them.
+// Live progress is pushed back to the UI through the bus (see userServer/index.mjs).
 
 
 // Default columns for new departments
@@ -706,7 +680,6 @@ export function setupTaskHandlers(io, socket) {
       );
 
       broadcastToUser('task:created', { task });
-      triggerAgentIfAssigned(task.id, task.assigned_to_worker_id, io);
       callback?.({ success: true, task });
 
     } catch (error) {
@@ -772,11 +745,7 @@ export function setupTaskHandlers(io, socket) {
       console.log(`📝 Task updated: ${id}`);
 
       broadcastToUser('task:updated', { task });
-      
-      if (updates.assigned_to_worker_id !== undefined || updates.status === 'in_progress') {
-        triggerAgentIfAssigned(task.id, task.assigned_to_worker_id, io);
-      }
-      
+
       callback?.({ success: true, task });
 
     } catch (error) {
@@ -893,12 +862,13 @@ export function setupTaskHandlers(io, socket) {
         return callback?.({ success: false, error: 'Некорректные данные' });
       }
 
-      // Update task assignment
+      // Persist assignment and leave the task for depServer to orchestrate.
+      // Keep status='pending' so the canonical orchestrator (depServer) picks it up.
       const result = await pool.query(
         `UPDATE tasks 
          SET assigned_to_worker_id = $1,
              assigned_to_department_id = $2,
-             status = 'in_progress'
+             status = 'pending'
          WHERE id = $3 AND user_id = $4
          RETURNING *`,
         [assignToWorkerId || null, assignToDepartmentId || null, taskId, socket.userId]
@@ -997,7 +967,7 @@ export function setupTaskHandlers(io, socket) {
 
       const task = taskResult.rows[0];
 
-      // Call GPT decomposition
+      // Call LLM decomposition (Ollama via aiServer)
       const decompositionResult = await decomposeTask(task, departmentContext || {});
 
       if (!decompositionResult?.subtasks?.length) {
@@ -1248,7 +1218,7 @@ export function setupTaskHandlers(io, socket) {
     }
   });
 
-  // Suggest assignee using GPT
+  // Suggest assignee using the local LLM
   socket.on('task:suggest-assignee', async (data, callback) => {
     if (!socket.userId) {
       return callback?.({ success: false, error: 'Требуется авторизация' });
@@ -1273,7 +1243,7 @@ export function setupTaskHandlers(io, socket) {
 
       const task = taskResult.rows[0];
 
-      // Call GPT suggestion
+      // Call LLM suggestion
       const suggestion = await suggestAssignee(task, availableWorkers || [], childDepartments || []);
 
       callback?.({ success: true, suggestion });

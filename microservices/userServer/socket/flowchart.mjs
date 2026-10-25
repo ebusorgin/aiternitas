@@ -454,7 +454,7 @@ export function setupFlowchartHandlers(io, socket) {
 
   // === AI GENERATION ===
 
-  // Generate company structure using GPT
+  // Generate company structure using the local LLM (Ollama via aiServer)
   socket.on('flowchart:generate-company', async (data, callback) => {
     if (!socket.userId) {
       return callback?.({ success: false, error: 'Требуется авторизация' });
@@ -494,12 +494,12 @@ export function setupFlowchartHandlers(io, socket) {
       };
 
       generationAborted.set(socket.id, false);
-      // Call OpenAI multi-step generation (plan + dynamic steps + clarification + abort)
+      // Call the multi-step LLM generation (plan + dynamic steps + clarification + abort)
       console.log('🔄 Starting multi-step generation...');
       const structure = await generateCompanyStructure(name, description || '', onProgress, onClarification, getAborted, onStepsPlan);
       console.log('✅ Multi-step generation complete');
       
-      // Convert GPT response to flowchart elements (with root company element)
+      // Convert the LLM response to flowchart elements (with root company element)
       const { elements, connections } = convertToFlowchartElements(structure, name, description || '');
 
       // Save to database

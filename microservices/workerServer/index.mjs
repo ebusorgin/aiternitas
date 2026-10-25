@@ -4,6 +4,7 @@ import cors from 'cors';
 import { consumeTasks } from './utils/amqpClient.mjs';
 import { WorkerAgent } from './WorkerAgent.mjs';
 import pool, { initDatabase } from './db.mjs';
+import { initRabbit } from '../_serviceLib/rabbitmq.mjs';
 
  // Корневой .env
 
@@ -20,7 +21,11 @@ app.get('/', (req, res) => res.send('workerServer is running on port ' + PORT));
 async function startWorker() {
   console.log('[workerServer] Подключение к БД...');
   await initDatabase();
-  
+
+  // Bus connection so WorkerAgent can publish `user.task.updated`.
+  console.log('[workerServer] Подключение к шине событий (RabbitMQ)...');
+  await initRabbit('worker');
+
   console.log(`[workerServer] Listening on port ${PORT}`);
   app.listen(PORT);
 

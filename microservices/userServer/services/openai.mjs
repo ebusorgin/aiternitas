@@ -1,33 +1,9 @@
-// OpenAI service for generating company structures
-// 7-step generation with hierarchy, connections, and validation
-import OpenAI from 'openai';
-import { createRequire } from 'module';
+// Company-structure generator (7 steps: hierarchy, connections, validation).
+// All LLM calls are routed to the local Ollama models through aiServer
+// (services/aiClient.mjs) — single point of truth for models in this system.
+import { chat as aiChat } from './aiClient.mjs';
 
-const require = createRequire(import.meta.url);
-
-const apiKey = process.env.OPENAI_API_KEY;
-const isOpenAIConfigured = Boolean(apiKey && apiKey !== 'missing-key');
-if (!apiKey) {
-  console.warn('⚠️ OPENAI_API_KEY not found in environment variables');
-} else {
-  console.log('✅ OpenAI API key loaded (length:', apiKey.length, ')');
-}
-
-// TOR proxy: set TOR_PROXY=socks5://127.0.0.1:9050 to route OpenAI requests via TOR (avoids 403 country block)
-const torProxy = process.env.TOR_PROXY;
-let openai;
-
-if (torProxy) {
-  const { SocksProxyAgent } = require('socks-proxy-agent');
-  const nodeFetch = require('node-fetch');
-  const agent = new SocksProxyAgent(torProxy);
-  const fetchViaTor = (url, opts = {}) => nodeFetch(url, { ...opts, agent });
-  openai = new OpenAI({ apiKey: apiKey || 'missing-key', fetch: fetchViaTor });
-  console.log('✅ OpenAI requests routed via TOR:', torProxy);
-} else {
-  openai = new OpenAI({ apiKey: apiKey || 'missing-key' });
-  console.warn('⚠️ TOR_PROXY not set — OpenAI may return 403 (country not supported). Set TOR_PROXY=socks5://127.0.0.1:9050 in .env.production and ensure tor.service is running.');
-}
+const LLM_MODEL = process.env.AI_MODEL || 'llama3:latest';
 
 // Connection types for organizational structure
 const CONNECTION_TYPES = {
@@ -39,33 +15,30 @@ const CONNECTION_TYPES = {
   supports: { label: 'Обеспечивает', icon: '🔧' }
 };
 
-// Helper: call GPT and parse JSON response
-async function callGPT(prompt, maxTokens = 4000) {
-  if (!isOpenAIConfigured) {
-    throw new Error('OPENAI_API_KEY не настроен');
-  }
+// Helper: call the local Ollama model (via aiServer) and parse a JSON response.
+async function callLLM(prompt, maxTokens = 4000) {
+  const SYSTEM_PROMPT =
+    'Ты эксперт по организационным структурам компаний. Всегда отвечай ТОЛЬКО валидным JSON без markdown-форматирования и пояснений.';
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      {
-        role: 'system',
-        content: 'Ты эксперт по организационным структурам компаний. Всегда отвечай ТОЛЬКО валидным JSON без markdown-форматирования и пояснений.'
-      },
-      { role: 'user', content: prompt }
-    ],
+  const content = await aiChat(prompt, {
+    model: LLM_MODEL,
+    systemPrompt: SYSTEM_PROMPT,
+    jsonFormat: true,
     temperature: 0.7,
-    max_tokens: maxTokens
+    numPredict: maxTokens,
   });
 
-  let content = response.choices[0].message.content.trim();
-  
-  if (content.startsWith('```json')) content = content.slice(7);
-  if (content.startsWith('```')) content = content.slice(3);
-  if (content.endsWith('```')) content = content.slice(0, -3);
-  content = content.trim();
+  // jsonFormat=true makes aiServer return a parsed object; keep a tolerant
+  // fallback for models that still wrap the answer in markdown fences.
+  if (content && typeof content === 'object') return content;
 
-  return JSON.parse(content);
+  let text = String(content ?? '').trim();
+  if (text.startsWith('```json')) text = text.slice(7);
+  if (text.startsWith('```')) text = text.slice(3);
+  if (text.endsWith('```')) text = text.slice(0, -3);
+  text = text.trim();
+
+  return JSON.parse(text);
 }
 
 function buildFallbackAssigneeSuggestion(task, availableWorkers = [], childDepartments = []) {
@@ -109,7 +82,7 @@ function buildFallbackAssigneeSuggestion(task, availableWorkers = [], childDepar
       reasoning: `Выбран как самый свободный исполнитель для задачи "${task.title}".`
     },
     alternatives,
-    recommendations: 'Рекомендация построена локально, потому что OPENAI_API_KEY не настроен.'
+    recommendations: 'Рекомендация построена локально (LLM недоступен).'
   };
 }
 
@@ -140,7 +113,7 @@ async function step1_analyzeCompany(companyName, description) {
   "statusMessage": "сообщение о следующем шаге (до 40 символов)"
 }`;
 
-  return await callGPT(prompt);
+  return await callLLM(prompt);
 }
 
 /**
@@ -191,7 +164,7 @@ async function step2_createTopManagement(companyName, analysis) {
   "statusMessage": "сообщение о следующем шаге (до 40 символов)"
 }`;
 
-  return await callGPT(prompt, 4000);
+  return await callLLM(prompt, 4000);
 }
 
 /**
@@ -237,7 +210,7 @@ async function step3_createDepartments(companyName, analysis, executives) {
   "statusMessage": "сообщение (до 40 символов)"
 }`;
 
-  return await callGPT(prompt, 5000);
+  return await callLLM(prompt, 5000);
 }
 
 /**
@@ -304,7 +277,7 @@ ${executives.executives?.map(e => `- [${e.id}] ${e.position}`).join('\n')}
   "statusMessage": "сообщение (до 40 символов)"
 }`;
 
-  return await callGPT(prompt, 5000);
+  return await callLLM(prompt, 5000);
 }
 
 /**
@@ -363,7 +336,7 @@ ${flatDepts.map(d => `- [${d.id}] ${d.name}: ${d.functions?.slice(0, 3).join(', 
   "statusMessage": "сообщение (до 40 символов)"
 }`;
 
-  return await callGPT(prompt, 6000);
+  return await callLLM(prompt, 6000);
 }
 
 /**
@@ -420,7 +393,7 @@ ${flatDepts.map(d => `- [${d.id}] ${d.name} (${d.type})`).join('\n')}
   "statusMessage": "сообщение (до 40 символов)"
 }`;
 
-  return await callGPT(prompt, 4000);
+  return await callLLM(prompt, 4000);
 }
 
 /**
@@ -512,7 +485,7 @@ ${deptsWithoutWorkers.length > 0 ? `- Департаменты БЕЗ сотру
   "statusMessage": "финальное сообщение (до 40 символов)"
 }`;
 
-  return await callGPT(prompt, 4000);
+  return await callLLM(prompt, 4000);
 }
 
 /**
@@ -547,7 +520,7 @@ async function step_planSteps(companyName, analysis) {
   ]
 }`;
 
-  const result = await callGPT(prompt, 1500);
+  const result = await callLLM(prompt, 1500);
   const steps = result.steps || [];
   const order = ['executives', 'departments', 'department_heads', 'workers'];
   const sorted = steps
@@ -724,7 +697,8 @@ export async function generateCompanyStructure(companyName, description, onProgr
     checkAborted();
     onProgress?.({ stepIndex: totalSteps, totalSteps, stepLabel: 'Проверка', message: 'Проверяю структуру...' });
     const validation = await step7_validateStructure(companyName, executives, departmentHeads, departments, workers, connections);
-    onProgress?.({ stepIndex: totalSteps, totalSteps, stepLabel: 'Проверка', message: validation.statusMessage || 'Готово!' });
+    // статус-финал всегда человекочитаемый: statusMessage от LLM бывает на английском/пустым
+    onProgress?.({ stepIndex: totalSteps, totalSteps, stepLabel: 'Проверка', message: validation.isValid ? 'Структура проверена!' : 'Структура собрана, требуются мелкие правки' });
     console.log(`✅ Проверка: ${validation.isValid ? 'PASSED' : 'needs fixes'}`);
 
     return {
@@ -1138,7 +1112,7 @@ ${departmentContext.childDepartments ? `- Дочерние департамен�
 }`;
 
   try {
-    const result = await callGPT(prompt, 3000);
+    const result = await callLLM(prompt, 3000);
     
     // Don't return subtasks if decomposition is not needed
     if (!result.analysis?.decompositionNeeded) {
@@ -1162,10 +1136,6 @@ export async function suggestAssignee(task, availableWorkers = [], childDepartme
   
   if (availableWorkers.length === 0 && childDepartments.length === 0) {
     return { suggestion: null, message: 'Нет доступных исполнителей' };
-  }
-
-  if (!isOpenAIConfigured) {
-    return buildFallbackAssigneeSuggestion(task, availableWorkers, childDepartments);
   }
 
   const prompt = `Рекомендуй лучшего исполнителя для задачи.
@@ -1213,13 +1183,14 @@ ${childDepartments.length > 0 ? childDepartments.map((d, i) => `${i + 1}. [${d.i
 }`;
 
   try {
-    const result = await callGPT(prompt, 2000);
+    const result = await callLLM(prompt, 2000);
     console.log(`✅ Suggested assignee: ${result.suggestion?.name || 'none'}`);
     return result;
     
   } catch (error) {
-    console.error('❌ Assignee suggestion error:', error);
-    throw error;
+    // LLM unavailable/invalid — degrade to a deterministic local suggestion.
+    console.error('❌ Assignee suggestion error, using local fallback:', error.message);
+    return buildFallbackAssigneeSuggestion(task, availableWorkers, childDepartments);
   }
 }
 

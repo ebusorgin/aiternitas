@@ -1,11 +1,20 @@
 import fs from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { exec } from 'child_process';
 import util from 'util';
 import { callLocalLLM } from './utils/aiClient.mjs';
 import pool from './db.mjs';
+import rabbit from '../_serviceLib/rabbitmq.mjs';
 
 const execPromise = util.promisify(exec);
+
+// AI-generated scripts live under the shared uploads dir (never under a
+// non-existent `<cwd>/server` path). Falls back to <cwd>/uploads/generated_scripts.
+const GENERATED_SCRIPTS_ROOT = process.env.UPLOADS_DIR
+  ? path.join(process.env.UPLOADS_DIR, 'generated_scripts')
+  : path.resolve(process.cwd(), 'uploads', 'generated_scripts');
 
 export class WorkerAgent {
   constructor(workerData, io = null) {
@@ -30,6 +39,18 @@ export class WorkerAgent {
         type, 
         timestamp: new Date().toISOString() 
       });
+    }
+  }
+
+  // Push live task progress to the bus (`user.task.updated`), relayed by the
+  // userServer bus bridge to the owning user's sockets as `task:updated`.
+  async publishTaskUpdate(taskId) {
+    try {
+      const res = await pool.query('SELECT * FROM tasks WHERE id = $1', [taskId]);
+      const task = res.rows[0];
+      if (task) await rabbit.publish('user.task.updated', { userId: task.user_id, task });
+    } catch (e) {
+      console.error('[Agent] publishTaskUpdate error:', e.message);
     }
   }
 
@@ -92,10 +113,9 @@ ${this.customPrompt}
           if (forbidden.some(cmd => args.command.toLowerCase().includes(cmd))) {
              return 'TOOL ERROR: Command forbidden for security reasons.';
           }
-          const crypto = require('crypto');
           const scriptName = '.temp_exec_' + crypto.randomBytes(4).toString('hex') + '.sh';
-          const tempScriptPath = require('path').join(process.cwd(), scriptName);
-          await require('fs').promises.writeFile(tempScriptPath, args.command, 'utf8');
+          const tempScriptPath = path.join(process.cwd(), scriptName);
+          await fs.writeFile(tempScriptPath, args.command, 'utf8');
           let stdout = '';
           let stderr = '';
           try {
@@ -107,7 +127,7 @@ ${this.customPrompt}
             stdout = err.stdout || '';
             stderr = err.stderr || err.message;
           } finally {
-            await require('fs').promises.unlink(tempScriptPath).catch(() => {});
+            await fs.unlink(tempScriptPath).catch(() => {});
           }
           return `STDOUT:\n${stdout}\nSTDERR:\n${stderr}`;
           
@@ -126,36 +146,33 @@ ${this.customPrompt}
         }
         case 'write_script': {
           const pluginName = args.plugin_name || args.filename.replace('.py', '').replace('.js', '');
-          const scriptsDir = require('path').join(process.cwd(), 'server', 'generated_scripts', pluginName);
-          await require('fs').promises.mkdir(scriptsDir, { recursive: true });
-          
-          const filePath = require('path').join(scriptsDir, args.filename);
-          await require('fs').promises.writeFile(filePath, args.content, 'utf8');
-          
-          const readmePath = require('path').join(scriptsDir, 'README.md');
+          const scriptsDir = path.join(GENERATED_SCRIPTS_ROOT, pluginName);
+          await fs.mkdir(scriptsDir, { recursive: true });
+
+          const filePath = path.join(scriptsDir, args.filename);
+          await fs.writeFile(filePath, args.content, 'utf8');
+
+          const readmePath = path.join(scriptsDir, 'README.md');
           const readmeContent = `# ${pluginName}\n\nСкрипт: ${args.filename}\nСоздан автоматически ИИ-Агентом.\n\nОписание: Этот скрипт выполняет задачу по запросу пользователя.`;
-          await require('fs').promises.writeFile(readmePath, readmeContent, 'utf8');
-          
+          await fs.writeFile(readmePath, readmeContent, 'utf8');
+
           return 'Скрипт и README сохранены в папке: ' + scriptsDir;
         }
         case 'execute_docker': {
           const pluginName = args.plugin_name || 'unknown';
-          const scriptsDir = require('path').join(process.cwd(), 'server', 'generated_scripts', pluginName);
-          
+          const scriptsDir = path.join(GENERATED_SCRIPTS_ROOT, pluginName);
+
           // Проверяем существует ли папка
-          if (!require('fs').existsSync(scriptsDir)) {
+          if (!existsSync(scriptsDir)) {
              return 'ERROR: Папка скрипта не найдена: ' + scriptsDir;
           }
-          
+
           // В контейнере монтируем директорию со скриптами в /scripts
           // Используем заготовленный толстый образ
           const image = args.image || 'aiternitas-sandbox:latest';
           const cmd = `docker run --rm -v "${scriptsDir}":/scripts ${image} sh -c "${args.command}"`;
           try {
-            const { exec } = require('child_process');
-            const util = require('util');
-            const execAsync = util.promisify(exec);
-            const { stdout, stderr } = await execAsync(cmd, { timeout: 45000 });
+            const { stdout, stderr } = await execPromise(cmd, { timeout: 45000 });
             return 'STDOUT:\n' + stdout + '\nSTDERR:\n' + stderr;
           } catch (e) {
             return 'ERROR:\n' + (e.stdout || '') + '\n' + (e.stderr || e.message);
@@ -163,7 +180,7 @@ ${this.customPrompt}
         }
         case 'save_plugin': {
           const pluginName = args.plugin_name || args.name;
-          const scriptsDir = require('path').join('server', 'generated_scripts', pluginName);
+          const scriptsDir = path.join(GENERATED_SCRIPTS_ROOT, pluginName);
           await pool.query(
             "INSERT INTO system_plugins (name, description, script_path, language, docker_image) VALUES ($1, $2, $3, $4, $5)",
             [args.name, args.description, scriptsDir, args.language, args.image || 'aiternitas-sandbox:latest']
@@ -181,6 +198,7 @@ ${this.customPrompt}
              VALUES ($1, $2, 'worker', $3, 'status_change')`,
             [taskId, this.id, `Изменил статус задачи на: ${args.status}`]
           );
+          await this.publishTaskUpdate(taskId);
           return `Статус изменен на ${args.status}.`;
           
         case 'add_flowchart_node':
@@ -297,8 +315,15 @@ ${this.customPrompt}
       this.log(`Thinking (Iteration ${iteration})...`, 'thinking');
       
       try {
-        const responseJson = await callLocalLLM(history, 'llama3:latest', this.getSystemPrompt(), true);
-        
+        const rawResponse = await callLocalLLM(history, 'llama3:latest', this.getSystemPrompt(), true);
+
+        // aiServer при requireJson возвращает JSON-строку из Ollama - парсим в объект
+        let responseJson = rawResponse;
+        if (typeof responseJson === 'string') {
+          try { responseJson = JSON.parse(responseJson); }
+          catch { throw new Error('Invalid JSON format returned by LLM'); }
+        }
+
         if (!responseJson || !responseJson.action) {
           throw new Error('Invalid JSON format returned by LLM');
         }

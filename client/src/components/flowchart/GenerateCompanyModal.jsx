@@ -286,45 +286,6 @@ function GenerateCompanyModal({ onClose }) {
                   ))}
                 </div>
               </div>
-
-              {/* Всплывающее уточнение по ходу генерации */}
-              {clarification && (
-                <div className="clarification-overlay">
-                  <div className="clarification-box">
-                    <div className="clarification-title">Уточните вектор</div>
-                    <p className="clarification-question">{clarification.question}</p>
-                    {clarification.summary && (
-                      <p className="clarification-summary">Сейчас: {clarification.summary}</p>
-                    )}
-                    <div className="clarification-custom-text-wrap">
-                      <label className="clarification-custom-text-label">Дополнительные уточнения</label>
-                      <p className="clarification-hint">Например: «2 сотрудника», «только барберы». Если важно только ваше описание — нажмите «Использовать только моё описание». При «Упростить»/«Расширить» текст тоже учитывается (число сотрудников подставится автоматически).</p>
-                      <textarea
-                        className="clarification-custom-text"
-                        value={clarificationCustomText}
-                        onChange={(e) => setClarificationCustomText(e.target.value)}
-                        placeholder="Например: 2 сотрудника, только барберы…"
-                        rows={3}
-                      />
-                    </div>
-                    <div className="clarification-options">
-                      {clarification.options?.map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          className="clarification-option"
-                          onClick={() => handleClarificationChoice(opt.id)}
-                        >
-                          <span className="clarification-option-label">{opt.label}</span>
-                          {opt.description && (
-                            <span className="clarification-option-desc">{opt.description}</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
@@ -335,6 +296,45 @@ function GenerateCompanyModal({ onClose }) {
             </div>
           )}
         </form>
+
+        {/* Всплывающее уточнение по ходу генерации — поверх ВСЕГО окна модалки */}
+        {clarification && (
+          <div className="clarification-overlay">
+            <div className="clarification-box">
+              <div className="clarification-title">Уточните вектор</div>
+              <p className="clarification-question">{clarification.question}</p>
+              {clarification.summary && (
+                <p className="clarification-summary">Сейчас: {clarification.summary}</p>
+              )}
+              <div className="clarification-custom-text-wrap">
+                <label className="clarification-custom-text-label">Дополнительные уточнения</label>
+                <p className="clarification-hint">Например: «2 сотрудника», «только барберы». Если важно только ваше описание — нажмите «Использовать только моё описание». При «Упростить»/«Расширить» текст тоже учитывается (число сотрудников подставится автоматически).</p>
+                <textarea
+                  className="clarification-custom-text"
+                  value={clarificationCustomText}
+                  onChange={(e) => setClarificationCustomText(e.target.value)}
+                  placeholder="Например: 2 сотрудника, только барберы…"
+                  rows={3}
+                />
+              </div>
+              <div className="clarification-options">
+                {clarification.options?.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    className="clarification-option"
+                    onClick={() => handleClarificationChoice(opt.id)}
+                  >
+                    <span className="clarification-option-label">{opt.label}</span>
+                    {opt.description && (
+                      <span className="clarification-option-desc">{opt.description}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="generate-modal-footer">
